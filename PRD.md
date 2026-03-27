@@ -53,12 +53,12 @@ For UI stories, also include:
 **Description:** As a company admin, I need the platform to read an lintic.yml file so I can configure the agent provider, constraints, and prompts in one place.
 
 **Acceptance Criteria:**
-- [ ] Parse lintic.yml using js-yaml into typed Config object
-- [ ] Validate required fields: agent.provider, agent.api_key (or env var reference), agent.model
-- [ ] Support ${ENV_VAR} syntax in string values for secrets
-- [ ] Throw descriptive errors for missing or invalid config
-- [ ] Unit tests for config parsing and validation
-- [ ] Typecheck passes
+- [x] Parse lintic.yml using js-yaml into typed Config object
+- [x] Validate required fields: agent.provider, agent.api_key (or env var reference), agent.model
+- [x] Support ${ENV_VAR} syntax in string values for secrets
+- [x] Throw descriptive errors for missing or invalid config
+- [x] Unit tests for config parsing and validation
+- [x] Typecheck passes
 
 ### US-004: Constraint enforcer module
 
