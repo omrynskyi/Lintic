@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/omrynskyi/Lintic/discussions
+    about: Ask questions and discuss ideas here — issues are for bugs and feature requests only.
