@@ -30,23 +30,23 @@ For UI stories, also include:
 **Description:** As a developer, I need the monorepo structure set up with shared config so all packages can build and typecheck independently.
 
 **Acceptance Criteria:**
-- [x] Create packages/core, packages/frontend, packages/adapters, packages/cli directories
-- [x] Root package.json with npm workspaces configured
-- [x] Shared tsconfig.base.json extended by each package
-- [x] ESLint config at root shared across packages
-- [x] `npm run typecheck` passes from root
-- [x] `npm run lint` passes from root
+- [ ] Create packages/core, packages/frontend, packages/adapters, packages/cli directories
+- [ ] Root package.json with npm workspaces configured
+- [ ] Shared tsconfig.base.json extended by each package
+- [ ] ESLint config at root shared across packages
+- [ ] `npm run typecheck` passes from root
+- [ ] `npm run lint` passes from root
 
 ### US-002: Core session data models and types
 
 **Description:** As a developer, I need TypeScript types and interfaces for sessions, constraints, metrics, and agent communication so all packages share a common contract.
 
 **Acceptance Criteria:**
-- [ ] Define Session, Constraint, AgentConfig, AgentResponse, TokenUsage types in packages/core/src/types.ts
-- [ ] Define AgentAdapter interface with init, sendMessage, getTokenUsage, getCapabilities methods
-- [ ] Define MetricResult, SessionRecording, and ReviewData types
-- [ ] Export all types from packages/core/src/index.ts
-- [ ] Typecheck passes
+- [x] Define Session, Constraint, AgentConfig, AgentResponse, TokenUsage types in packages/core/src/types.ts
+- [x] Define AgentAdapter interface with init, sendMessage, getTokenUsage, getCapabilities methods
+- [x] Define MetricResult, SessionRecording, and ReviewData types
+- [x] Export all types from packages/core/src/index.ts
+- [x] Typecheck passes
 
 ### US-003: YAML configuration loader
 
@@ -130,6 +130,48 @@ For UI stories, also include:
 - [ ] Handles Anthropic-specific error codes (overloaded, rate_limited)
 - [ ] Unit tests with mocked HTTP responses
 - [ ] Typecheck passes
+
+### US-007a: Agent tool definitions and executor
+
+**Description:** As a developer, I need a set of tool definitions that give the LLM the ability to read files, write files, run terminal commands, and browse the file system inside the candidate's WebContainer, so the agent can act on the codebase directly rather than just chatting.
+
+**Acceptance Criteria:**
+- [ ] Define tool schemas compatible with both OpenAI function calling and Anthropic tool use formats
+- [ ] Tools defined: read_file(path), write_file(path, content), run_command(command), list_directory(path), search_files(query, path)
+- [ ] ToolExecutor class that receives a tool call from the LLM response, routes it to the correct handler, and returns the result
+- [ ] Each tool handler communicates with the WebContainer API via a message protocol between frontend and backend
+- [ ] Tool results are formatted and injected back into the conversation for the next LLM call
+- [ ] Tool execution timeout (30 seconds for run_command, 5 seconds for file operations) with graceful error messages
+- [ ] Unit tests for tool routing and result formatting
+- [ ] Typecheck passes
+
+### US-007b: Agent loop with multi-step tool use
+
+**Description:** As a candidate, I need the agent to autonomously chain multiple tool calls in a single turn (read a file, edit it, run tests, fix errors) so I can direct the agent at a high level instead of copy-pasting code manually.
+
+**Acceptance Criteria:**
+- [ ] After sending a candidate message, the backend runs an agent loop: send to LLM, check if response contains tool calls, execute tools, feed results back to LLM, repeat until LLM responds with text (no more tool calls)
+- [ ] Maximum of 10 tool calls per candidate message to prevent runaway loops
+- [ ] Each tool call and result is recorded in the session for replay
+- [ ] The candidate sees tool actions streaming in the chat panel (e.g., "Reading src/index.ts...", "Running npm test...", "Writing src/utils.ts...")
+- [ ] Token usage from all LLM calls in the loop counts toward the session budget
+- [ ] If a tool call fails, the error is passed back to the LLM so it can recover
+- [ ] Unit tests for the loop termination conditions and token accounting
+- [ ] Typecheck passes
+
+### US-007c: Tool action display in chat UI
+
+**Description:** As a candidate, I need to see what the agent is doing when it uses tools so I can understand its approach and intervene if needed.
+
+**Acceptance Criteria:**
+- [ ] Tool calls render as collapsible action cards in the chat panel (distinct from regular text messages)
+- [ ] Each action card shows the tool name, parameters, and result (truncated for large outputs)
+- [ ] File writes show a mini diff preview (added/removed lines)
+- [ ] Terminal command actions show the command and output with syntax highlighting
+- [ ] Actions stream in real time as the agent loop executes (not all at once after completion)
+- [ ] Candidate can click "Stop" to halt the agent mid-loop and take over manually
+- [ ] Typecheck passes
+- [ ] Verify in browser using dev-browser skill
 
 ### US-008: Express backend with session and agent routes
 
@@ -401,4 +443,3 @@ For UI stories, also include:
 - [ ] Backup failures log warnings but do not block session completion
 - [ ] Unit tests for S3 upload and restore logic with mocked S3 client
 - [ ] npm run typecheck passes
-
