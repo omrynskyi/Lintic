@@ -1,7 +1,17 @@
 import Database from 'better-sqlite3';
 import { SignJWT } from 'jose';
-import type { DatabaseAdapter, CreateSessionParams } from './database.js';
-import type { Session, Message, MessageRole, Constraint } from './types.js';
+import type { Session, MessageRole, Constraint } from './types.js';
+
+export interface CreateSessionParams {
+  promptId: string;
+  candidateEmail: string;
+  constraint: Constraint;
+}
+
+export interface Message {
+  role: MessageRole;
+  content: string;
+}
 
 interface SessionRow {
   id: string;
@@ -45,7 +55,7 @@ function rowToSession(row: SessionRow): Session {
   return session;
 }
 
-export class SQLiteAdapter implements DatabaseAdapter {
+export class SQLiteAdapterJWT {
   private db: Database.Database;
   private jwtSecret: Uint8Array;
   private linkExpiryHours: number;
@@ -99,47 +109,48 @@ export class SQLiteAdapter implements DatabaseAdapter {
     return { sessionId, linkToken };
   }
 
-  async getSession(id: string): Promise<Session | null> {
+  getSession(id: string): Promise<Session | null> {
     const row = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as SessionRow | undefined;
-    if (!row) return null;
-    return rowToSession(row);
+    return Promise.resolve(row ? rowToSession(row) : null);
   }
 
-  async addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void> {
+  addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void> {
     this.db.prepare(`
       INSERT INTO messages (session_id, role, content, token_count, created_at)
       VALUES (?, ?, ?, ?, ?)
     `).run(sessionId, role, content, tokenCount, Date.now());
+    return Promise.resolve();
   }
 
-  async getMessages(sessionId: string): Promise<Message[]> {
+  getMessages(sessionId: string): Promise<Message[]> {
     const rows = this.db.prepare(
       'SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC'
     ).all(sessionId) as MessageRow[];
 
-    return rows.map(row => ({
+    return Promise.resolve(rows.map(row => ({
       role: row.role as MessageRole,
       content: row.content,
-    }));
+    })));
   }
 
-  async closeSession(id: string): Promise<void> {
+  closeSession(id: string): Promise<void> {
     const result = this.db.prepare("UPDATE sessions SET status = 'completed', closed_at = ? WHERE id = ?")
       .run(Date.now(), id);
     if (result.changes === 0) {
-      throw new Error(`Session not found: ${id}`);
+      return Promise.reject(new Error(`Session not found: ${id}`));
     }
+    return Promise.resolve();
   }
 
-  async listSessions(): Promise<Session[]> {
+  listSessions(): Promise<Session[]> {
     const rows = this.db.prepare('SELECT * FROM sessions ORDER BY created_at DESC').all() as SessionRow[];
-    return rows.map(rowToSession);
+    return Promise.resolve(rows.map(rowToSession));
   }
 
-  async getSessionsByPrompt(promptId: string): Promise<Session[]> {
+  getSessionsByPrompt(promptId: string): Promise<Session[]> {
     const rows = this.db.prepare(
       'SELECT * FROM sessions WHERE prompt_id = ? ORDER BY created_at DESC'
     ).all(promptId) as SessionRow[];
-    return rows.map(rowToSession);
+    return Promise.resolve(rows.map(rowToSession));
   }
 }

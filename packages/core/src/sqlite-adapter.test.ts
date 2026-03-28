@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
 import { jwtVerify } from 'jose';
-import { SQLiteAdapter } from './sqlite-adapter.js';
-import type { CreateSessionParams } from './database.js';
+import { SQLiteAdapterJWT } from './sqlite-adapter.js';
+import type { CreateSessionParams } from './sqlite-adapter.js';
 import type { Constraint } from './types.js';
 
 const TEST_SECRET = 'test-jwt-secret-at-least-32-chars!!';
@@ -19,8 +19,9 @@ const TEST_PARAMS: CreateSessionParams = {
 };
 
 function makeAdapter() {
-  return new SQLiteAdapter({ path: ':memory:', jwt_secret: TEST_SECRET });
+  return new SQLiteAdapterJWT({ path: ':memory:', jwt_secret: TEST_SECRET });
 }
+
 
 describe('createSession', () => {
   test('returns a sessionId and linkToken', async () => {
@@ -41,7 +42,7 @@ describe('createSession', () => {
   });
 
   test('linkToken expires after link_expiry_hours', async () => {
-    const adapter = new SQLiteAdapter({
+    const adapter = new SQLiteAdapterJWT({
       path: ':memory:',
       jwt_secret: TEST_SECRET,
       link_expiry_hours: 1,

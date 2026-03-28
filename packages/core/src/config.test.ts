@@ -38,7 +38,6 @@ const VALID_CONFIG = {
   ],
   database: {
     provider: 'sqlite',
-    jwt_secret: 'test-secret',
   },
 };
 
@@ -173,10 +172,7 @@ describe('validateConfig', () => {
   test('accepts a valid database config', () => {
     const cfg = {
       ...VALID_CONFIG,
-      database: {
-        provider: 'sqlite',
-        jwt_secret: 'my-secret',
-      },
+      database: { provider: 'sqlite' },
     };
     expect(() => validateConfig(cfg)).not.toThrow();
   });
@@ -184,30 +180,14 @@ describe('validateConfig', () => {
   test('throws when database.provider is invalid', () => {
     const cfg = {
       ...VALID_CONFIG,
-      database: { provider: 'mysql', jwt_secret: 'secret' },
+      database: { provider: 'mysql' },
     };
     expect(() => validateConfig(cfg)).toThrow(/database\.provider/);
   });
 
-  test('throws when database.jwt_secret is missing', () => {
-    const cfg = {
-      ...VALID_CONFIG,
-      database: { provider: 'sqlite' },
-    };
-    expect(() => validateConfig(cfg)).toThrow(/database\.jwt_secret/);
-  });
-
-  test('throws when database.link_expiry_hours is non-positive', () => {
-    const cfg = {
-      ...VALID_CONFIG,
-      database: { provider: 'sqlite', jwt_secret: 'secret', link_expiry_hours: 0 },
-    };
-    expect(() => validateConfig(cfg)).toThrow(/link_expiry_hours/);
-  });
-
-  test('throws when database section is missing', () => {
-    const { database: _db, ...cfgWithout } = { ...VALID_CONFIG, database: { provider: 'sqlite', jwt_secret: 'secret' } };
-    expect(() => validateConfig(cfgWithout)).toThrow(/database/);
+  test('accepts config without a database section', () => {
+    const cfgWithout = { agent: VALID_CONFIG.agent, constraints: VALID_CONFIG.constraints, prompts: VALID_CONFIG.prompts };
+    expect(() => validateConfig(cfgWithout)).not.toThrow();
   });
 });
 

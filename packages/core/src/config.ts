@@ -14,16 +14,15 @@ export interface PromptConfig {
 
 export interface DatabaseConfig {
   provider: 'sqlite' | 'postgres';
-  path?: string;
-  jwt_secret: string;
-  link_expiry_hours?: number;
+  path?: string;             // SQLite file path (default: lintic.db)
+  connection_string?: string; // Postgres connection string
 }
 
 export interface Config {
   agent: AgentConfig;
   constraints: Constraint;
   prompts: PromptConfig[];
-  database: DatabaseConfig;
+  database?: DatabaseConfig;
 }
 
 // ─── Env Var Resolution ───────────────────────────────────────────────────────
@@ -56,7 +55,6 @@ export function resolveEnvVars(value: unknown): unknown {
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 const VALID_PROVIDERS: AgentProvider[] = ['openai-compatible', 'anthropic-native', 'groq'];
-const VALID_DB_PROVIDERS = ['sqlite', 'postgres'] as const;
 
 function err(msg: string): never {
   throw new Error(`Config error: ${msg}`);
@@ -127,27 +125,20 @@ export function validateConfig(raw: unknown): Config {
     return { id, title, ...(description ? { description } : {}), ...(difficulty ? { difficulty } : {}), ...(tags ? { tags } : {}) };
   });
 
-  // ── database ──
-  const rawDb = assertObj(root.database, 'database');
-
-  const dbProvider = rawDb.provider;
-  if (!VALID_DB_PROVIDERS.includes(dbProvider as 'sqlite' | 'postgres')) {
-    err(`database.provider must be one of: ${VALID_DB_PROVIDERS.join(', ')}`);
+  // ── database (optional) ──
+  let database: DatabaseConfig | undefined;
+  if (root.database !== undefined) {
+    const rawDb = assertObj(root.database, 'database');
+    const dbProvider = rawDb.provider;
+    if (dbProvider !== 'sqlite' && dbProvider !== 'postgres') {
+      err("database.provider must be 'sqlite' or 'postgres'");
+    }
+    database = { provider: dbProvider };
+    if (typeof rawDb.path === 'string') database.path = rawDb.path;
+    if (typeof rawDb.connection_string === 'string') database.connection_string = rawDb.connection_string;
   }
-  const jwt_secret = assertNonEmptyString(rawDb.jwt_secret, 'database.jwt_secret');
-  const db_path = typeof rawDb.path === 'string' ? rawDb.path : undefined;
-  const link_expiry_hours = rawDb.link_expiry_hours !== undefined
-    ? assertPositiveNumber(rawDb.link_expiry_hours, 'link_expiry_hours')
-    : undefined;
 
-  const database: DatabaseConfig = {
-    provider: dbProvider as 'sqlite' | 'postgres',
-    jwt_secret,
-    ...(db_path ? { path: db_path } : {}),
-    ...(link_expiry_hours !== undefined ? { link_expiry_hours } : {}),
-  };
-
-  return { agent, constraints, prompts, database };
+  return { agent, constraints, prompts, ...(database ? { database } : {}) };
 }
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
