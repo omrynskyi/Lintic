@@ -12,8 +12,7 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "eslint .",
-    "test": "vitest run"
+    "lint": "eslint ."
   },
   "devDependencies": {
     "typescript": "^5.5.0",

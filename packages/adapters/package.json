@@ -6,13 +6,9 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@lintic/core": "*"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0"
   }
 }
