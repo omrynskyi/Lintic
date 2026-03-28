@@ -94,7 +94,7 @@ export class AnthropicAdapter implements AgentAdapter {
       response = await fetch(`${this.baseUrl}/v1/messages`, {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
+          'Content-Type': 'application/json',
           'x-api-key': this.config.api_key,
           'anthropic-version': '2023-06-01',
         },
@@ -179,14 +179,14 @@ export class AnthropicAdapter implements AgentAdapter {
 
 function toAnthropicMessage(msg: Message): AnthropicMessage {
   if (msg.role === 'tool') {
-    const result = msg.tool_results?.[0];
+    const results = msg.tool_results ?? [];
     return {
       role: 'user',
-      content: [{
-        type: 'tool_result',
-        tool_use_id: result?.tool_call_id ?? '',
-        content: result?.output ?? '',
-      }],
+      content: results.map(r => ({
+        type: 'tool_result' as const,
+        tool_use_id: r.tool_call_id,
+        content: r.output,
+      })),
     };
   }
 

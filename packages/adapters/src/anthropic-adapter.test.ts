@@ -102,7 +102,7 @@ describe('AnthropicAdapter', () => {
       const headers = options.headers as Record<string, string>;
       expect(headers['x-api-key']).toBe('sk-ant-test');
       expect(headers['anthropic-version']).toBe('2023-06-01');
-      expect(headers['content-type']).toBe('application/json');
+      expect(headers['Content-Type']).toBe('application/json');
     });
 
     test('uses base_url override when provided', async () => {
@@ -271,6 +271,37 @@ describe('AnthropicAdapter', () => {
         tool_use_id: 'toolu_01',
         content: 'file contents here',
       }]);
+    });
+
+    test('serializes assistant tool_calls history message as Anthropic tool_use blocks', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeTextResponse('Done')),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await adapter.sendMessage('Follow up', makeContext({
+        history: [{
+          role: 'assistant',
+          content: 'I will read the file.',
+          tool_calls: [{
+            id: 'toolu_01',
+            name: 'read_file',
+            input: { path: 'src/index.ts' },
+          }],
+        }],
+      }));
+
+      const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(options.body as string) as {
+        messages: Array<{ role: string; content: unknown }>;
+      };
+      const assistantMsg = body.messages[0]!;
+      expect(assistantMsg.role).toBe('assistant');
+      expect(assistantMsg.content).toEqual([
+        { type: 'text', text: 'I will read the file.' },
+        { type: 'tool_use', id: 'toolu_01', name: 'read_file', input: { path: 'src/index.ts' } },
+      ]);
     });
   });
 
