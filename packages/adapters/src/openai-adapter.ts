@@ -140,12 +140,13 @@ export class OpenAIAdapter implements AgentAdapter {
   private baseUrl: string = 'https://api.openai.com';
   private lastUsage: TokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
-  async init(config: AgentConfig): Promise<void> {
+  init(config: AgentConfig): Promise<void> {
     if (!config.api_key) {
-      throw new AdapterError('OpenAIAdapter: api_key is required', 0, 'missing_api_key');
+      return Promise.reject(new AdapterError('OpenAIAdapter: api_key is required', 0, 'missing_api_key'));
     }
     this.config = config;
     this.baseUrl = (config.base_url ?? 'https://api.openai.com').replace(/\/$/, '');
+    return Promise.resolve();
   }
 
   async sendMessage(msg: string, context: SessionContext): Promise<AgentResponse> {
@@ -272,7 +273,7 @@ function toOpenAIMessage(msg: Message): OpenAIChatMessage {
   }
 
   return {
-    role: msg.role as 'system' | 'user' | 'assistant',
+    role: msg.role,
     content: msg.content,
   };
 }
