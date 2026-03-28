@@ -239,6 +239,39 @@ describe('AnthropicAdapter', () => {
       const body = JSON.parse(options.body as string) as { max_tokens: number };
       expect(body.max_tokens).toBe(512);
     });
+
+    test('serializes tool result history message as Anthropic tool_result block', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeTextResponse('Done')),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await adapter.sendMessage('Follow up', makeContext({
+        history: [{
+          role: 'tool',
+          content: null,
+          tool_results: [{
+            tool_call_id: 'toolu_01',
+            name: 'read_file',
+            output: 'file contents here',
+            is_error: false,
+          }],
+        }],
+      }));
+
+      const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(options.body as string) as {
+        messages: Array<{ role: string; content: unknown }>;
+      };
+      const toolResultMsg = body.messages[0]!;
+      expect(toolResultMsg.role).toBe('user');
+      expect(toolResultMsg.content).toEqual([{
+        type: 'tool_result',
+        tool_use_id: 'toolu_01',
+        content: 'file contents here',
+      }]);
+    });
   });
 
   // ── getTokenUsage ─────────────────────────────────────────────────────────
