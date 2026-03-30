@@ -17,7 +17,7 @@ export default defineWorkspace([
   {
     test: {
       name: 'frontend',
-      include: ['packages/frontend/src/**/*.test.tsx'],
+      include: ['packages/frontend/src/**/*.test.{ts,tsx}'],
       environment: 'jsdom',
       setupFiles: ['./packages/frontend/src/test-setup.ts'],
       globals: true,
