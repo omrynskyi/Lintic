@@ -2,6 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    "types": ["vitest/globals"],
     "paths": {
       "@lintic/core": ["./packages/core/src/index.ts"],
       "@lintic/adapters": ["./packages/adapters/src/index.ts"],
