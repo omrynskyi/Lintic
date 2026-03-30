@@ -191,23 +191,23 @@ For UI stories, also include:
 **Description:** As a reviewer, I need all session activity (messages, code changes, timestamps) recorded so I can replay the session later.
 
 **Acceptance Criteria:**
-- [ ] Every agent request/response is stored with timestamps and token counts
-- [ ] GET /api/sessions/:id/replay returns chronologically ordered session events
-- [ ] Events include type (message, code_change, terminal_output), timestamp, and payload
-- [ ] Code change events store file path and diff content
-- [ ] Typecheck passes
+- [x] Every agent request/response is stored with timestamps and token counts
+- [x] GET /api/sessions/:id/replay returns chronologically ordered session events
+- [x] Events include type (message, code_change, terminal_output), timestamp, and payload
+- [x] Code change events store file path and diff content
+- [x] Typecheck passes
 
 ### US-010: Frontend shell with React, Vite, and layout
 
 **Description:** As a candidate, I need the basic app shell with a split-pane layout so I can see the IDE on one side and the agent chat on the other.
 
 **Acceptance Criteria:**
-- [ ] Vite + React + TypeScript project in packages/frontend
-- [ ] Tailwind CSS configured
-- [ ] Split-pane layout with resizable divider: left side for IDE, right side for chat
-- [ ] Top bar showing session timer, token budget remaining, and interaction count
-- [ ] Responsive: stacks vertically on smaller screens
-- [ ] Typecheck passes
+- [x] Vite + React + TypeScript project in packages/frontend
+- [x] Tailwind CSS configured
+- [x] Split-pane layout with resizable divider: left side for IDE, right side for chat
+- [x] Top bar showing session timer, token budget remaining, and interaction count
+- [x] Responsive: stacks vertically on smaller screens
+- [x] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
 
 ### US-011: Monaco Editor integration
@@ -240,13 +240,13 @@ For UI stories, also include:
 **Description:** As a candidate, I need a chat interface to send messages to the AI agent and see responses so I can collaborate with the agent during the assessment.
 
 **Acceptance Criteria:**
-- [ ] Chat panel on the right side with message input at the bottom
-- [ ] Messages display with role indicators (You / Agent)
-- [ ] Agent responses render markdown with syntax-highlighted code blocks
-- [ ] Shows loading spinner while waiting for agent response
-- [ ] Displays remaining token budget and interaction count above the input
-- [ ] Input disabled when constraints are exhausted
-- [ ] Typecheck passes
+- [x] Chat panel on the right side with message input at the bottom
+- [x] Messages display with role indicators (You / Agent)
+- [x] Agent responses render markdown with syntax-highlighted code blocks
+- [x] Shows loading spinner while waiting for agent response
+- [x] Displays remaining token budget and interaction count above the input
+- [x] Input disabled when constraints are exhausted
+- [x] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
 
 ### US-014: Constraint dashboard in candidate view

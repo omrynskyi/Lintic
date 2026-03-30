@@ -22,6 +22,8 @@ interface ChatPanelProps {
   /** Active session ID.  When null the panel shows a setup state. */
   sessionId: string | null;
   constraints: ChatConstraints;
+  /** Bearer token for authenticating API requests (obtained from session creation). */
+  sessionToken?: string;
   /** Backend base URL, e.g. "http://localhost:3000" */
   apiBase?: string;
   /** Called after the agent replies so the parent can update constraint state */
@@ -47,6 +49,7 @@ function generateId() {
 export function ChatPanel({
   sessionId,
   constraints,
+  sessionToken,
   apiBase = '',
   onConstraintsUpdate,
 }: ChatPanelProps) {
@@ -60,6 +63,10 @@ export function ChatPanel({
   const exhausted =
     constraints.interactionsRemaining <= 0 || constraints.tokensRemaining <= 0;
 
+  const authHeaders: HeadersInit = sessionToken
+    ? { Authorization: `Bearer ${sessionToken}` }
+    : {};
+
   // Auto-scroll to bottom when messages change.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -68,18 +75,25 @@ export function ChatPanel({
   // Load history when sessionId changes.
   useEffect(() => {
     if (!sessionId) return;
+    const headers: HeadersInit = sessionToken
+      ? { Authorization: `Bearer ${sessionToken}` }
+      : {};
     void (async () => {
       try {
-        const res = await fetch(`${apiBase}/api/sessions/${sessionId}/messages`);
+        const res = await fetch(`${apiBase}/api/sessions/${sessionId}/messages`, {
+          headers,
+        });
         if (!res.ok) return;
-        const data = (await res.json()) as Array<{
-          id: string;
-          role: 'user' | 'assistant';
-          content: string;
-          created_at: string;
-        }>;
+        const data = (await res.json()) as {
+          messages: Array<{
+            id: string;
+            role: 'user' | 'assistant';
+            content: string;
+            created_at: string;
+          }>;
+        };
         setMessages(
-          data.map((m) => ({
+          data.messages.map((m) => ({
             id: m.id,
             role: m.role,
             content: m.content,
@@ -90,7 +104,7 @@ export function ChatPanel({
         // Ignore load errors — panel still works without history.
       }
     })();
-  }, [sessionId, apiBase]);
+  }, [sessionId, apiBase, sessionToken]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -111,8 +125,8 @@ export function ChatPanel({
     try {
       const res = await fetch(`${apiBase}/api/sessions/${sessionId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: text }),
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ message: text }),
       });
 
       if (!res.ok) {
@@ -121,21 +135,28 @@ export function ChatPanel({
       }
 
       const data = (await res.json()) as {
-        response: { content: string };
-        remaining?: Partial<ChatConstraints>;
+        content: string;
+        constraints_remaining?: {
+          tokens_remaining: number;
+          interactions_remaining: number;
+          seconds_remaining: number;
+        };
       };
 
       const agentMsg: ChatMessage = {
         id: generateId(),
         role: 'assistant',
-        content: data.response.content,
+        content: data.content,
         timestamp: Date.now(),
       };
 
       setMessages((prev) => [...prev, agentMsg]);
 
-      if (data.remaining) {
-        onConstraintsUpdate?.(data.remaining);
+      if (data.constraints_remaining) {
+        onConstraintsUpdate?.({
+          tokensRemaining: data.constraints_remaining.tokens_remaining,
+          interactionsRemaining: data.constraints_remaining.interactions_remaining,
+        });
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -231,6 +252,7 @@ export function ChatPanel({
               <div
                 className="max-w-[95%] rounded px-3 py-2 text-xs chat-markdown break-words"
                 style={{ background: '#141414', color: '#cccccc' }}
+                data-testid="agent-message"
                 // eslint-disable-next-line @typescript-eslint/naming-convention
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
               />
@@ -240,7 +262,11 @@ export function ChatPanel({
 
         {loading && (
           <div className="flex items-start gap-2">
-            <div className="flex gap-1 items-center px-3 py-2 rounded" style={{ background: '#141414' }}>
+            <div
+              data-testid="loading-spinner"
+              className="flex gap-1 items-center px-3 py-2 rounded"
+              style={{ background: '#141414' }}
+            >
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full animate-bounce"
                 style={{ background: '#555555', animationDelay: '0ms' }}
