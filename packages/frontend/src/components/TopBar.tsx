@@ -38,7 +38,7 @@ export function TopBar({
         <img src="/logo.png" alt="Lintic logo" className="h-5 w-auto opacity-90" />
         <span
           className="text-sm font-semibold tracking-wide"
-          style={{ fontFamily: 'Gabarito, sans-serif', color: '#888888' }}
+          style={{ fontFamily: 'Gabarito, sans-serif', color: '#cccccc' }}
         >
           Lintic
         </span>
@@ -54,13 +54,13 @@ export function TopBar({
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
-            style={{ color: '#3a3a3a' }}
+            style={{ color: '#666666' }}
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span
             className={`text-xs font-mono tabular-nums ${isLowTime ? 'text-red-400 font-bold' : ''}`}
-            style={!isLowTime ? { color: '#555555' } : undefined}
+            style={!isLowTime ? { color: '#aaaaaa' } : undefined}
             data-testid="timer"
           >
             {formatTime(secondsRemaining)}
@@ -71,12 +71,12 @@ export function TopBar({
         <div className="flex items-center gap-2" title="Token budget remaining">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] uppercase tracking-wide" style={{ color: '#333333' }}>
+              <span className="text-[10px] uppercase tracking-wide" style={{ color: '#666666' }}>
                 Tokens
               </span>
               <span
                 className={`text-[10px] font-mono tabular-nums ${isLowTokens ? 'text-yellow-400' : ''}`}
-                style={!isLowTokens ? { color: '#555555' } : undefined}
+                style={!isLowTokens ? { color: '#aaaaaa' } : undefined}
                 data-testid="tokens-remaining"
               >
                 {tokensRemaining.toLocaleString()}
@@ -103,17 +103,17 @@ export function TopBar({
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
-            style={{ color: '#3a3a3a' }}
+            style={{ color: '#666666' }}
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
           <span
             className="text-xs font-mono tabular-nums"
-            style={{ color: '#555555' }}
+            style={{ color: '#aaaaaa' }}
             data-testid="interactions-remaining"
           >
             {interactionsRemaining}
-            <span style={{ color: '#2a2a2a' }}>/{maxInteractions}</span>
+            <span style={{ color: '#555555' }}>/{maxInteractions}</span>
           </span>
         </div>
       </div>
