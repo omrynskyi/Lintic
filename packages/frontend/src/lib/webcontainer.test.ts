@@ -29,7 +29,8 @@ describe('getWebContainer', () => {
     const a = await getWebContainer();
     const b = await getWebContainer();
     expect(a).toBe(b);
-    expect(() => WebContainer.boot()).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(WebContainer.boot).toHaveBeenCalledTimes(1);
   });
 });
 
