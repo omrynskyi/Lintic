@@ -26,7 +26,8 @@ export function TopBar({
 }: TopBarProps) {
   const tokenPct = maxTokens > 0 ? (tokensRemaining / maxTokens) * 100 : 0;
   const isLowTime = secondsRemaining < 300;
-  const isLowTokens = tokenPct < 20;
+  const isCriticalTokens = tokenPct <= 10;
+  const isLowTokens = tokenPct <= 20;
 
   return (
     <header
@@ -80,7 +81,7 @@ export function TopBar({
                 Tokens
               </span>
               <span
-                className={`text-[10px] font-mono tabular-nums ${isLowTokens ? 'text-yellow-400' : ''}`}
+                className={`text-[10px] font-mono tabular-nums ${isCriticalTokens ? 'text-red-400' : isLowTokens ? 'text-yellow-400' : ''}`}
                 style={!isLowTokens ? { color: '#aaaaaa' } : undefined}
                 data-testid="tokens-remaining"
               >
@@ -89,10 +90,10 @@ export function TopBar({
             </div>
             <div className="w-20 h-[2px] rounded-full overflow-hidden" style={{ background: '#1e1e1e' }}>
               <div
-                className={`h-full rounded-full transition-all duration-300 ${isLowTokens ? 'bg-yellow-400' : ''}`}
+                className={`h-full rounded-full transition-all duration-300 ${isCriticalTokens ? 'bg-red-400' : isLowTokens ? 'bg-yellow-400' : ''}`}
                 style={
                   !isLowTokens
-                    ? { width: `${Math.min(100, tokenPct)}%`, background: '#2a4a6a' }
+                    ? { width: `${Math.min(100, tokenPct)}%`, background: '#2d6a2d' }
                     : { width: `${Math.min(100, tokenPct)}%` }
                 }
                 data-testid="token-bar"

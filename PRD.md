@@ -254,11 +254,11 @@ For UI stories, also include:
 **Description:** As a candidate, I need to see my remaining budget in real time so I can make strategic decisions about when to prompt the agent.
 
 **Acceptance Criteria:**
-- [ ] Top bar shows time remaining (countdown), tokens remaining (bar), interactions remaining (count)
-- [ ] Budget bar changes color from green to yellow to red as tokens deplete
-- [ ] Warning toast at 20% remaining tokens and 20% remaining interactions
-- [ ] Timer shows minutes:seconds, flashes red under 5 minutes
-- [ ] Typecheck passes
+- [x] Top bar shows time remaining (countdown), tokens remaining (bar), interactions remaining (count)
+- [x] Budget bar changes color from green to yellow to red as tokens deplete
+- [x] Warning toast at 20% remaining tokens and 20% remaining interactions
+- [x] Timer shows minutes:seconds, flashes red under 5 minutes
+- [x] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
 
 ### US-015: Metric computation engine

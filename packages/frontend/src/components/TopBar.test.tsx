@@ -45,9 +45,15 @@ describe('TopBar', () => {
     expect(screen.getByTestId('tokens-remaining').textContent).toBe('12,345');
   });
 
-  test('applies low-token warning style when below 20% of budget', () => {
-    render(<TopBar {...DEFAULT_PROPS} tokensRemaining={9999} maxTokens={50000} />);
+  test('applies yellow warning style at 20% token budget', () => {
+    render(<TopBar {...DEFAULT_PROPS} tokensRemaining={10000} maxTokens={50000} />);
     expect(screen.getByTestId('tokens-remaining')).toHaveClass('text-yellow-400');
+  });
+
+  test('applies red critical style at 10% token budget', () => {
+    render(<TopBar {...DEFAULT_PROPS} tokensRemaining={5000} maxTokens={50000} />);
+    expect(screen.getByTestId('tokens-remaining')).toHaveClass('text-red-400');
+    expect(screen.getByTestId('token-bar')).toHaveClass('bg-red-400');
   });
 
   test('token progress bar width reflects remaining percentage', () => {
