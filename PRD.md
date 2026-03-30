@@ -228,11 +228,11 @@ For UI stories, also include:
 **Description:** As a candidate, I need a terminal and Node.js runtime in the browser so I can run npm commands and execute code without any server-side compute.
 
 **Acceptance Criteria:**
-- [ ] Boot a WebContainer instance on session start
-- [ ] Integrated terminal (xterm.js) connected to WebContainer shell
-- [ ] Candidates can run npm install, npm run, node commands
-- [ ] File system changes in Monaco sync to WebContainer and vice versa
-- [ ] Typecheck passes
+- [x] Boot a WebContainer instance on session start
+- [x] Integrated terminal (xterm.js) connected to WebContainer shell
+- [x] Candidates can run npm install, npm run, node commands
+- [x] File system changes in Monaco sync to WebContainer and vice versa
+- [x] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
 
 ### US-013: Agent chat panel
