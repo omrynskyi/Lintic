@@ -53,7 +53,10 @@ export function SplitPane({ left, right }: SplitPaneProps) {
 
       {/* Drag handle — hidden on small screens */}
       <div
-        className="hidden md:flex w-1.5 shrink-0 bg-gray-800 hover:bg-blue-500 active:bg-blue-400 cursor-col-resize items-center justify-center transition-colors"
+        className="hidden md:flex w-[3px] shrink-0 cursor-col-resize items-center justify-center transition-colors"
+        style={{ background: '#3c3c3c' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#007acc'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#3c3c3c'; }}
         onMouseDown={onMouseDown}
         data-testid="split-divider"
         role="separator"

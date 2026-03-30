@@ -13,7 +13,7 @@ export function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-100 overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: '#0d0d0d' }}>
       <TopBar
         secondsRemaining={constraintState.secondsRemaining}
         tokensRemaining={constraintState.tokensRemaining}
@@ -21,15 +21,20 @@ export function App() {
         maxTokens={constraintState.maxTokens}
         maxInteractions={constraintState.maxInteractions}
       />
-      <div className="flex-1 overflow-hidden">
-        <SplitPane
-          left={<IdePanel />}
-          right={
-            <div className="h-full flex items-center justify-center bg-gray-900 text-gray-500 text-sm">
-              Agent chat panel (US-013)
-            </div>
-          }
-        />
+      <div className="flex-1 overflow-hidden p-2 pt-1.5">
+        <div className="h-full rounded-xl overflow-hidden" style={{ border: '1px solid #3c3c3c' }}>
+          <SplitPane
+            left={<IdePanel />}
+            right={
+              <div
+                className="h-full flex items-center justify-center text-sm"
+                style={{ background: '#1e1e1e', color: '#4a4a4a' }}
+              >
+                Agent chat panel (US-013)
+              </div>
+            }
+          />
+        </div>
       </div>
     </div>
   );

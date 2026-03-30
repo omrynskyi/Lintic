@@ -29,19 +29,38 @@ export function TopBar({
   const isLowTokens = tokenPct < 20;
 
   return (
-    <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0 gap-4 flex-wrap">
+    <header
+      className="flex items-center justify-between px-4 shrink-0 gap-4"
+      style={{ background: '#2d2d30', height: '42px', borderBottom: '1px solid #3c3c3c' }}
+    >
+      {/* Logo + brand */}
       <div className="flex items-center gap-2 min-w-0">
-        <span className="text-blue-400 font-semibold text-sm tracking-wide">Lintic</span>
+        <img src="/logo.png" alt="Lintic logo" className="h-5 w-auto" />
+        <span
+          className="text-sm font-semibold tracking-wide"
+          style={{ fontFamily: 'Gabarito, sans-serif', color: '#d4d4d4' }}
+        >
+          Lintic
+        </span>
       </div>
 
-      <div className="flex items-center gap-6 flex-wrap">
-        {/* Session timer */}
+      {/* Constraints */}
+      <div className="flex items-center gap-5 flex-wrap">
+
+        {/* Timer */}
         <div className="flex items-center gap-1.5" title="Time remaining">
-          <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            className="w-3.5 h-3.5 shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            style={{ color: '#8a8a8a' }}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span
-            className={`text-sm font-mono tabular-nums ${isLowTime ? 'text-red-400 font-bold' : 'text-gray-200'}`}
+            className={`text-xs font-mono tabular-nums ${isLowTime ? 'text-red-400 font-bold' : ''}`}
+            style={!isLowTime ? { color: '#d4d4d4' } : undefined}
             data-testid="timer"
           >
             {formatTime(secondsRemaining)}
@@ -52,36 +71,52 @@ export function TopBar({
         <div className="flex items-center gap-2" title="Token budget remaining">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-gray-400">Tokens</span>
+              <span className="text-[10px] uppercase tracking-wide" style={{ color: '#6a6a6a' }}>
+                Tokens
+              </span>
               <span
-                className={`text-xs font-mono tabular-nums ${isLowTokens ? 'text-yellow-400' : 'text-gray-200'}`}
+                className={`text-[10px] font-mono tabular-nums ${isLowTokens ? 'text-yellow-400' : ''}`}
+                style={!isLowTokens ? { color: '#d4d4d4' } : undefined}
                 data-testid="tokens-remaining"
               >
                 {tokensRemaining.toLocaleString()}
               </span>
             </div>
-            <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div className="w-20 h-[3px] rounded-full overflow-hidden" style={{ background: '#3c3c3c' }}>
               <div
-                className={`h-full rounded-full transition-all duration-300 ${isLowTokens ? 'bg-yellow-400' : 'bg-blue-500'}`}
-                style={{ width: `${Math.min(100, tokenPct)}%` }}
+                className={`h-full rounded-full transition-all duration-300 ${isLowTokens ? 'bg-yellow-400' : ''}`}
+                style={
+                  !isLowTokens
+                    ? { width: `${Math.min(100, tokenPct)}%`, background: '#007acc' }
+                    : { width: `${Math.min(100, tokenPct)}%` }
+                }
                 data-testid="token-bar"
               />
             </div>
           </div>
         </div>
 
-        {/* Interaction count */}
+        {/* Interactions */}
         <div className="flex items-center gap-1.5" title="Interactions remaining">
-          <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          <svg
+            className="w-3.5 h-3.5 shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            style={{ color: '#8a8a8a' }}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
-          <span className="text-xs text-gray-400">Interactions</span>
+          <span className="text-[10px] uppercase tracking-wide" style={{ color: '#6a6a6a' }}>
+            Interactions
+          </span>
           <span
-            className="text-sm font-mono tabular-nums text-gray-200"
+            className="text-xs font-mono tabular-nums"
+            style={{ color: '#d4d4d4' }}
             data-testid="interactions-remaining"
           >
             {interactionsRemaining}
-            <span className="text-gray-500">/{maxInteractions}</span>
+            <span style={{ color: '#4a4a4a' }}>/{maxInteractions}</span>
           </span>
         </div>
       </div>

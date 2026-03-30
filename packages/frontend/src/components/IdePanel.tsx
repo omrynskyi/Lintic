@@ -70,8 +70,15 @@ export function IdePanel() {
                 }
               />
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-600 text-sm">
-                Create a file to get started
+              <div
+                className="h-full flex flex-col items-center justify-center gap-2"
+                style={{ background: '#1e1e1e', color: '#4a4a4a' }}
+              >
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" opacity={0.5}>
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                <span className="text-xs">Create a file to get started</span>
               </div>
             )}
           </div>
