@@ -1,5 +1,6 @@
 import { TopBar } from './components/TopBar.js';
 import { SplitPane } from './components/SplitPane.js';
+import { IdePanel } from './components/IdePanel.js';
 
 export function App() {
   // Placeholder constraint values — will be wired to session state in later stories
@@ -22,11 +23,7 @@ export function App() {
       />
       <div className="flex-1 overflow-hidden">
         <SplitPane
-          left={
-            <div className="h-full flex items-center justify-center bg-gray-900 text-gray-500 text-sm">
-              IDE panel — Monaco Editor (US-011)
-            </div>
-          }
+          left={<IdePanel />}
           right={
             <div className="h-full flex items-center justify-center bg-gray-900 text-gray-500 text-sm">
               Agent chat panel (US-013)

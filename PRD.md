@@ -215,12 +215,12 @@ For UI stories, also include:
 **Description:** As a candidate, I need a code editor with syntax highlighting, file tabs, and a file tree so I can write and edit code during the assessment.
 
 **Acceptance Criteria:**
-- [ ] Monaco Editor embedded in the IDE panel
-- [ ] File tree sidebar showing WebContainer filesystem
-- [ ] Clicking a file opens it in a new editor tab
-- [ ] Multiple tabs with active tab highlighting
-- [ ] Supports JavaScript, TypeScript, JSON, CSS, HTML, Markdown syntax
-- [ ] Typecheck passes
+- [x] Monaco Editor embedded in the IDE panel
+- [x] File tree sidebar showing WebContainer filesystem
+- [x] Clicking a file opens it in a new editor tab
+- [x] Multiple tabs with active tab highlighting
+- [x] Supports JavaScript, TypeScript, JSON, CSS, HTML, Markdown syntax
+- [x] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
 
 ### US-012: WebContainers runtime integration
