@@ -29,7 +29,7 @@ describe('getWebContainer', () => {
     const a = await getWebContainer();
     const b = await getWebContainer();
     expect(a).toBe(b);
-    expect(WebContainer.boot).toHaveBeenCalledTimes(1);
+    expect(() => WebContainer.boot()).toHaveBeenCalledTimes(1);
   });
 });
 
