@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, test, expect, vi } from 'vitest';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { describe, test, it, expect, vi, beforeEach } from 'vitest';
 import { IdePanel } from './IdePanel.js';
 
 // Mock Monaco so it renders a textarea in jsdom
@@ -13,21 +13,48 @@ vi.mock('@monaco-editor/react', () => ({
   ),
 }));
 
+const { mockWriteFile, mockReadFile, mockStopWatch, getCapturedWatchListener, setCapturedWatchListener } =
+  vi.hoisted(() => {
+    let _capturedWatchListener: ((event: string, filename: string) => void) | null = null;
+    return {
+      mockWriteFile: vi.fn().mockResolvedValue(undefined),
+      mockReadFile: vi.fn().mockResolvedValue('from-wc'),
+      mockStopWatch: vi.fn(),
+      getCapturedWatchListener: () => _capturedWatchListener,
+      setCapturedWatchListener: (l: ((event: string, filename: string) => void) | null) => {
+        _capturedWatchListener = l;
+      },
+    };
+  });
+
 // Mock WebContainer modules — we don't want real container boots in unit tests.
 vi.mock('../lib/webcontainer.js', () => ({
   getWebContainer: vi.fn().mockResolvedValue({}),
-  writeFile: vi.fn().mockResolvedValue(undefined),
-  readFile: vi.fn().mockResolvedValue(''),
+  writeFile: mockWriteFile,
+  readFile: mockReadFile,
+  watchFiles: vi.fn().mockImplementation((_path: string, listener: any) => {
+    setCapturedWatchListener(listener);
+    return Promise.resolve(mockStopWatch);
+  }),
 }));
 
-vi.mock('../lib/useWebContainer.js', () => ({
-  useWebContainer: () => ({ container: null, status: 'idle', error: null }),
+const mockWc = { fs: {} };
+
+vi.mock('../hooks/useWebContainer.js', () => ({
+  useWebContainer: () => ({ wc: mockWc, ready: true, error: null }),
 }));
 
 // Mock Terminal so xterm.js doesn't need a real DOM canvas.
 vi.mock('./Terminal.js', () => ({
   Terminal: () => <div data-testid="terminal" />,
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  setCapturedWatchListener(null);
+  mockWriteFile.mockResolvedValue(undefined);
+  mockReadFile.mockResolvedValue('from-wc');
+});
 
 function createFile(name: string) {
   fireEvent.click(screen.getByRole('button', { name: /new file/i }));
@@ -106,5 +133,51 @@ describe('IdePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /close edit\.ts/i }));
     fireEvent.click(screen.getByRole('option', { name: 'edit.ts' }));
     expect(screen.getByTestId('monaco-editor')).toHaveValue('const x = 1;');
+  });
+});
+
+// ── US-012 tests ──────────────────────────────────────────────────────────────
+
+describe('IdePanel — Monaco→WC sync', () => {
+  it('writes file to WC when Monaco onChange fires', async () => {
+    render(<IdePanel />);
+    createFile('index.ts');
+
+    const editor = document.querySelector('textarea')!;
+    fireEvent.change(editor, { target: { value: 'const x = 1;' } });
+
+    await waitFor(() =>
+      expect(mockWriteFile).toHaveBeenCalledWith('index.ts', 'const x = 1;'),
+    );
+  });
+});
+
+describe('IdePanel — WC→Monaco sync', () => {
+  it('updates file content when WC filesystem emits a change event', async () => {
+    mockReadFile.mockResolvedValue('updated-from-wc');
+    render(<IdePanel />);
+
+    createFile('app.ts');
+
+    await act(async () => {
+      getCapturedWatchListener()?.('change', 'app.ts');
+    });
+
+    await waitFor(() => expect(mockReadFile).toHaveBeenCalledWith('app.ts'));
+  });
+
+  it('ignores changes inside node_modules', async () => {
+    render(<IdePanel />);
+    await act(async () => {
+      getCapturedWatchListener()?.('change', 'node_modules/some-pkg/index.js');
+    });
+    expect(mockReadFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('IdePanel — terminal panel', () => {
+  it('renders the Terminal component', () => {
+    render(<IdePanel />);
+    expect(screen.getByTestId('terminal')).toBeInTheDocument();
   });
 });

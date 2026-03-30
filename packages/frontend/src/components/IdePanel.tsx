@@ -1,56 +1,48 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileTree } from './FileTree.js';
 import { TabBar } from './TabBar.js';
 import { MonacoEditor } from './MonacoEditor.js';
 import { Terminal } from './Terminal.js';
-import { useWebContainer } from '../lib/useWebContainer.js';
-import { writeFile } from '../lib/webcontainer.js';
-
-/** Minimum height (px) for the terminal pane. */
-const TERMINAL_MIN_H = 80;
-/** Default terminal height (px). */
-const TERMINAL_DEFAULT_H = 200;
+import { useWebContainer } from '../hooks/useWebContainer.js';
+import { writeFile, readFile, watchFiles } from '../lib/webcontainer.js';
 
 export function IdePanel() {
   const [files, setFiles] = useState<Record<string, string>>({});
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const { wc } = useWebContainer();
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
 
-  // Terminal height (px), resizable via drag divider.
-  const [terminalHeight, setTerminalHeight] = useState(TERMINAL_DEFAULT_H);
-  // Whether the terminal pane is visible at all.
-  const [terminalOpen, setTerminalOpen] = useState(true);
+  function handleChange(value: string) {
+    if (activeTab === null) return;
+    setFiles((prev) => ({ ...prev, [activeTab]: value }));
+    void writeFile(activeTab, value);
+  }
 
-  const { container } = useWebContainer();
-
-  // Sync a file change from Monaco into the WebContainer filesystem.
-  const syncToWc = useCallback(
-    (path: string, content: string) => {
-      if (container) {
-        void writeFile(path, content);
-      }
-    },
-    [container],
-  );
-
-  // When the container first becomes ready, write all in-memory files into it.
-  const didInitialSync = useRef(false);
   useEffect(() => {
-    if (!container || didInitialSync.current) return;
-    didInitialSync.current = true;
-    for (const [path, content] of Object.entries(files)) {
-      void writeFile(path, content);
-    }
-  }, [container, files]);
+    if (!wc) return;
+    let stopWatch: (() => void) | undefined;
+    void watchFiles('/', async (_event, filename) => {
+      const name = filename instanceof Uint8Array ? new TextDecoder().decode(filename) : filename;
+      if (!name || name.startsWith('node_modules')) return;
+      try {
+        const content = await readFile(name);
+        setFiles((prev) => ({ ...prev, [name]: content }));
+      } catch {
+        // File may have been deleted — ignore.
+      }
+    }).then((stop) => {
+      stopWatch = stop;
+    });
+    return () => stopWatch?.();
+  }, [wc]);
 
   function handleFileCreate(name: string) {
-    setFiles((prev) => {
-      const next = { ...prev, [name]: '' };
-      if (container) void writeFile(name, '');
-      return next;
-    });
+    setFiles((prev) => ({ ...prev, [name]: '' }));
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     setActiveTab(name);
+    void writeFile(name, '');
   }
 
   function handleFileSelect(path: string) {
@@ -67,10 +59,9 @@ export function IdePanel() {
     setOpenTabs((prev) => {
       const idx = prev.indexOf(path);
       const next = prev.filter((t) => t !== path);
-      setActiveTab((cur) => {
-        if (cur !== path) return cur;
-        return next[idx - 1] ?? next[idx] ?? null;
-      });
+      if (activeTab === path) {
+        setActiveTab(next[idx - 1] ?? next[idx] ?? null);
+      }
       return next;
     });
   }
@@ -79,49 +70,12 @@ export function IdePanel() {
     setOpenTabs((prev) => {
       const idx = prev.indexOf(path);
       const next = prev.filter((t) => t !== path);
-      setActiveTab((cur) => {
-        if (cur !== path) return cur;
-        return next[idx - 1] ?? next[idx] ?? null;
-      });
+      if (activeTab === path) {
+        setActiveTab(next[idx - 1] ?? next[idx] ?? null);
+      }
       return next;
     });
   }
-
-  function handleEditorChange(value: string) {
-    if (activeTab === null) return;
-    setFiles((prev) => {
-      const next = { ...prev, [activeTab]: value };
-      syncToWc(activeTab, value);
-      return next;
-    });
-  }
-
-  // --- Terminal resize drag ---
-  const dragStartY = useRef<number | null>(null);
-  const dragStartH = useRef<number>(TERMINAL_DEFAULT_H);
-
-  function handleDividerMouseDown(e: React.MouseEvent) {
-    dragStartY.current = e.clientY;
-    dragStartH.current = terminalHeight;
-    e.preventDefault();
-  }
-
-  useEffect(() => {
-    function onMouseMove(e: MouseEvent) {
-      if (dragStartY.current === null) return;
-      const delta = dragStartY.current - e.clientY;
-      setTerminalHeight(Math.max(TERMINAL_MIN_H, dragStartH.current + delta));
-    }
-    function onMouseUp() {
-      dragStartY.current = null;
-    }
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -145,7 +99,7 @@ export function IdePanel() {
               <MonacoEditor
                 filePath={activeTab}
                 content={files[activeTab] ?? ''}
-                onChange={handleEditorChange}
+                onChange={handleChange}
               />
             ) : (
               <div
@@ -160,36 +114,16 @@ export function IdePanel() {
               </div>
             )}
           </div>
-
-          {/* Terminal drag divider */}
           <div
-            className="relative shrink-0 flex items-center justify-between px-2 select-none"
-            style={{ height: '24px', background: '#111111', borderTop: '1px solid #1e1e1e', cursor: 'row-resize' }}
-            onMouseDown={handleDividerMouseDown}
+            style={{
+              height: 200,
+              flexShrink: 0,
+              borderTop: '1px solid #1e1e1e',
+              overflow: 'hidden',
+            }}
           >
-            <span className="text-[10px] uppercase tracking-wide" style={{ color: '#555555' }}>
-              Terminal
-            </span>
-            <button
-              className="text-[10px] px-1 rounded"
-              style={{ color: '#555555', background: 'transparent' }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => setTerminalOpen((o) => !o)}
-              aria-label={terminalOpen ? 'Hide terminal' : 'Show terminal'}
-            >
-              {terminalOpen ? '▼' : '▲'}
-            </button>
+            <Terminal wc={wc} />
           </div>
-
-          {/* Terminal pane */}
-          {terminalOpen && (
-            <div
-              className="shrink-0 overflow-hidden"
-              style={{ height: terminalHeight }}
-            >
-              <Terminal container={container} />
-            </div>
-          )}
         </div>
       </div>
     </div>

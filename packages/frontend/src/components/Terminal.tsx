@@ -4,121 +4,77 @@ import { FitAddon } from '@xterm/addon-fit';
 import type { WebContainer } from '@webcontainer/api';
 import '@xterm/xterm/css/xterm.css';
 
-interface TerminalProps {
-  container: WebContainer | null;
-  /** Called whenever a file is written via the shell (optional hook for sync). */
-  onFileChange?: (path: string, content: string) => void;
+interface Props {
+  wc: WebContainer | null;
 }
 
-/**
- * Embeds an xterm.js terminal connected to a WebContainer shell process.
- * Falls back to a loading/error state while the container boots.
- */
-export function Terminal({ container }: TerminalProps) {
-  const domRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<XTerm | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
+export function Terminal({ wc }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<XTerm | null>(null);
 
-  // Boot the xterm instance once on mount.
   useEffect(() => {
-    if (!domRef.current) return;
-
+    if (!containerRef.current) return;
     const term = new XTerm({
-      theme: {
-        background: '#0c0c0c',
-        foreground: '#cccccc',
-        cursor: '#cccccc',
-        selectionBackground: '#264f78',
-      },
-      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, monospace',
+      theme: { background: '#0c0c0c', foreground: '#d4d4d4', cursor: '#569cd6' },
       fontSize: 13,
-      lineHeight: 1.4,
+      fontFamily: 'Menlo, Monaco, Consolas, monospace',
       cursorBlink: true,
     });
-
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-    term.open(domRef.current);
+    term.open(containerRef.current);
     fitAddon.fit();
-
-    xtermRef.current = term;
-    fitAddonRef.current = fitAddon;
+    termRef.current = term;
 
     const observer = new ResizeObserver(() => fitAddon.fit());
-    observer.observe(domRef.current);
+    observer.observe(containerRef.current);
 
     return () => {
       observer.disconnect();
       term.dispose();
-      xtermRef.current = null;
-      fitAddonRef.current = null;
+      termRef.current = null;
     };
   }, []);
 
-  // Spawn a shell inside the WebContainer once the container is ready.
   useEffect(() => {
-    if (!container || !xtermRef.current) return;
+    if (!wc || !termRef.current) return;
+    const term = termRef.current;
+    let cleanup: (() => void) | undefined;
 
-    const term = xtermRef.current;
-    let active = true;
-
-    void (async () => {
-      try {
-        const process = await container.spawn('bash', [], {
-          terminal: {
-            cols: term.cols,
-            rows: term.rows,
-          },
+    void wc
+      .spawn('jsh', { terminal: { cols: term.cols, rows: term.rows } })
+      .then((process) => {
+        const inputWriter = process.input.getWriter();
+        const onData = term.onData((data) => {
+          void inputWriter.write(data);
         });
 
-        // Stream container output → xterm.
-        void process.output.pipeTo(
-          new WritableStream({
-            write(chunk) {
-              if (active) term.write(chunk);
-            },
-          }),
-        );
-
-        // Stream xterm input → container.
-        const writer = process.input.getWriter();
-        term.onData((data) => {
-          if (active) void writer.write(data);
-        });
-
-        // Resize the pty when xterm resizes.
-        term.onResize(({ cols, rows }) => {
-          if (active) process.resize({ cols, rows });
-        });
-      } catch (err: unknown) {
-        if (active) {
-          const msg = err instanceof Error ? err.message : String(err);
-          term.write(`\r\n\x1b[31mTerminal error: ${msg}\x1b[0m\r\n`);
+        const reader = process.output.getReader();
+        let active = true;
+        function pump() {
+          void reader.read().then(({ done, value }) => {
+            if (done || !active) return;
+            term.write(value);
+            pump();
+          });
         }
-      }
-    })();
+        pump();
 
-    return () => {
-      active = false;
-    };
-  }, [container]);
+        cleanup = () => {
+          active = false;
+          onData.dispose();
+          void inputWriter.close().catch(() => {});
+        };
+      });
 
-  if (!container) {
-    return (
-      <div
-        className="h-full flex items-center justify-center text-xs font-mono"
-        style={{ background: '#0c0c0c', color: '#555555' }}
-      >
-        Booting terminal…
-      </div>
-    );
-  }
+    return () => cleanup?.();
+  }, [wc]);
 
   return (
     <div
-      ref={domRef}
-      className="h-full w-full overflow-hidden"
-      style={{ background: '#0c0c0c' }}
+      data-testid="terminal-container"
+      ref={containerRef}
+      style={{ width: '100%', height: '100%', background: '#0c0c0c', padding: '4px 8px' }}
     />
   );
 }
