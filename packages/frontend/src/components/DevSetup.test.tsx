@@ -23,6 +23,7 @@ describe('DevSetup', () => {
     expect(screen.getByTestId('dev-model')).toBeInTheDocument();
     expect(screen.getByTestId('dev-base-url')).toBeInTheDocument();
     expect(screen.getByTestId('dev-start')).toBeInTheDocument();
+    expect(screen.getByTestId('dev-open-review')).toBeInTheDocument();
   });
 
   test('Start button is disabled when api key is empty', () => {
@@ -118,5 +119,21 @@ describe('DevSetup', () => {
     const body = JSON.parse(init.body as string) as { prompt_id: string; candidate_email: string };
     expect(body.prompt_id).toBe('dev');
     expect(body.candidate_email).toBe('dev@lintic.local');
+  });
+
+  test('opens the review dashboard for a newly created dev session', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(makeSessionResponse('sess-review', 'tok-review'));
+    vi.stubGlobal('fetch', fetchMock);
+    const assignMock = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { assign: assignMock },
+      writable: true,
+    });
+
+    render(<DevSetup onSessionReady={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('dev-open-review'));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(assignMock).toHaveBeenCalledWith('/review/sess-review');
   });
 });

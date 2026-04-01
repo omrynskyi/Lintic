@@ -186,6 +186,65 @@ describe('GET /health', () => {
   });
 });
 
+describe('GET /api/review/:id', () => {
+  test('returns aggregated review data with metrics and replay events', async () => {
+    const db = new FakeDb();
+    const session = makeSession({
+      id: 'sess-review',
+      prompt_id: 'test-prompt',
+      candidate_email: 'reviewer@example.com',
+      tokens_used: 400,
+      interactions_used: 1,
+      status: 'completed',
+    });
+    db.sessions.set('sess-review', { ...session, token: 'review-token' });
+    db.messageStore.set('sess-review', [
+      {
+        id: 1,
+        session_id: 'sess-review',
+        role: 'user',
+        content: 'Build it',
+        token_count: 0,
+        created_at: Date.now(),
+      },
+      {
+        id: 2,
+        session_id: 'sess-review',
+        role: 'assistant',
+        content: 'Done',
+        token_count: 20,
+        created_at: Date.now(),
+      },
+    ]);
+    db.replayStore.set('sess-review', [
+      { id: 1, session_id: 'sess-review', type: 'message', timestamp: 1, payload: { role: 'user', content: 'Build it' } },
+      { id: 2, session_id: 'sess-review', type: 'agent_response', timestamp: 2, payload: { content: 'Done', stop_reason: 'end_turn' } },
+    ]);
+
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const res = await request(app).get('/api/review/sess-review');
+    const body = res.body as {
+      session: { id: string };
+      prompt: { title: string };
+      metrics: unknown[];
+      recording: { events: unknown[] };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.session.id).toBe('sess-review');
+    expect(body.prompt.title).toBe('Test Prompt');
+    expect(Array.isArray(body.metrics)).toBe(true);
+    expect(body.metrics).toHaveLength(4);
+    expect(body.recording.events).toHaveLength(2);
+  });
+
+  test('returns 404 for unknown review session', async () => {
+    const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
+    const res = await request(app).get('/api/review/missing');
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('POST /api/sessions', () => {
   test('creates a session and returns session_id, token, assessment_link', async () => {
     const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);

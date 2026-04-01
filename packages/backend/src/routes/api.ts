@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response, RequestHandler } from 'express';
 import { randomUUID } from 'node:crypto';
 import type { DatabaseAdapter, AgentAdapter, Config, Message, ConstraintsRemaining, SessionContext, ToolCall, ToolResult, AgentConfig, MessageRole } from '@lintic/core';
+import { computeSessionMetrics } from '@lintic/core';
 import { OpenAIAdapter, AnthropicAdapter } from '@lintic/adapters';
 import type { StoredMessage } from '@lintic/core';
 import { requireToken } from '../middleware/auth.js';
@@ -480,6 +481,38 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     };
 
     res.json(recording);
+  }));
+
+  // GET /api/review/:id — aggregate review data for replay dashboard
+  router.get('/review/:id', asyncRoute(async (req, res) => {
+    const sessionId = req.params['id'] as string;
+    const session = await db.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const storedMessages = await db.getMessages(sessionId);
+    const messages = buildHistory(storedMessages);
+    const storedEvents = await db.getReplayEvents(sessionId);
+    const recording = {
+      session_id: sessionId,
+      events: storedEvents.map((event) => ({
+        type: event.type,
+        timestamp: event.timestamp,
+        payload: event.payload,
+      })),
+    };
+    const metrics = computeSessionMetrics({ session, messages, recording });
+    const prompt = config.prompts.find((entry) => entry.id === session.prompt_id) ?? null;
+
+    res.json({
+      session,
+      messages,
+      metrics,
+      recording,
+      prompt,
+    });
   }));
 
   // POST /api/sessions/:id/close — mark session as completed

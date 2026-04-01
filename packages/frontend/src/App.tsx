@@ -14,14 +14,20 @@ import { getWebContainer } from './lib/webcontainer.js';
 import type { WebContainer } from '@webcontainer/api';
 import type { LocalToolCall, LocalToolResult } from './components/ToolActionCard.js';
 import type { TerminalHandle } from './components/Terminal.js';
+import { ReviewDashboard } from './components/ReviewDashboard.js';
+import { getReviewSessionId } from './lib/review-replay.js';
 
 type AppState = 'setup' | 'active';
+const ENABLE_DEV_REVIEW_SHORTCUT = import.meta.env.DEV;
 
 function generateToastId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 export function App() {
+  const [reviewSessionId, setReviewSessionId] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : getReviewSessionId(window.location.pathname),
+  );
   const [appState, setAppState] = useState<AppState>('setup');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | undefined>(undefined);
@@ -49,6 +55,15 @@ export function App() {
     }
   }, [isDark]);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      setReviewSessionId(getReviewSessionId(window.location.pathname));
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const addToast = useCallback((message: string) => {
     setToasts((prev) => [...prev, { id: generateToastId(), message }]);
   }, []);
@@ -71,10 +86,13 @@ export function App() {
 
   // Boot WebContainer early so it's ready when the user starts chatting.
   useEffect(() => {
+    if (reviewSessionId) {
+      return;
+    }
     getWebContainer()
       .then((wc) => { wcRef.current = wc; })
       .catch(() => { /* WebContainer may not be available in all environments */ });
-  }, []);
+  }, [reviewSessionId]);
 
   const handleSessionReady = useCallback((session: DevSession) => {
     setSessionId(session.sessionId);
@@ -101,6 +119,23 @@ export function App() {
     [],
   );
 
+  const handleOpenReviewDebug = useCallback(() => {
+    if (!sessionId) {
+      return;
+    }
+    window.open(`/review/${sessionId}`, '_blank', 'noopener,noreferrer');
+  }, [sessionId]);
+
+  if (reviewSessionId) {
+    return (
+      <ReviewDashboard
+        sessionId={reviewSessionId}
+        isDark={isDark}
+        onToggleTheme={() => setIsDark(!isDark)}
+      />
+    );
+  }
+
   if (appState === 'setup') {
     return (
       <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--color-bg-app)' }}>
@@ -120,6 +155,7 @@ export function App() {
         maxInteractions={constraints.maxInteractions}
         isDark={isDark}
         onToggleTheme={() => setIsDark(!isDark)}
+        onOpenReviewDebug={ENABLE_DEV_REVIEW_SHORTCUT && sessionId ? handleOpenReviewDebug : undefined}
       />
       <div className="flex-1 overflow-hidden">
         <SplitPane

@@ -24,6 +24,7 @@ export function DevSetup({ apiBase = '', onSessionReady }: DevSetupProps) {
   const [model, setModel] = useState('gpt-4o');
   const [baseUrl, setBaseUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleProviderChange(newProvider: AgentConfig['provider']) {
@@ -35,27 +36,33 @@ export function DevSetup({ apiBase = '', onSessionReady }: DevSetupProps) {
     }
   }
 
+  async function createDevSession() {
+    const res = await fetch(`${apiBase}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt_id: 'dev', candidate_email: 'dev@lintic.local' }),
+    });
+
+    let body: { session_id?: string; token?: string; error?: string } = {};
+    try {
+      body = (await res.json()) as typeof body;
+    } catch {
+      throw new Error(`Backend unreachable (HTTP ${res.status}). Is the backend server running?`);
+    }
+    if (!res.ok || !body.session_id || !body.token) {
+      throw new Error(body.error ?? `HTTP ${res.status}`);
+    }
+
+    return body as { session_id: string; token: string };
+  }
+
   async function handleStart() {
     if (!apiKey.trim() || !model.trim()) return;
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch(`${apiBase}/api/sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt_id: 'dev', candidate_email: 'dev@lintic.local' }),
-      });
-
-      let body: { session_id?: string; token?: string; error?: string } = {};
-      try {
-        body = (await res.json()) as typeof body;
-      } catch {
-        throw new Error(`Backend unreachable (HTTP ${res.status}). Is the backend server running?`);
-      }
-      if (!res.ok || !body.session_id || !body.token) {
-        throw new Error(body.error ?? `HTTP ${res.status}`);
-      }
+      const body = await createDevSession();
 
       const agentConfig: AgentConfig = {
         provider,
@@ -69,6 +76,20 @@ export function DevSetup({ apiBase = '', onSessionReady }: DevSetupProps) {
       setError(err instanceof Error ? err.message : 'Failed to create session');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleOpenReview() {
+    setReviewLoading(true);
+    setError(null);
+
+    try {
+      const body = await createDevSession();
+      window.location.assign(`/review/${body.session_id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open review dashboard');
+    } finally {
+      setReviewLoading(false);
     }
   }
 
@@ -174,21 +195,40 @@ export function DevSetup({ apiBase = '', onSessionReady }: DevSetupProps) {
 
           <button
             onClick={() => void handleStart()}
-            disabled={loading || !apiKey.trim() || !model.trim()}
+            disabled={loading || reviewLoading || !apiKey.trim() || !model.trim()}
             style={{
-              background: loading || !apiKey.trim() || !model.trim() ? '#1a1a1a' : '#1e3a5a',
-              color: loading || !apiKey.trim() || !model.trim() ? '#444444' : '#90b8d8',
+              background: loading || reviewLoading || !apiKey.trim() || !model.trim() ? '#1a1a1a' : '#1e3a5a',
+              color: loading || reviewLoading || !apiKey.trim() || !model.trim() ? '#444444' : '#90b8d8',
               border: 'none',
               borderRadius: '4px',
               padding: '8px 16px',
               fontSize: '12px',
-              cursor: loading || !apiKey.trim() || !model.trim() ? 'not-allowed' : 'pointer',
+              cursor: loading || reviewLoading || !apiKey.trim() || !model.trim() ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit',
               width: '100%',
             }}
             data-testid="dev-start"
           >
             {loading ? 'Creating session…' : 'Start Session'}
+          </button>
+
+          <button
+            onClick={() => void handleOpenReview()}
+            disabled={loading || reviewLoading}
+            style={{
+              background: loading || reviewLoading ? '#1a1a1a' : '#2a2216',
+              color: loading || reviewLoading ? '#444444' : '#f0c29a',
+              border: '1px solid #3a2c18',
+              borderRadius: '4px',
+              padding: '8px 16px',
+              fontSize: '12px',
+              cursor: loading || reviewLoading ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
+              width: '100%',
+            }}
+            data-testid="dev-open-review"
+          >
+            {reviewLoading ? 'Opening review…' : 'Open Review Dashboard'}
           </button>
         </div>
       </div>

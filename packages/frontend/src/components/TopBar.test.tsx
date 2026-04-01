@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { TopBar } from './TopBar.js';
 
 const DEFAULT_PROPS = {
@@ -69,5 +69,13 @@ describe('TopBar', () => {
     const el = screen.getByTestId('interactions-remaining');
     expect(el.textContent).toContain('18');
     expect(el.textContent).toContain('30');
+  });
+
+  test('renders debug review button when handler is provided', () => {
+    const onOpenReviewDebug = vi.fn();
+    render(<TopBar {...DEFAULT_PROPS} onOpenReviewDebug={onOpenReviewDebug} />);
+
+    fireEvent.click(screen.getByTestId('open-review-debug'));
+    expect(onOpenReviewDebug).toHaveBeenCalledTimes(1);
   });
 });

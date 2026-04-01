@@ -6,6 +6,7 @@ interface TopBarProps {
   maxInteractions: number;
   isDark: boolean;
   onToggleTheme: () => void;
+  onOpenReviewDebug?: () => void;
 }
 
 function formatTime(seconds: number): string {
@@ -27,6 +28,7 @@ export function TopBar({
   maxInteractions,
   isDark,
   onToggleTheme,
+  onOpenReviewDebug,
 }: TopBarProps) {
   const tokenPct = maxTokens > 0 ? (tokensRemaining / maxTokens) * 100 : 0;
   const isLowTime = secondsRemaining < 300;
@@ -55,6 +57,22 @@ export function TopBar({
 
       {/* Constraints */}
       <div className="flex items-center gap-5 flex-wrap">
+        {onOpenReviewDebug ? (
+          <button
+            type="button"
+            onClick={onOpenReviewDebug}
+            className="rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]"
+            style={{
+              border: '1px solid var(--color-border-main)',
+              background: 'var(--color-bg-panel)',
+              color: 'var(--color-text-main)',
+            }}
+            data-testid="open-review-debug"
+            title="Debug only: open the review dashboard for this session"
+          >
+            Review
+          </button>
+        ) : null}
         
         {/* Theme Toggle */}
         <button
