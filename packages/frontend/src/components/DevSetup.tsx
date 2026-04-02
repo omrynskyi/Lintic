@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import type { PromptSummary } from '@lintic/core';
 import type { AgentConfig } from './ChatPanel.js';
 
 export interface DevSession {
   sessionId: string;
   sessionToken: string;
   agentConfig: AgentConfig;
+  prompt: PromptSummary;
 }
 
 interface DevSetupProps {
@@ -43,17 +45,17 @@ export function DevSetup({ apiBase = '', onSessionReady }: DevSetupProps) {
       body: JSON.stringify({ prompt_id: 'dev', candidate_email: 'dev@lintic.local' }),
     });
 
-    let body: { session_id?: string; token?: string; error?: string } = {};
+    let body: { session_id?: string; token?: string; prompt?: PromptSummary; error?: string } = {};
     try {
       body = (await res.json()) as typeof body;
     } catch {
       throw new Error(`Backend unreachable (HTTP ${res.status}). Is the backend server running?`);
     }
-    if (!res.ok || !body.session_id || !body.token) {
+    if (!res.ok || !body.session_id || !body.token || !body.prompt) {
       throw new Error(body.error ?? `HTTP ${res.status}`);
     }
 
-    return body as { session_id: string; token: string };
+    return body as { session_id: string; token: string; prompt: PromptSummary };
   }
 
   async function handleStart() {
@@ -71,7 +73,12 @@ export function DevSetup({ apiBase = '', onSessionReady }: DevSetupProps) {
         ...(baseUrl.trim() ? { base_url: baseUrl.trim() } : {}),
       };
 
-      onSessionReady({ sessionId: body.session_id, sessionToken: body.token, agentConfig });
+      onSessionReady({
+        sessionId: body.session_id,
+        sessionToken: body.token,
+        agentConfig,
+        prompt: body.prompt,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create session');
     } finally {

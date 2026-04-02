@@ -78,4 +78,12 @@ describe('TopBar', () => {
     fireEvent.click(screen.getByTestId('open-review-debug'));
     expect(onOpenReviewDebug).toHaveBeenCalledTimes(1);
   });
+
+  test('renders and handles the view prompt button when provided', () => {
+    const onViewPrompt = vi.fn();
+    render(<TopBar {...DEFAULT_PROPS} onViewPrompt={onViewPrompt} />);
+
+    fireEvent.click(screen.getByTestId('view-prompt'));
+    expect(onViewPrompt).toHaveBeenCalledTimes(1);
+  });
 });

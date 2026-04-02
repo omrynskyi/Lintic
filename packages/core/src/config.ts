@@ -18,11 +18,17 @@ export interface DatabaseConfig {
   connection_string?: string; // Postgres connection string
 }
 
+export interface ApiConfig {
+  admin_key?: string;
+  secret_key?: string;
+}
+
 export interface Config {
   agent: AgentConfig;
   constraints: Constraint;
   prompts: PromptConfig[];
   database?: DatabaseConfig;
+  api?: ApiConfig;
 }
 
 // ─── Env Var Resolution ───────────────────────────────────────────────────────
@@ -138,7 +144,18 @@ export function validateConfig(raw: unknown): Config {
     if (typeof rawDb.connection_string === 'string') database.connection_string = rawDb.connection_string;
   }
 
-  return { agent, constraints, prompts, ...(database ? { database } : {}) };
+  let api: ApiConfig | undefined;
+  if (root.api !== undefined) {
+    const rawApi = assertObj(root.api, 'api');
+    const admin_key = typeof rawApi.admin_key === 'string' ? rawApi.admin_key : undefined;
+    const secret_key = typeof rawApi.secret_key === 'string' ? rawApi.secret_key : undefined;
+    api = {
+      ...(admin_key ? { admin_key } : {}),
+      ...(secret_key ? { secret_key } : {}),
+    };
+  }
+
+  return { agent, constraints, prompts, ...(database ? { database } : {}), ...(api ? { api } : {}) };
 }
 
 // ─── Loader ───────────────────────────────────────────────────────────────────

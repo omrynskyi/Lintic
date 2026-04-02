@@ -1,7 +1,7 @@
 agent:
-  provider: openai-compatible
-  api_key: placeholder
-  model: gpt-4o
+  provider: groq
+  api_key: ${LINTIC_API_KEY}
+  model: llama-3.3-70b-versatile
 
 constraints:
   max_session_tokens: 50000
@@ -17,3 +17,7 @@ prompts:
     title: Library Catalog API
     difficulty: medium
     tags: [backend, api-design]
+
+api:
+  admin_key: ${LINTIC_ADMIN_KEY}
+  secret_key: ${LINTIC_SECRET_KEY}

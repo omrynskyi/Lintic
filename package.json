@@ -2,6 +2,9 @@
   "name": "lintic",
   "version": "0.0.1",
   "private": true,
+  "bin": {
+    "lintic": "./bin/lintic.js"
+  },
   "description": "Open-source agentic AI coding assessment platform",
   "license": "MIT",
   "engines": {

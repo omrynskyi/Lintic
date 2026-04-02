@@ -16,15 +16,28 @@ import type { LocalToolCall, LocalToolResult } from './components/ToolActionCard
 import type { TerminalHandle } from './components/Terminal.js';
 import { ReviewDashboard } from './components/ReviewDashboard.js';
 import { getReviewSessionId } from './lib/review-replay.js';
+import { AssessmentLinkLoader } from './components/AssessmentLinkLoader.js';
+import { PromptPanel } from './components/PromptPanel.js';
+import type { PromptSummary } from '@lintic/core';
 
 type AppState = 'setup' | 'active';
 const ENABLE_DEV_REVIEW_SHORTCUT = import.meta.env.DEV;
+
+function getAssessmentLinkToken(location: Location): string | null {
+  if (location.pathname !== '/assessment') {
+    return null;
+  }
+  return new URLSearchParams(location.search).get('token');
+}
 
 function generateToastId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 export function App() {
+  const [assessmentToken, setAssessmentToken] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : getAssessmentLinkToken(window.location),
+  );
   const [reviewSessionId, setReviewSessionId] = useState<string | null>(() =>
     typeof window === 'undefined' ? null : getReviewSessionId(window.location.pathname),
   );
@@ -32,6 +45,8 @@ export function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | undefined>(undefined);
   const [agentConfig, setAgentConfig] = useState<AgentConfig | undefined>(undefined);
+  const [activePrompt, setActivePrompt] = useState<PromptSummary | null>(null);
+  const [isPromptVisible, setIsPromptVisible] = useState(false);
   const wcRef = useRef<WebContainer | null>(null);
   const terminalRef = useRef<TerminalHandle>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -57,6 +72,7 @@ export function App() {
 
   useEffect(() => {
     const handlePopState = () => {
+      setAssessmentToken(getAssessmentLinkToken(window.location));
       setReviewSessionId(getReviewSessionId(window.location.pathname));
     };
 
@@ -86,18 +102,20 @@ export function App() {
 
   // Boot WebContainer early so it's ready when the user starts chatting.
   useEffect(() => {
-    if (reviewSessionId) {
+    if (reviewSessionId || assessmentToken) {
       return;
     }
     getWebContainer()
       .then((wc) => { wcRef.current = wc; })
       .catch(() => { /* WebContainer may not be available in all environments */ });
-  }, [reviewSessionId]);
+  }, [reviewSessionId, assessmentToken]);
 
   const handleSessionReady = useCallback((session: DevSession) => {
     setSessionId(session.sessionId);
     setSessionToken(session.sessionToken);
     setAgentConfig(session.agentConfig);
+    setActivePrompt(session.prompt);
+    setIsPromptVisible(true);
     setAppState('active');
   }, []);
 
@@ -136,6 +154,30 @@ export function App() {
     );
   }
 
+  if (assessmentToken) {
+    return (
+      <AssessmentLinkLoader
+        token={assessmentToken}
+        onConsumed={(
+          {
+            sessionId: nextSessionId,
+            sessionToken: nextSessionToken,
+            prompt,
+          }: { sessionId: string; sessionToken: string; prompt: PromptSummary },
+        ) => {
+          setSessionId(nextSessionId);
+          setSessionToken(nextSessionToken);
+          setAgentConfig(undefined);
+          setActivePrompt(prompt);
+          setIsPromptVisible(true);
+          setAssessmentToken(null);
+          setAppState('active');
+          window.history.replaceState({}, '', '/');
+        }}
+      />
+    );
+  }
+
   if (appState === 'setup') {
     return (
       <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--color-bg-app)' }}>
@@ -155,8 +197,15 @@ export function App() {
         maxInteractions={constraints.maxInteractions}
         isDark={isDark}
         onToggleTheme={() => setIsDark(!isDark)}
+        onViewPrompt={activePrompt ? () => setIsPromptVisible(true) : undefined}
         onOpenReviewDebug={ENABLE_DEV_REVIEW_SHORTCUT && sessionId ? handleOpenReviewDebug : undefined}
       />
+      {activePrompt && isPromptVisible ? (
+        <PromptPanel
+          prompt={activePrompt}
+          onDismiss={() => setIsPromptVisible(false)}
+        />
+      ) : null}
       <div className="flex-1 overflow-hidden">
         <SplitPane
           left={<IdePanel terminalRef={terminalRef} />}

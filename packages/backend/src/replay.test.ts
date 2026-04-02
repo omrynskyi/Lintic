@@ -60,6 +60,10 @@ class FakeDb implements DatabaseAdapter {
     return Promise.resolve(this.sessions.get(id) ?? null);
   }
 
+  getSessionToken(id: string): Promise<string | null> {
+    return Promise.resolve(this.sessions.get(id)?.token ?? null);
+  }
+
   addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void> {
     const msgs = this.messageStore.get(sessionId) ?? [];
     msgs.push({ id: this.nextMsgId++, session_id: sessionId, role, content, token_count: tokenCount, created_at: Date.now() });
@@ -113,6 +117,23 @@ class FakeDb implements DatabaseAdapter {
 
   getReplayEvents(sessionId: string): Promise<StoredReplayEvent[]> {
     return Promise.resolve(this.replayStore.get(sessionId) ?? []);
+  }
+
+  markAssessmentLinkUsed(linkId: string, _sessionId: string): Promise<boolean> {
+    if (this.replayStore.has(`link:${linkId}`)) {
+      return Promise.resolve(false);
+    }
+    this.replayStore.set(`link:${linkId}`, [{ id: 0, session_id: _sessionId, type: 'message', timestamp: 0, payload: null }]);
+    return Promise.resolve(true);
+  }
+
+  isAssessmentLinkUsed(linkId: string): Promise<boolean> {
+    return Promise.resolve(this.replayStore.has(`link:${linkId}`));
+  }
+
+  getAssessmentLinkSessionId(linkId: string): Promise<string | null> {
+    const events = this.replayStore.get(`link:${linkId}`);
+    return Promise.resolve(events?.[0]?.session_id ?? null);
   }
 }
 

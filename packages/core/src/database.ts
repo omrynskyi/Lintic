@@ -36,6 +36,7 @@ export interface CreateSessionConfig {
 export interface DatabaseAdapter {
   createSession(config: CreateSessionConfig): Promise<{ id: string; token: string }>;
   getSession(id: string): Promise<Session | null>;
+  getSessionToken(id: string): Promise<string | null>;
   addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
   getMessages(sessionId: string): Promise<StoredMessage[]>;
   closeSession(id: string): Promise<void>;
@@ -45,6 +46,9 @@ export interface DatabaseAdapter {
   updateSessionUsage(id: string, additionalTokens: number, additionalInteractions: number): Promise<void>;
   addReplayEvent(sessionId: string, type: ReplayEventType, timestamp: number, payload: unknown): Promise<void>;
   getReplayEvents(sessionId: string): Promise<StoredReplayEvent[]>;
+  markAssessmentLinkUsed(linkId: string, sessionId: string): Promise<boolean>;
+  isAssessmentLinkUsed(linkId: string): Promise<boolean>;
+  getAssessmentLinkSessionId(linkId: string): Promise<string | null>;
 }
 
 // ─── Internal DB Row Types ────────────────────────────────────────────────────
@@ -133,6 +137,12 @@ export class SQLiteAdapter implements DatabaseAdapter {
 
       CREATE INDEX IF NOT EXISTS idx_replay_events_session
         ON replay_events(session_id, timestamp ASC);
+
+      CREATE TABLE IF NOT EXISTS assessment_link_uses (
+        link_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id),
+        used_at INTEGER NOT NULL
+      );
     `);
   }
 
@@ -166,6 +176,11 @@ export class SQLiteAdapter implements DatabaseAdapter {
   getSession(id: string): Promise<Session | null> {
     const row = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as SessionRow | undefined;
     return Promise.resolve(row ? rowToSession(row) : null);
+  }
+
+  getSessionToken(id: string): Promise<string | null> {
+    const row = this.db.prepare('SELECT token FROM sessions WHERE id = ?').get(id) as { token: string } | undefined;
+    return Promise.resolve(row?.token ?? null);
   }
 
   addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void> {
@@ -243,6 +258,27 @@ export class SQLiteAdapter implements DatabaseAdapter {
       timestamp: r.timestamp,
       payload: JSON.parse(r.payload) as unknown,
     })));
+  }
+
+  markAssessmentLinkUsed(linkId: string, sessionId: string): Promise<boolean> {
+    const result = this.db.prepare(
+      'INSERT OR IGNORE INTO assessment_link_uses (link_id, session_id, used_at) VALUES (?, ?, ?)',
+    ).run(linkId, sessionId, Date.now());
+    return Promise.resolve(result.changes > 0);
+  }
+
+  isAssessmentLinkUsed(linkId: string): Promise<boolean> {
+    const row = this.db.prepare(
+      'SELECT link_id FROM assessment_link_uses WHERE link_id = ?',
+    ).get(linkId);
+    return Promise.resolve(row !== undefined);
+  }
+
+  getAssessmentLinkSessionId(linkId: string): Promise<string | null> {
+    const row = this.db.prepare(
+      'SELECT session_id FROM assessment_link_uses WHERE link_id = ?',
+    ).get(linkId) as { session_id: string } | undefined;
+    return Promise.resolve(row?.session_id ?? null);
   }
 }
 

@@ -129,6 +129,13 @@ export interface Session {
   score?: number; // composite 0–1, set after metrics are computed
 }
 
+export interface PromptSummary {
+  id: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+}
+
 // ─── Metrics ──────────────────────────────────────────────────────────────────
 
 export interface MetricResult {

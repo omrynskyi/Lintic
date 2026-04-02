@@ -39,6 +39,10 @@ const VALID_CONFIG = {
   database: {
     provider: 'sqlite',
   },
+  api: {
+    admin_key: 'admin-test-key',
+    secret_key: 'secret-test-key',
+  },
 };
 
 // ── resolveEnvVars ────────────────────────────────────────────────────────────
@@ -188,6 +192,12 @@ describe('validateConfig', () => {
   test('accepts config without a database section', () => {
     const cfgWithout = { agent: VALID_CONFIG.agent, constraints: VALID_CONFIG.constraints, prompts: VALID_CONFIG.prompts };
     expect(() => validateConfig(cfgWithout)).not.toThrow();
+  });
+
+  test('accepts optional api config', () => {
+    const config = validateConfig(VALID_CONFIG);
+    expect(config.api?.admin_key).toBe('admin-test-key');
+    expect(config.api?.secret_key).toBe('secret-test-key');
   });
 });
 

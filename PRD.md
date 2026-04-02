@@ -280,12 +280,12 @@ For UI stories, also include:
 **Description:** As a reviewer, I need a dashboard to view candidate session metrics and replay the session timeline.
 
 **Acceptance Criteria:**
-- [ ] GET /review/:sessionId route renders the review page
-- [ ] Summary cards showing all computed metrics with labels
-- [ ] Timeline scrubber that synchronizes conversation replay with code diff view
-- [ ] Clicking a timeline event scrolls the conversation and shows the corresponding code state
-- [ ] Export button generates JSON report of all metrics and conversation log
-- [ ] Typecheck passes
+- [x] GET /review/:sessionId route renders the review page
+- [x] Summary cards showing all computed metrics with labels
+- [x] Timeline scrubber that synchronizes conversation replay with code diff view
+- [x] Clicking a timeline event scrolls the conversation and shows the corresponding code state
+- [x] Export button generates JSON report of all metrics and conversation log
+- [x] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
 
 ### US-017: Assessment link generation and auth
@@ -293,19 +293,19 @@ For UI stories, also include:
 **Description:** As a company admin, I need to generate assessment links both via CLI and a REST API so I can create links manually for individual candidates or programmatically from my ATS and internal tooling.
  
 **Acceptance Criteria:**
-- [ ] CLI command: npx lintic generate-link --prompt library-api --email candidate@example.com outputs the assessment URL
-- [ ] REST API: POST /api/links accepts JSON body {prompt_id, email, expires_in_hours (optional, default 72), constraint_overrides (optional)}
-- [ ] REST API returns {url, token, expires_at, prompt_id, email}
-- [ ] REST API authenticated via API key in X-Lintic-Api-Key header, key configured in lintic.yml under api.admin_key or LINTIC_ADMIN_KEY env var
-- [ ] npx lintic init auto-generates a random admin API key and signing secret in the starter config
-- [ ] Both CLI and API generate a signed JWT with prompt ID, candidate email, constraint config, and expiry
-- [ ] JWT signed with LINTIC_SECRET_KEY, validated statelessly on any backend instance
-- [ ] Candidate opening the link in a browser starts a new session automatically
-- [ ] JWT is single-use: after a session is created from a token, the same token cannot create a second session
-- [ ] Expired links show a clear "assessment expired" message
-- [ ] Invalid or already-used links show a clear "link is no longer valid" message
-- [ ] Unit tests for token generation, validation, expiry, single-use enforcement, and API key auth
-- [ ] Typecheck passes
+- [x] CLI command: npx lintic generate-link --prompt library-api --email candidate@example.com outputs the assessment URL
+- [x] REST API: POST /api/links accepts JSON body {prompt_id, email, expires_in_hours (optional, default 72), constraint_overrides (optional)}
+- [x] REST API returns {url, token, expires_at, prompt_id, email}
+- [x] REST API authenticated via API key in X-Lintic-Api-Key header, key configured in lintic.yml under api.admin_key or LINTIC_ADMIN_KEY env var
+- [x] npx lintic init auto-generates a random admin API key and signing secret in the starter config
+- [x] Both CLI and API generate a signed JWT with prompt ID, candidate email, constraint config, and expiry
+- [x] JWT signed with LINTIC_SECRET_KEY, validated statelessly on any backend instance
+- [x] Candidate opening the link in a browser starts a new session automatically
+- [x] JWT is single-use: after a session is created from a token, the same token cannot create a second session
+- [x] Expired links show a clear "assessment expired" message
+- [x] Invalid or already-used links show a clear "link is no longer valid" message
+- [x] Unit tests for token generation, validation, expiry, single-use enforcement, and API key auth
+- [x] Typecheck passes
  
 
 ### US-018: Prompt configuration and display
@@ -329,6 +329,20 @@ For UI stories, also include:
 - [ ] Environment variable passthrough for API keys
 - [ ] Container starts Express server serving frontend static files and API routes
 - [ ] Health check endpoint at GET /health
+- [ ] Typecheck passes
+
+### US-024: Admin dashboard for assessment links
+
+**Description:** As a company admin, I need a dashboard to generate assessment links and inspect previously generated links so I can manage candidate access from the UI.
+
+**Acceptance Criteria:**
+- [ ] Admin dashboard route available in the frontend for assessment link management
+- [ ] Admin can generate a new assessment link by selecting a prompt, entering candidate email, and optional expiry/constraint overrides
+- [ ] Dashboard lists all generated assessment links with prompt, candidate email, created time, expiry, and associated session when consumed
+- [ ] Dashboard shows link status at a glance: active, consumed, expired, or invalid
+- [ ] Admin can inspect an individual link to view its full metadata and current state
+- [ ] Dashboard supports copying the generated assessment link from the UI
+- [ ] Backend provides API support to list generated links and fetch link details for inspection
 - [ ] Typecheck passes
 
 ### US-020: Redis infrastructure mock package

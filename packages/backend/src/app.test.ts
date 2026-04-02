@@ -74,6 +74,10 @@ class FakeDb implements DatabaseAdapter {
     return Promise.resolve(this.sessions.get(id) ?? null);
   }
 
+  getSessionToken(id: string): Promise<string | null> {
+    return Promise.resolve(this.sessions.get(id)?.token ?? null);
+  }
+
   addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void> {
     const msgs = this.messageStore.get(sessionId) ?? [];
     msgs.push({
@@ -135,6 +139,23 @@ class FakeDb implements DatabaseAdapter {
   getReplayEvents(sessionId: string): Promise<StoredReplayEvent[]> {
     return Promise.resolve(this.replayStore.get(sessionId) ?? []);
   }
+
+  markAssessmentLinkUsed(linkId: string, _sessionId: string): Promise<boolean> {
+    if (this.replayStore.has(`link:${linkId}`)) {
+      return Promise.resolve(false);
+    }
+    this.replayStore.set(`link:${linkId}`, [{ id: 0, session_id: _sessionId, type: 'message', timestamp: 0, payload: null }]);
+    return Promise.resolve(true);
+  }
+
+  isAssessmentLinkUsed(linkId: string): Promise<boolean> {
+    return Promise.resolve(this.replayStore.has(`link:${linkId}`));
+  }
+
+  getAssessmentLinkSessionId(linkId: string): Promise<string | null> {
+    const events = this.replayStore.get(`link:${linkId}`);
+    return Promise.resolve(events?.[0]?.session_id ?? null);
+  }
 }
 
 // ─── Fake AgentAdapter ────────────────────────────────────────────────────────
@@ -173,6 +194,7 @@ const TEST_CONFIG: Config = {
   agent: { provider: 'openai-compatible', api_key: 'key', model: 'gpt-4o', base_url: 'https://api.openai.com' },
   constraints: BASE_CONSTRAINT,
   prompts: [{ id: 'test-prompt', title: 'Test Prompt' }],
+  api: { admin_key: 'admin-key', secret_key: 'secret-key' },
 };
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -246,17 +268,23 @@ describe('GET /api/review/:id', () => {
 });
 
 describe('POST /api/sessions', () => {
-  test('creates a session and returns session_id, token, assessment_link', async () => {
+  test('creates a session and returns session_id, token, assessment_link, and prompt metadata', async () => {
     const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
     const res = await request(app)
       .post('/api/sessions')
       .send({ prompt_id: 'test-prompt', candidate_email: 'a@b.com' });
 
     expect(res.status).toBe(201);
-    const body = res.body as { session_id: string; token: string; assessment_link: string };
+    const body = res.body as {
+      session_id: string;
+      token: string;
+      assessment_link: string;
+      prompt: { id: string; title: string };
+    };
     expect(typeof body.session_id).toBe('string');
     expect(typeof body.token).toBe('string');
     expect(body.assessment_link).toContain(body.session_id);
+    expect(body.prompt).toEqual({ id: 'test-prompt', title: 'Test Prompt' });
   });
 
   test('returns 400 when prompt_id is missing', async () => {
@@ -273,6 +301,85 @@ describe('POST /api/sessions', () => {
       .post('/api/sessions')
       .send({ prompt_id: 'test-prompt' });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /api/links', () => {
+  test('creates an assessment link when admin key is valid', async () => {
+    const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
+    const res = await request(app)
+      .post('/api/links')
+      .set('X-Lintic-Api-Key', 'admin-key')
+      .send({ prompt_id: 'test-prompt', email: 'candidate@example.com' });
+
+    expect(res.status).toBe(201);
+    const body = res.body as {
+      url: string;
+      token: string;
+      prompt_id: string;
+      email: string;
+      prompt: { id: string; title: string };
+    };
+    expect(body.url).toContain('/assessment?token=');
+    expect(body.token.length).toBeGreaterThan(0);
+    expect(body.prompt_id).toBe('test-prompt');
+    expect(body.email).toBe('candidate@example.com');
+    expect(body.prompt).toEqual({ id: 'test-prompt', title: 'Test Prompt' });
+  });
+
+  test('rejects link creation without admin key', async () => {
+    const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
+    const res = await request(app)
+      .post('/api/links')
+      .send({ prompt_id: 'test-prompt', email: 'candidate@example.com' });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /api/links/consume', () => {
+  test('creates a session from a valid assessment link token', async () => {
+    const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
+    const linkRes = await request(app)
+      .post('/api/links')
+      .set('X-Lintic-Api-Key', 'admin-key')
+      .send({ prompt_id: 'test-prompt', email: 'candidate@example.com' });
+
+    const token = (linkRes.body as { token: string }).token;
+    const consumeRes = await request(app)
+      .post('/api/links/consume')
+      .send({ token });
+
+    expect(consumeRes.status).toBe(201);
+    const body = consumeRes.body as {
+      session_id: string;
+      token: string;
+      prompt_id: string;
+      email: string;
+      prompt: { id: string; title: string };
+    };
+    expect(body.session_id).toBeTruthy();
+    expect(body.token).toBeTruthy();
+    expect(body.prompt_id).toBe('test-prompt');
+    expect(body.email).toBe('candidate@example.com');
+    expect(body.prompt).toEqual({ id: 'test-prompt', title: 'Test Prompt' });
+  });
+
+  test('rejects an already-used assessment link token', async () => {
+    const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
+    const linkRes = await request(app)
+      .post('/api/links')
+      .set('X-Lintic-Api-Key', 'admin-key')
+      .send({ prompt_id: 'test-prompt', email: 'candidate@example.com' });
+    const token = (linkRes.body as { token: string }).token;
+
+    const first = await request(app).post('/api/links/consume').send({ token });
+    const second = await request(app).post('/api/links/consume').send({ token });
+
+    expect(second.status).toBe(200);
+    expect((second.body as { session_id: string }).session_id).toBe(
+      (first.body as { session_id: string }).session_id,
+    );
   });
 });
 

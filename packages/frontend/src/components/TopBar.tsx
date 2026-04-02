@@ -6,6 +6,7 @@ interface TopBarProps {
   maxInteractions: number;
   isDark: boolean;
   onToggleTheme: () => void;
+  onViewPrompt?: () => void;
   onOpenReviewDebug?: () => void;
 }
 
@@ -28,6 +29,7 @@ export function TopBar({
   maxInteractions,
   isDark,
   onToggleTheme,
+  onViewPrompt,
   onOpenReviewDebug,
 }: TopBarProps) {
   const tokenPct = maxTokens > 0 ? (tokensRemaining / maxTokens) * 100 : 0;
@@ -73,7 +75,22 @@ export function TopBar({
             Review
           </button>
         ) : null}
-        
+        {onViewPrompt ? (
+          <button
+            type="button"
+            onClick={onViewPrompt}
+            className="rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]"
+            style={{
+              border: '1px solid var(--color-border-main)',
+              background: 'var(--color-bg-panel)',
+              color: 'var(--color-text-main)',
+            }}
+            data-testid="view-prompt"
+          >
+            View Prompt
+          </button>
+        ) : null}
+
         {/* Theme Toggle */}
         <button
           onClick={onToggleTheme}

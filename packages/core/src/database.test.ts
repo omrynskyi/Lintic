@@ -239,3 +239,34 @@ describe('getSessionsByPrompt', () => {
     results.forEach((s) => expect(s.prompt_id).toBe('library-api'));
   });
 });
+
+describe('assessment link usage tracking', () => {
+  test('reports false for an unused assessment link id', async () => {
+    const db = makeAdapter();
+    await expect(db.isAssessmentLinkUsed('unused-link')).resolves.toBe(false);
+  });
+
+  test('marks an assessment link id as used once', async () => {
+    const db = makeAdapter();
+    const { id } = await db.createSession(BASE_CONFIG);
+
+    await expect(db.markAssessmentLinkUsed('link-1', id)).resolves.toBe(true);
+    await expect(db.isAssessmentLinkUsed('link-1')).resolves.toBe(true);
+    await expect(db.getAssessmentLinkSessionId('link-1')).resolves.toBe(id);
+  });
+
+  test('prevents the same assessment link id from being marked twice', async () => {
+    const db = makeAdapter();
+    const first = await db.createSession(BASE_CONFIG);
+    const second = await db.createSession({ ...BASE_CONFIG, candidate_email: 'bob@example.com' });
+
+    await expect(db.markAssessmentLinkUsed('link-dup', first.id)).resolves.toBe(true);
+    await expect(db.markAssessmentLinkUsed('link-dup', second.id)).resolves.toBe(false);
+  });
+
+  test('returns a session token for an existing session', async () => {
+    const db = makeAdapter();
+    const created = await db.createSession(BASE_CONFIG);
+    await expect(db.getSessionToken(created.id)).resolves.toBe(created.token);
+  });
+});

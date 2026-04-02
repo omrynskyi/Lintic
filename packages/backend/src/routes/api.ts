@@ -1,11 +1,19 @@
 import { Router } from 'express';
 import type { Request, Response, RequestHandler } from 'express';
 import { randomUUID } from 'node:crypto';
-import type { DatabaseAdapter, AgentAdapter, Config, Message, ConstraintsRemaining, SessionContext, ToolCall, ToolResult, AgentConfig, MessageRole } from '@lintic/core';
-import { computeSessionMetrics } from '@lintic/core';
+import type { DatabaseAdapter, AgentAdapter, Config, Message, ConstraintsRemaining, SessionContext, ToolCall, ToolResult, AgentConfig, MessageRole, Constraint, PromptSummary, PromptConfig } from '@lintic/core';
+import {
+  buildAssessmentLink,
+  computeSessionMetrics,
+  createAssessmentLinkToken,
+  resolveAdminKey,
+  resolveSecretKey,
+  verifyAssessmentLinkToken,
+} from '@lintic/core';
 import { OpenAIAdapter, AnthropicAdapter } from '@lintic/adapters';
 import type { StoredMessage } from '@lintic/core';
 import { requireToken } from '../middleware/auth.js';
+import { requireAdminKey } from '../middleware/admin-auth.js';
 import { runAgentLoop } from '../agent-loop.js';
 import type { ToolRunner } from '../agent-loop.js';
 
@@ -48,6 +56,38 @@ function isAgentConfig(v: unknown): v is AgentConfig {
   return typeof c['provider'] === 'string' && typeof c['api_key'] === 'string' && typeof c['model'] === 'string';
 }
 
+function isConstraintOverride(v: unknown): v is Partial<Constraint> {
+  return typeof v === 'object' && v !== null;
+}
+
+function mergeConstraints(base: Constraint, override?: Partial<Constraint>): Constraint {
+  return {
+    max_session_tokens: override?.max_session_tokens ?? base.max_session_tokens,
+    max_message_tokens: override?.max_message_tokens ?? base.max_message_tokens,
+    max_interactions: override?.max_interactions ?? base.max_interactions,
+    context_window: override?.context_window ?? base.context_window,
+    time_limit_minutes: override?.time_limit_minutes ?? base.time_limit_minutes,
+  };
+}
+
+function buildBaseUrl(req: Request): string {
+  const protocol = req.protocol;
+  const host = req.get('host') ?? 'localhost:3000';
+  if (host.includes('517')) {
+    return `${protocol}://${host}`;
+  }
+  return `${protocol}://${host.replace(/:3000$/, ':5173')}`;
+}
+
+function toPromptSummary(prompt: PromptConfig): PromptSummary {
+  return {
+    id: prompt.id,
+    title: prompt.title,
+    ...(prompt.description ? { description: prompt.description } : {}),
+    ...(prompt.tags ? { tags: prompt.tags } : {}),
+  };
+}
+
 /** Create a fresh adapter from an AgentConfig provided in the request body. */
 async function createPerRequestAdapter(agentConfig: AgentConfig): Promise<AgentAdapter> {
   const adapter: AgentAdapter =
@@ -82,6 +122,132 @@ function registerPendingTools(requestId: string, resolve: (results: ToolResult[]
 
 export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, config: Config): Router {
   const router = Router();
+  const adminKey = resolveAdminKey(config.api?.admin_key);
+  const secretKey = resolveSecretKey(config.api?.secret_key);
+
+  router.post('/links', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    if (!secretKey) {
+      res.status(503).json({ error: 'Assessment link signing secret is not configured' });
+      return;
+    }
+
+    const body = req.body as {
+      prompt_id?: unknown;
+      email?: unknown;
+      expires_in_hours?: unknown;
+      constraint_overrides?: unknown;
+    };
+
+    if (typeof body.prompt_id !== 'string' || !body.prompt_id) {
+      res.status(400).json({ error: 'prompt_id is required' });
+      return;
+    }
+    if (typeof body.email !== 'string' || !body.email) {
+      res.status(400).json({ error: 'email is required' });
+      return;
+    }
+
+    const prompt = config.prompts.find((entry) => entry.id === body.prompt_id);
+    if (!prompt) {
+      res.status(404).json({ error: 'Prompt not found' });
+      return;
+    }
+
+    const expiresInHours = typeof body.expires_in_hours === 'number' && body.expires_in_hours > 0
+      ? body.expires_in_hours
+      : 72;
+    const constraints = mergeConstraints(
+      config.constraints,
+      isConstraintOverride(body.constraint_overrides) ? body.constraint_overrides : undefined,
+    );
+
+    const generated = await createAssessmentLinkToken(
+      { prompt_id: body.prompt_id, email: body.email, constraint: constraints },
+      secretKey,
+      expiresInHours,
+    );
+
+    const link = buildAssessmentLink(
+      buildBaseUrl(req),
+      generated.token,
+      body.prompt_id,
+      body.email,
+      generated.expiresAt,
+    );
+
+    res.status(201).json({
+      ...link,
+      prompt: toPromptSummary(prompt),
+    });
+  }));
+
+  router.post('/links/consume', asyncRoute(async (req, res) => {
+    if (!secretKey) {
+      res.status(503).json({ error: 'Assessment link signing secret is not configured' });
+      return;
+    }
+
+    const body = req.body as { token?: unknown };
+    if (typeof body.token !== 'string' || !body.token) {
+      res.status(400).json({ error: 'token is required' });
+      return;
+    }
+
+    let payload;
+    try {
+      payload = await verifyAssessmentLinkToken(body.token, secretKey);
+    } catch {
+      res.status(410).json({ error: 'Assessment expired' });
+      return;
+    }
+
+    const prompt = config.prompts.find((entry) => entry.id === payload.prompt_id);
+    if (!prompt) {
+      res.status(409).json({ error: 'Link is no longer valid' });
+      return;
+    }
+
+    const existingSessionId = await db.getAssessmentLinkSessionId(payload.jti);
+    if (existingSessionId) {
+      const existingSession = await db.getSession(existingSessionId);
+      const existingToken = await db.getSessionToken(existingSessionId);
+      if (!existingSession || !existingToken) {
+        res.status(409).json({ error: 'Link is no longer valid' });
+        return;
+      }
+
+      res.status(200).json({
+        session_id: existingSession.id,
+        token: existingToken,
+        prompt_id: existingSession.prompt_id,
+        prompt: toPromptSummary(prompt),
+        email: existingSession.candidate_email,
+        expires_at: new Date(payload.exp * 1000).toISOString(),
+      });
+      return;
+    }
+
+    const { id, token } = await db.createSession({
+      prompt_id: payload.prompt_id,
+      candidate_email: payload.email,
+      constraint: payload.constraint,
+    });
+
+    const marked = await db.markAssessmentLinkUsed(payload.jti, id);
+    if (!marked) {
+      res.status(409).json({ error: 'Link is no longer valid' });
+      return;
+    }
+
+    res.status(201).json({
+      session_id: id,
+      token,
+      prompt_id: payload.prompt_id,
+      prompt: toPromptSummary(prompt),
+      email: payload.email,
+      expires_at: new Date(payload.exp * 1000).toISOString(),
+    });
+  }));
 
   // POST /api/sessions — create a new session
   router.post('/sessions', asyncRoute(async (req, res) => {
@@ -96,6 +262,12 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
+    const prompt = config.prompts.find((entry) => entry.id === body.prompt_id);
+    if (!prompt) {
+      res.status(404).json({ error: 'Prompt not found' });
+      return;
+    }
+
     const { id, token } = await db.createSession({
       prompt_id: body.prompt_id,
       candidate_email: body.candidate_email,
@@ -106,6 +278,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       session_id: id,
       token,
       assessment_link: `/assessment/${id}?token=${token}`,
+      prompt: toPromptSummary(prompt),
     });
   }));
 

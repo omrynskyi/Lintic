@@ -10,7 +10,16 @@ afterEach(() => {
 function makeSessionResponse(sessionId = 'sess-1', token = 'tok-abc'): Response {
   return {
     ok: true,
-    json: async () => ({ session_id: sessionId, token }),
+    json: async () => ({
+      session_id: sessionId,
+      token,
+      prompt: {
+        id: 'dev',
+        title: 'Dev Prompt',
+        description: 'Build the feature.',
+        tags: ['frontend'],
+      },
+    }),
   } as unknown as Response;
 }
 
@@ -51,6 +60,7 @@ describe('DevSetup', () => {
           sessionId: 'sess-1',
           sessionToken: 'tok-abc',
           agentConfig: expect.objectContaining({ api_key: 'sk-mykey' }),
+          prompt: expect.objectContaining({ id: 'dev', title: 'Dev Prompt' }),
         }),
       );
     });
