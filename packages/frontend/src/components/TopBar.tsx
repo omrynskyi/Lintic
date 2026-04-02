@@ -1,5 +1,3 @@
-import { Play, CheckCircle2, HelpCircle } from 'lucide-react';
-
 interface TopBarProps {
   secondsRemaining: number;
   tokensRemaining: number;
@@ -16,7 +14,7 @@ interface TopBarProps {
 
 function formatTime(seconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(seconds));
-  const m = Math.floor((totalSeconds % 3600) / 60);
+  const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${m}:${s.toString().padStart(2, '0')} min`;
 }
@@ -56,15 +54,18 @@ export function TopBar({
               <span className="text-[13px] text-white font-bold whitespace-nowrap">{deliverables}</span>
             </div>
           </div>
-          
-          <button
-            type="button"
-            data-1p-ignore
-            onClick={onViewPrompt}
-            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#1A1A1A] text-[#E8622A] text-[13px] font-bold tracking-tight hover:brightness-125 transition-all border border-white/5 shadow-lg"
-          >
-            View full prompt
-          </button>
+
+          {onViewPrompt ? (
+            <button
+              type="button"
+              data-1p-ignore
+              data-testid="view-prompt"
+              onClick={onViewPrompt}
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#1A1A1A] text-[#E8622A] text-[13px] font-bold tracking-tight hover:brightness-125 transition-all border border-white/5 shadow-lg"
+            >
+              View full prompt
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -72,7 +73,7 @@ export function TopBar({
       <div className="flex items-center gap-10 pr-4">
         <div className="flex items-center gap-3">
           <span className="text-[12px] text-[#555555] font-medium tracking-tight">Time remaining:</span>
-          <span className="text-[15px] text-white font-bold tabular-nums">
+          <span data-testid="timer" className="text-[15px] text-white font-bold tabular-nums">
             {formatTime(secondsRemaining)}
           </span>
         </div>

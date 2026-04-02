@@ -82,8 +82,18 @@ export function IdePanel({ terminalRef, requestOpenFile }: IdePanelProps) {
     
     void syncFileSystem();
 
-    void watchFiles('/', async () => {
-      void syncFileSystem();
+    void watchFiles('/', async (_event, filename) => {
+      const changedPath = typeof filename === 'string' ? filename : '';
+      if (!changedPath || changedPath.startsWith('.') || changedPath.includes('node_modules')) {
+        return;
+      }
+
+      try {
+        const content = await readFile(changedPath);
+        setFiles((prev) => ({ ...prev, [changedPath]: content }));
+      } catch {
+        void syncFileSystem();
+      }
     }).then((stop) => {
       stopWatch = stop;
     });
@@ -112,6 +122,22 @@ export function IdePanel({ terminalRef, requestOpenFile }: IdePanelProps) {
   async function handleFileDelete(path: string) {
     try {
       await rm(path);
+      setFiles((prev) =>
+        Object.fromEntries(
+          Object.entries(prev).filter(
+            ([filePath]) => filePath !== path && !filePath.startsWith(`${path}/`),
+          ),
+        ),
+      );
+      setDirectories((prev) => {
+        const next = new Set<string>();
+        for (const dir of prev) {
+          if (dir !== path && !dir.startsWith(`${path}/`)) {
+            next.add(dir);
+          }
+        }
+        return next;
+      });
       setOpenTabs((prev) => {
         const next = prev.filter((t) => !t.startsWith(path));
         if (activeTab && activeTab.startsWith(path)) {

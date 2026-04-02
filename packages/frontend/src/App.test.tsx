@@ -1,7 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { App } from './App.js';
+
+const { mockWriteFile, mockIdePanel } = vi.hoisted(() => ({
+  mockWriteFile: vi.fn().mockResolvedValue(undefined),
+  mockIdePanel: vi.fn(),
+}));
 
 vi.mock('./components/DevSetup.js', () => ({
   DevSetup: ({ onSessionReady }: { onSessionReady: (session: unknown) => void }) => (
@@ -47,7 +52,10 @@ vi.mock('./components/SplitPane.js', () => ({
 }));
 
 vi.mock('./components/IdePanel.js', () => ({
-  IdePanel: () => <div data-testid="ide-panel">IDE</div>,
+  IdePanel: ({ requestOpenFile }: { requestOpenFile?: string | null }) => {
+    mockIdePanel(requestOpenFile);
+    return <div data-testid="ide-panel">{requestOpenFile ?? 'IDE'}</div>;
+  },
 }));
 
 vi.mock('./components/ChatPanel.js', () => ({
@@ -82,6 +90,7 @@ vi.mock('./lib/useConstraintTimer.js', () => ({
 
 vi.mock('./lib/webcontainer.js', () => ({
   getWebContainer: vi.fn().mockResolvedValue(null),
+  writeFile: mockWriteFile,
 }));
 
 vi.mock('./lib/review-replay.js', () => ({
@@ -103,19 +112,21 @@ describe('App prompt display', () => {
     window.history.replaceState({}, '', '/');
   });
 
-  test('shows the prompt panel when a session starts, allows dismiss, and reopens it from the top bar', () => {
+  test('opens prompt instructions in the IDE when a session starts and the top bar action is used', async () => {
     render(<App />);
 
     fireEvent.click(screen.getByTestId('mock-start-session'));
 
-    expect(screen.getByTestId('prompt-panel')).toBeInTheDocument();
-    expect(screen.getByTestId('prompt-title')).toHaveTextContent('Build a task runner');
     expect(screen.getByTestId('ide-panel')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('dismiss-prompt'));
-    expect(screen.queryByTestId('prompt-panel')).not.toBeInTheDocument();
-
     fireEvent.click(screen.getByTestId('mock-view-prompt'));
-    expect(screen.getByTestId('prompt-panel')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        'instructions.md',
+        '# Build a task runner\n\nCreate a CLI utility that queues and runs jobs.\n\n`backend` `cli`',
+      );
+      expect(mockIdePanel).toHaveBeenLastCalledWith(expect.stringMatching(/^instructions\.md-/));
+    });
   });
 });

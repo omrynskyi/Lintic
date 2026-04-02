@@ -210,7 +210,7 @@ function toOpenAIMessages(msg: Message): OpenAIChatMessage[] {
   }
 
   return [{
-    role: msg.role as 'system' | 'user' | 'assistant',
+    role: msg.role,
     content: msg.content,
   }];
 }

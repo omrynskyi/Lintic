@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
 import { TopBar } from './TopBar.js';
 
 const DEFAULT_PROPS = {
@@ -12,74 +13,58 @@ const DEFAULT_PROPS = {
 };
 
 describe('TopBar', () => {
-  test('renders without crashing', () => {
+  test('renders the brand, metadata, and timer', () => {
     render(<TopBar {...DEFAULT_PROPS} />);
-    expect(screen.getByTestId('timer')).toBeInTheDocument();
+
+    expect(screen.getByAltText('Lintic')).toHaveAttribute('src', '/logo-light.png');
+    expect(screen.getByText('Lintic')).toBeInTheDocument();
+    expect(screen.getByText('Library Backend Service')).toBeInTheDocument();
+    expect(screen.getByText('PRD + Implementation')).toBeInTheDocument();
+    expect(screen.getByTestId('timer').textContent).toBe('60:00 min');
   });
 
-  test('displays formatted time for hours and minutes', () => {
+  test('uses the dark logo variant when dark mode is enabled', () => {
+    render(<TopBar {...DEFAULT_PROPS} isDark />);
+    expect(screen.getByAltText('Lintic')).toHaveAttribute('src', '/logo-dark.png');
+  });
+
+  test('formats long durations without wrapping at one hour', () => {
     render(<TopBar {...DEFAULT_PROPS} secondsRemaining={3661} />);
-    expect(screen.getByTestId('timer').textContent).toBe('01:01:01');
+    expect(screen.getByTestId('timer').textContent).toBe('61:01 min');
   });
 
-  test('displays mm:ss format when under one hour', () => {
+  test('formats short durations as minutes and seconds', () => {
     render(<TopBar {...DEFAULT_PROPS} secondsRemaining={125} />);
-    expect(screen.getByTestId('timer').textContent).toBe('02:05');
+    expect(screen.getByTestId('timer').textContent).toBe('2:05 min');
   });
 
-  test('clamps timer display to 00:00 when time is exhausted', () => {
+  test('clamps timer display to zero when time is exhausted', () => {
     render(<TopBar {...DEFAULT_PROPS} secondsRemaining={-10} />);
-    expect(screen.getByTestId('timer').textContent).toBe('00:00');
+    expect(screen.getByTestId('timer').textContent).toBe('0:00 min');
   });
 
-  test('applies warning style when time is below 5 minutes', () => {
-    render(<TopBar {...DEFAULT_PROPS} secondsRemaining={299} />);
-    expect(screen.getByTestId('timer')).toHaveClass('text-red-400');
+  test('renders custom task details when provided', () => {
+    render(
+      <TopBar
+        {...DEFAULT_PROPS}
+        taskName="Frontend redesign"
+        deliverables="Prototype"
+      />,
+    );
+
+    expect(screen.getByText('Frontend redesign')).toBeInTheDocument();
+    expect(screen.getByText('Prototype')).toBeInTheDocument();
   });
 
-  test('does not apply warning style when time is above 5 minutes', () => {
-    render(<TopBar {...DEFAULT_PROPS} secondsRemaining={300} />);
-    expect(screen.getByTestId('timer')).not.toHaveClass('text-red-400');
+  test('only renders the view prompt button when a handler is provided', () => {
+    const { rerender } = render(<TopBar {...DEFAULT_PROPS} />);
+    expect(screen.queryByTestId('view-prompt')).toBeNull();
+
+    rerender(<TopBar {...DEFAULT_PROPS} onViewPrompt={() => {}} />);
+    expect(screen.getByTestId('view-prompt')).toBeInTheDocument();
   });
 
-  test('displays tokens remaining', () => {
-    render(<TopBar {...DEFAULT_PROPS} tokensRemaining={12345} />);
-    expect(screen.getByTestId('tokens-remaining').textContent).toBe('12,345');
-  });
-
-  test('applies yellow warning style at 20% token budget', () => {
-    render(<TopBar {...DEFAULT_PROPS} tokensRemaining={10000} maxTokens={50000} />);
-    expect(screen.getByTestId('tokens-remaining')).toHaveClass('text-yellow-400');
-  });
-
-  test('applies red critical style at 10% token budget', () => {
-    render(<TopBar {...DEFAULT_PROPS} tokensRemaining={5000} maxTokens={50000} />);
-    expect(screen.getByTestId('tokens-remaining')).toHaveClass('text-red-400');
-    expect(screen.getByTestId('token-bar')).toHaveClass('bg-red-400');
-  });
-
-  test('token progress bar width reflects remaining percentage', () => {
-    render(<TopBar {...DEFAULT_PROPS} tokensRemaining={25000} maxTokens={50000} />);
-    const bar = screen.getByTestId('token-bar');
-    expect(bar).toHaveStyle({ width: '50%' });
-  });
-
-  test('displays interactions remaining and max', () => {
-    render(<TopBar {...DEFAULT_PROPS} interactionsRemaining={18} maxInteractions={30} />);
-    const el = screen.getByTestId('interactions-remaining');
-    expect(el.textContent).toContain('18');
-    expect(el.textContent).toContain('30');
-  });
-
-  test('renders debug review button when handler is provided', () => {
-    const onOpenReviewDebug = vi.fn();
-    render(<TopBar {...DEFAULT_PROPS} onOpenReviewDebug={onOpenReviewDebug} />);
-
-    fireEvent.click(screen.getByTestId('open-review-debug'));
-    expect(onOpenReviewDebug).toHaveBeenCalledTimes(1);
-  });
-
-  test('renders and handles the view prompt button when provided', () => {
+  test('calls the view prompt handler when clicked', () => {
     const onViewPrompt = vi.fn();
     render(<TopBar {...DEFAULT_PROPS} onViewPrompt={onViewPrompt} />);
 

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, test, expect } from 'vitest';
 import { ToolActionCard } from './ToolActionCard.js';
 import type { LocalToolAction } from './ToolActionCard.js';
@@ -19,7 +19,7 @@ describe('ToolActionCard', () => {
   test('renders a card with the tool name', () => {
     render(<ToolActionCard action={makeAction()} />);
     expect(screen.getByTestId('tool-action-card')).toBeInTheDocument();
-    expect(screen.getByText('read_file')).toBeInTheDocument();
+    expect(screen.getByText('Read File:')).toBeInTheDocument();
   });
 
   test('shows parameter values in the header', () => {
@@ -48,8 +48,9 @@ describe('ToolActionCard', () => {
   test('shows parameter key-value rows when expanded', () => {
     render(<ToolActionCard action={makeAction()} />);
     fireEvent.click(screen.getByTestId('tool-action-toggle'));
-    expect(screen.getByText('path')).toBeInTheDocument();
-    expect(screen.getByText('/app/index.ts')).toBeInTheDocument();
+    const body = screen.getByTestId('tool-action-body');
+    expect(within(body).getByText('path')).toBeInTheDocument();
+    expect(within(body).getByText('/app/index.ts')).toBeInTheDocument();
   });
 
   test('shows result when expanded', () => {
@@ -60,16 +61,16 @@ describe('ToolActionCard', () => {
   });
 
   test('truncates long output to 500 chars', () => {
-    const longOutput = 'x'.repeat(600);
+    const longOutput = 'x'.repeat(1200);
     const action = makeAction({
       tool_results: [{ tool_call_id: 'tc-1', name: 'read_file', output: longOutput, is_error: false }],
     });
     render(<ToolActionCard action={action} />);
     fireEvent.click(screen.getByTestId('tool-action-toggle'));
     const result = screen.getByTestId('tool-action-result');
-    expect(result.textContent).toContain('x'.repeat(500));
+    expect(result.textContent).toContain('x'.repeat(1000));
     expect(result.textContent).toContain('truncated');
-    expect(result.textContent?.length).toBeLessThan(600);
+    expect(result.textContent?.length).toBeLessThan(1200);
   });
 
   test('shows error badge when result is_error=true', () => {

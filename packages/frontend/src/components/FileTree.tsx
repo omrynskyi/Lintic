@@ -143,6 +143,10 @@ function TreeNode({
         <div
           className="flex items-center gap-2 py-1.5 cursor-pointer hover:bg-white/5 transition-colors group"
           style={{ paddingLeft: `${indent}px`, paddingRight: '12px' }}
+          role="button"
+          aria-label={node.path}
+          aria-expanded={isOpen}
+          data-testid="folder-node"
           onClick={() => {
             onToggle(node.path);
             onFolderSelect(node.path);
@@ -204,6 +208,9 @@ function TreeNode({
       className={`flex items-center gap-2 py-1.5 cursor-pointer group transition-colors ${
         isActive ? 'bg-[var(--color-bg-active-node)]' : 'hover:bg-white/5'
       }`}
+      role="option"
+      aria-label={node.path}
+      aria-selected={isActive}
       style={{
         paddingLeft: `${indent + 20}px`,
         paddingRight: '12px',
@@ -238,6 +245,7 @@ function TreeNode({
       {!isRenaming && (
         <button
           type="button"
+          aria-label={`Delete ${node.path}`}
           onClick={(e) => {
             e.stopPropagation();
             onFileDelete(node.path);
@@ -415,6 +423,7 @@ export function FileTree({
             <>
               <button 
                 type="button"
+                aria-label="New file"
                 onClick={(e) => { e.stopPropagation(); setCreateType('file'); }} 
                 className="p-1 hover:bg-white/5 rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
               >
@@ -422,6 +431,7 @@ export function FileTree({
               </button>
               <button 
                 type="button"
+                aria-label="New folder"
                 onClick={(e) => { e.stopPropagation(); setCreateType('folder'); }}
                 className="p-1 hover:bg-white/5 rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
               >
@@ -431,6 +441,7 @@ export function FileTree({
           )}
           <button 
             type="button"
+            aria-label={isCollapsed ? 'Expand file tree' : 'Collapse file tree'}
             onClick={(e) => { e.stopPropagation(); setIsCollapsed(!isCollapsed); }}
             className="p-1 hover:bg-white/5 rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
           >

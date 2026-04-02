@@ -31,6 +31,14 @@ const mockWc = {
   spawn: vi.fn(),
 };
 
+const commandEnv = {
+  env: {
+    TERM: 'dumb',
+    NO_COLOR: '1',
+    FORCE_COLOR: '0',
+  },
+};
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('ToolExecutor', () => {
@@ -95,14 +103,14 @@ describe('ToolExecutor', () => {
     test('returns combined output on success', async () => {
       mockWc.spawn.mockResolvedValue(makeProcess('build success\n'));
       const result = await executor.execute(toolCall({ name: 'run_command', input: { command: 'npm run build' } }));
-      expect(result).toEqual({ tool_call_id: 'tc-1', name: 'run_command', output: 'build success\n', is_error: false });
-      expect(mockWc.spawn).toHaveBeenCalledWith('npm', ['run', 'build']);
+      expect(result).toEqual({ tool_call_id: 'tc-1', name: 'run_command', output: 'build success', is_error: false });
+      expect(mockWc.spawn).toHaveBeenCalledWith('npm', ['run', 'build'], commandEnv);
     });
 
     test('splits command on whitespace for spawn args', async () => {
       mockWc.spawn.mockResolvedValue(makeProcess(''));
       await executor.execute(toolCall({ name: 'run_command', input: { command: 'node index.js --port 3000' } }));
-      expect(mockWc.spawn).toHaveBeenCalledWith('node', ['index.js', '--port', '3000']);
+      expect(mockWc.spawn).toHaveBeenCalledWith('node', ['index.js', '--port', '3000'], commandEnv);
     });
 
     test('returns error result on timeout', async () => {
@@ -148,7 +156,7 @@ describe('ToolExecutor', () => {
       mockWc.spawn.mockResolvedValue(makeProcess('src/foo.ts\nsrc/bar.ts\n'));
       const result = await executor.execute(toolCall({ name: 'search_files', input: { pattern: 'useState', path: 'src' } }));
       expect(result.is_error).toBe(false);
-      expect(result.output).toBe('src/foo.ts\nsrc/bar.ts\n');
+      expect(result.output).toBe('src/foo.ts\nsrc/bar.ts');
       expect(mockWc.spawn).toHaveBeenCalledWith('grep', ['-rl', 'useState', 'src']);
     });
 

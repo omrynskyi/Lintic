@@ -135,8 +135,8 @@ describe('ChatPanel', () => {
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Hello agent' } });
     fireEvent.click(screen.getByTestId('chat-send'));
 
-    await waitFor(() => expect(screen.getByText('You')).toBeInTheDocument());
-    await waitFor(() => expect(screen.getAllByText('Agent').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText('Hello agent')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Hello from agent')).toBeInTheDocument());
   });
 
   test('sends message on Enter keydown', async () => {

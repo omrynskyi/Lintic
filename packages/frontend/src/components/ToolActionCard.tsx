@@ -84,6 +84,7 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
     <div data-testid="tool-action-card" className="mb-4 last:mb-0 flex flex-col">
       <button
         type="button"
+        data-testid="tool-action-toggle"
         onClick={() => setOpen((v) => !v)}
         className={`w-full flex items-center justify-between px-6 py-3 transition-all duration-200 border border-white/5 z-10 ${
           open 
@@ -108,7 +109,10 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-2">
           {isError && (
-            <span className="text-[11px] text-[var(--color-status-error)] font-bold tracking-tight">
+            <span
+              data-testid="tool-action-error-badge"
+              className="text-[11px] text-[var(--color-status-error)] font-bold tracking-tight"
+            >
               Error
             </span>
           )}

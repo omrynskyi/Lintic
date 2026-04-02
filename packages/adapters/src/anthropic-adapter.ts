@@ -207,7 +207,7 @@ function toAnthropicMessage(msg: Message): AnthropicMessage {
   }
 
   return {
-    role: (msg.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+    role: msg.role === 'assistant' ? 'assistant' : 'user',
     content: msg.content ?? '',
   };
 }
