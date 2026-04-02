@@ -7,3 +7,4 @@ data/*.db
 packages/*/dist
 packages/backend/lintic.db
 npm-debug.log
+**/*.tsbuildinfo

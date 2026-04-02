@@ -15,6 +15,11 @@ export function createApp(
   options: AppOptions = {},
 ): Express {
   const app = express();
+  app.use((_req, res, next) => {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    next();
+  });
   app.use(express.json());
 
   app.use('/api', createApiRouter(db, adapter, config));

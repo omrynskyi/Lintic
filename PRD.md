@@ -324,12 +324,12 @@ For UI stories, also include:
 **Description:** As a company admin, I need a single Docker image that runs the entire platform so I can deploy with docker compose up.
 
 **Acceptance Criteria:**
-- [ ] Multi-stage Dockerfile: build frontend, build backend, production image with both
-- [ ] docker-compose.yml with single service, volume mount for lintic.yml and SQLite data
-- [ ] Environment variable passthrough for API keys
-- [ ] Container starts Express server serving frontend static files and API routes
-- [ ] Health check endpoint at GET /health
-- [ ] Typecheck passes
+- [x] Multi-stage Dockerfile: build frontend, build backend, production image with both
+- [x] docker-compose.yml with single service, volume mount for lintic.yml and SQLite data
+- [x] Environment variable passthrough for API keys
+- [x] Container starts Express server serving frontend static files and API routes
+- [x] Health check endpoint at GET /health
+- [x] Typecheck passes
 
 ### US-024: Admin dashboard for assessment links
 
@@ -466,3 +466,79 @@ For UI stories, also include:
 - [ ] Backup failures log warnings but do not block session completion
 - [ ] Unit tests for S3 upload and restore logic with mocked S3 client
 - [ ] npm run typecheck passes
+
+---
+
+## Advanced Agent & Collaboration Features
+
+The stories below extend the platform beyond basic assessment into richer AI-collaboration tooling: a versioned prompt library, conversation branching, advanced agent skill modes, and full git integration inside the WebContainer.
+
+### US-029: Prompt history and library
+
+**Description:** As a company admin, I need a versioned prompt library with usage history so I can iterate on assessment prompts over time and track which versions candidates received.
+
+**Acceptance Criteria:**
+- [ ] Prompts stored in the database with a version number and created_at timestamp in addition to the existing lintic.yml definitions
+- [ ] Editing a prompt in lintic.yml or via the admin API creates a new version rather than mutating the existing record; prior versions are retained
+- [ ] GET /api/prompts returns all prompts with their latest version and aggregate stats (session count, median score, completion rate)
+- [ ] GET /api/prompts/:id/history returns all versions of a prompt with diff between consecutive versions
+- [ ] Sessions record the exact prompt version used so reviewers see the precise text a candidate received
+- [ ] Admin dashboard prompt list shows version number, last edited date, and a "View history" link that diffs versions side by side
+- [ ] npx lintic list-prompts --history <id> prints version history in the terminal
+- [ ] Unit tests for version creation, history retrieval, and diff generation
+- [ ] npm run typecheck passes
+
+### US-030: Conversation source control
+
+**Description:** As a candidate, I need the ability to branch and restore conversation states so I can explore different approaches with the agent without losing earlier progress.
+
+**Acceptance Criteria:**
+- [ ] Every message turn is assigned a monotonically increasing sequence number stored in the database
+- [ ] Candidate can click "Save checkpoint" on any assistant turn to name and bookmark that conversation state
+- [ ] Candidate can "Branch from here" on any prior turn: this forks the conversation, preserving the original branch, and starts a new active branch from that point
+- [ ] A branch selector in the chat panel header shows the current branch name and a dropdown to switch between branches
+- [ ] Switching branches updates the chat history and the Monaco editor file state to match the chosen branch snapshot (file state captured at each checkpoint)
+- [ ] All branches are recorded in the session and visible in the review replay; the reviewer can switch branches during replay
+- [ ] GET /api/sessions/:id/branches returns all branches with name, fork point sequence number, and message count
+- [ ] POST /api/sessions/:id/branches creates a new branch from a given sequence number
+- [ ] Unit tests for branching, branch switching, file state snapshotting, and history isolation between branches
+- [ ] npm run typecheck passes
+- [ ] Verify in browser using dev-browser skill
+
+### US-031: Advanced AI coding agent skills
+
+**Description:** As a candidate, I need the agent to offer specialized skill modes beyond open-ended chat so I can invoke targeted workflows like code review, test generation, and refactoring without crafting detailed prompts from scratch.
+
+**Acceptance Criteria:**
+- [ ] Agent skill modes selectable from a dropdown next to the message input: General, Code Review, Write Tests, Refactor, Explain, Debug
+- [ ] Each skill mode prepends a structured system-level instruction to the next message that focuses the agent on that task type (e.g. Code Review instructs the agent to analyze the current file for bugs, style, and correctness)
+- [ ] "Code Review" skill: agent reads the active file via read_file, returns inline annotated feedback organized by severity (critical / warning / suggestion)
+- [ ] "Write Tests" skill: agent reads the active file, identifies untested functions, and writes a test file alongside it using the project's detected test framework
+- [ ] "Refactor" skill: agent reads the active file, proposes and applies a refactored version, explains each change
+- [ ] "Explain" skill: agent explains the selected code (or whole file if no selection) in plain language appropriate to a junior developer
+- [ ] "Debug" skill: agent reads recent terminal output from the session, identifies the error, locates the source, and proposes a fix
+- [ ] Skill mode is recorded per message in the session so reviewers can see which skills the candidate used
+- [ ] Skill usage is included as a metric: skill_diversity (number of distinct skills used) and skill_effectiveness (skill messages that resulted in accepted file changes / total skill messages)
+- [ ] Admin can restrict available skill modes per prompt in lintic.yml under prompts[].allowed_skills
+- [ ] Unit tests for skill instruction assembly, metric computation, and skill restriction enforcement
+- [ ] npm run typecheck passes
+- [ ] Verify in browser using dev-browser skill
+
+### US-032: Git integration
+
+**Description:** As a candidate, I need git available inside the WebContainer so I can commit my work incrementally, view diffs, and manage branches — mirroring the real workflow of a professional engineer.
+
+**Acceptance Criteria:**
+- [ ] Git is initialized in the WebContainer filesystem at session start (git init + initial commit of any starter files)
+- [ ] A Git panel in the IDE sidebar shows: current branch name, unstaged changes (file list with +/- counts), staged files, and recent commit log (last 10 commits)
+- [ ] Candidate can stage individual files or all changes from the Git panel without using the terminal
+- [ ] Candidate can commit staged files with a commit message from the Git panel
+- [ ] Candidate can create and switch branches from the Git panel
+- [ ] Diff view: clicking a changed file in the Git panel opens a side-by-side diff in Monaco (current vs last commit)
+- [ ] All git operations (commit, branch create, checkout) are also available via the integrated terminal using the git binary bundled in the WebContainer node image
+- [ ] Reviewers see the full git log in the session replay; each commit is a timeline event with its message, changed files, and insertions/deletions
+- [ ] Session metrics include: commit_frequency (commits per hour), commit_granularity (median changed lines per commit), and branch_usage (boolean: did the candidate use branches)
+- [ ] If a prompt specifies a starter repository URL in lintic.yml under prompts[].starter_repo, it is cloned into the WebContainer at session start instead of an empty git init
+- [ ] Unit tests for git event recording, metric computation, and starter repo cloning logic (mocked WebContainer FS)
+- [ ] npm run typecheck passes
+- [ ] Verify in browser using dev-browser skill

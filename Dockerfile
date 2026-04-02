@@ -22,7 +22,7 @@ RUN echo "=== symlinks ===" && ls -la node_modules/@lintic/ \
 RUN npx tsc -p packages/adapters/tsconfig.build.json
 RUN npx tsc -p packages/backend/tsconfig.build.json
 RUN npx tsc -p packages/frontend/tsconfig.build.json --noEmit \
-  && npx vite build --config packages/frontend/vite.config.ts
+  && npx vite build packages/frontend --config packages/frontend/vite.config.ts
 RUN npm prune --omit=dev
 
 FROM node:20-bookworm-slim AS runtime
