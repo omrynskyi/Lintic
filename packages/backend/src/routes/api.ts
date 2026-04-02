@@ -16,6 +16,7 @@ import { requireToken } from '../middleware/auth.js';
 import { requireAdminKey } from '../middleware/admin-auth.js';
 import { runAgentLoop } from '../agent-loop.js';
 import type { ToolRunner } from '../agent-loop.js';
+import { DEFAULT_SYSTEM_PROMPT } from '../prompts.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ function asyncRoute(fn: (req: Request, res: Response) => Promise<void>): Request
 
 /** Reconstruct a Message[] from stored rows, deserialising tool_use assistant turns and tool result rows. */
 function buildHistory(storedMessages: StoredMessage[]): Message[] {
-  return storedMessages.map((m) => {
+  let history: Message[] = storedMessages.map((m) => {
     if (m.role === 'assistant') {
       try {
         const parsed = JSON.parse(m.content) as { __type?: string; content: string | null; tool_calls: ToolCall[] };
@@ -48,6 +49,11 @@ function buildHistory(storedMessages: StoredMessage[]): Message[] {
     }
     return { role: m.role as MessageRole, content: m.content };
   });
+
+  if (!history.some(m => m.role === 'system')) {
+    history = [{ role: 'system', content: DEFAULT_SYSTEM_PROMPT }, ...history];
+  }
+  return history;
 }
 
 function isAgentConfig(v: unknown): v is AgentConfig {

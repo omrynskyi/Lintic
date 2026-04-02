@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Sidebar } from './components/Sidebar.js';
 import { TopBar } from './components/TopBar.js';
 import { SplitPane } from './components/SplitPane.js';
 import { IdePanel } from './components/IdePanel.js';
@@ -10,14 +11,13 @@ import { Toast } from './components/Toast.js';
 import type { ToastMessage } from './components/Toast.js';
 import { useConstraintTimer } from './lib/useConstraintTimer.js';
 import { ToolExecutor } from './lib/tool-executor.js';
-import { getWebContainer } from './lib/webcontainer.js';
+import { getWebContainer, writeFile } from './lib/webcontainer.js';
 import type { WebContainer } from '@webcontainer/api';
 import type { LocalToolCall, LocalToolResult } from './components/ToolActionCard.js';
 import type { TerminalHandle } from './components/Terminal.js';
 import { ReviewDashboard } from './components/ReviewDashboard.js';
 import { getReviewSessionId } from './lib/review-replay.js';
 import { AssessmentLinkLoader } from './components/AssessmentLinkLoader.js';
-import { PromptPanel } from './components/PromptPanel.js';
 import type { PromptSummary } from '@lintic/core';
 
 type AppState = 'setup' | 'active';
@@ -46,18 +46,11 @@ export function App() {
   const [sessionToken, setSessionToken] = useState<string | undefined>(undefined);
   const [agentConfig, setAgentConfig] = useState<AgentConfig | undefined>(undefined);
   const [activePrompt, setActivePrompt] = useState<PromptSummary | null>(null);
-  const [isPromptVisible, setIsPromptVisible] = useState(false);
+  const [fileToOpen, setFileToOpen] = useState<string | null>(null);
   const wcRef = useRef<WebContainer | null>(null);
   const terminalRef = useRef<TerminalHandle>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [isDark, setIsDark] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('theme');
-      if (saved) return saved === 'dark';
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    return false;
-  });
+  const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -100,14 +93,13 @@ export function App() {
     addToast,
   );
 
-  // Boot WebContainer early so it's ready when the user starts chatting.
   useEffect(() => {
     if (reviewSessionId || assessmentToken) {
       return;
     }
     getWebContainer()
       .then((wc) => { wcRef.current = wc; })
-      .catch(() => { /* WebContainer may not be available in all environments */ });
+      .catch(() => { });
   }, [reviewSessionId, assessmentToken]);
 
   const handleSessionReady = useCallback((session: DevSession) => {
@@ -115,7 +107,6 @@ export function App() {
     setSessionToken(session.sessionToken);
     setAgentConfig(session.agentConfig);
     setActivePrompt(session.prompt);
-    setIsPromptVisible(true);
     setAppState('active');
   }, []);
 
@@ -131,8 +122,7 @@ export function App() {
         }));
       }
       const executor = new ToolExecutor(wc, (chunk) => terminalRef.current?.write(chunk));
-      // ToolExecutor.executeAll accepts ToolCall from @lintic/core; LocalToolCall is shape-compatible.
-      return executor.executeAll(calls as Parameters<typeof executor.executeAll>[0]) as Promise<LocalToolResult[]>;
+      return executor.executeAll(calls as any) as Promise<LocalToolResult[]>;
     },
     [],
   );
@@ -143,6 +133,19 @@ export function App() {
     }
     window.open(`/review/${sessionId}`, '_blank', 'noopener,noreferrer');
   }, [sessionId]);
+
+  const handleViewPrompt = useCallback(async () => {
+    if (!activePrompt) return;
+    
+    const content = `# ${activePrompt.title}\n\n${activePrompt.description || 'No description provided.'}\n\n${activePrompt.tags?.map(t => `\`${t}\``).join(' ') || ''}`;
+    
+    try {
+      await writeFile('instructions.md', content);
+      setFileToOpen(`instructions.md-${Date.now()}`);
+    } catch (err) {
+      addToast('Failed to open instructions');
+    }
+  }, [activePrompt, addToast]);
 
   if (reviewSessionId) {
     return (
@@ -169,7 +172,6 @@ export function App() {
           setSessionToken(nextSessionToken);
           setAgentConfig(undefined);
           setActivePrompt(prompt);
-          setIsPromptVisible(true);
           setAssessmentToken(null);
           setAppState('active');
           window.history.replaceState({}, '', '/');
@@ -180,7 +182,7 @@ export function App() {
 
   if (appState === 'setup') {
     return (
-      <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--color-bg-app)' }}>
+      <div className="flex h-screen overflow-hidden bg-[var(--color-bg-app)]">
         <DevSetup onSessionReady={handleSessionReady} />
         <Toast toasts={toasts} onDismiss={dismissToast} />
       </div>
@@ -188,7 +190,7 @@ export function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--color-bg-app)' }}>
+    <div className="flex flex-col h-screen overflow-hidden bg-[var(--color-bg-app)] p-[5px] gap-[5px]">
       <TopBar
         secondsRemaining={constraints.secondsRemaining}
         tokensRemaining={constraints.tokensRemaining}
@@ -197,44 +199,44 @@ export function App() {
         maxInteractions={constraints.maxInteractions}
         isDark={isDark}
         onToggleTheme={() => setIsDark(!isDark)}
-        onViewPrompt={activePrompt ? () => setIsPromptVisible(true) : undefined}
+        onViewPrompt={activePrompt ? handleViewPrompt : undefined}
         onOpenReviewDebug={ENABLE_DEV_REVIEW_SHORTCUT && sessionId ? handleOpenReviewDebug : undefined}
       />
-      {activePrompt && isPromptVisible ? (
-        <PromptPanel
-          prompt={activePrompt}
-          onDismiss={() => setIsPromptVisible(false)}
-        />
-      ) : null}
-      <div className="flex-1 overflow-hidden">
-        <SplitPane
-          left={<IdePanel terminalRef={terminalRef} />}
-          right={
-            <ChatPanel
-              sessionId={sessionId}
-              sessionToken={sessionToken}
-              agentConfig={agentConfig}
-              onExecuteTools={handleExecuteTools}
-              constraints={{
-                tokensRemaining: constraints.tokensRemaining,
-                maxTokens: constraints.maxTokens,
-                interactionsRemaining: constraints.interactionsRemaining,
-                maxInteractions: constraints.maxInteractions,
-              }}
-              onConstraintsUpdate={(updated) => {
-                const patch: Partial<typeof constraints> = {};
-                if (updated.tokensRemaining !== undefined) {
-                  patch.tokensRemaining = updated.tokensRemaining;
-                }
-                if (updated.interactionsRemaining !== undefined) {
-                  patch.interactionsRemaining = updated.interactionsRemaining;
-                }
-                patchConstraints(patch);
-              }}
-            />
-          }
-        />
+
+      <div className="flex-1 flex min-h-0 gap-[5px]">
+        <Sidebar />
+        
+        <div className="flex-1 min-h-0">
+          <SplitPane
+            left={<IdePanel terminalRef={terminalRef} requestOpenFile={fileToOpen} />}
+            right={
+              <ChatPanel
+                sessionId={sessionId}
+                sessionToken={sessionToken}
+                agentConfig={agentConfig}
+                onExecuteTools={handleExecuteTools}
+                constraints={{
+                  tokensRemaining: constraints.tokensRemaining,
+                  maxTokens: constraints.maxTokens,
+                  interactionsRemaining: constraints.interactionsRemaining,
+                  maxInteractions: constraints.maxInteractions,
+                }}
+                onConstraintsUpdate={(updated) => {
+                  const patch: Partial<typeof constraints> = {};
+                  if (updated.tokensRemaining !== undefined) {
+                    patch.tokensRemaining = updated.tokensRemaining;
+                  }
+                  if (updated.interactionsRemaining !== undefined) {
+                    patch.interactionsRemaining = updated.interactionsRemaining;
+                  }
+                  patchConstraints(patch);
+                }}
+              />
+            }
+          />
+        </div>
       </div>
+
       <Toast toasts={toasts} onDismiss={dismissToast} />
     </div>
   );

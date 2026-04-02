@@ -66,7 +66,37 @@ export class ToolExecutor {
       chunks.push(value);
       this.onOutput?.(value);
     }
-    return chunks.join('');
+    return this.cleanOutput(chunks.join(''));
+  }
+
+  /**
+   * Cleans terminal output by:
+   * 1. Removing ANSI escape sequences (colors, cursor movement, etc).
+   * 2. Handling orphaned sequences (like [1G or [0K) that may have lost the ESC character.
+   * 3. Handling carriage returns (\r) by collapsing overwrites.
+   */
+  private cleanOutput(input: string): string {
+    // 1. Remove ANSI escape sequences (standard ESC [... <char>)
+    const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+    let cleaned = input.replace(ansiRegex, '');
+
+    // 2. Remove "orphaned" sequences that might be left over if ESC was stripped (e.g. [1G, [0K, [?25l)
+    // This is more aggressive but helps with messy npm/node output.
+    const orphanedRegex = /\[[0-9;]*[a-zA-Z]/g;
+    cleaned = cleaned.replace(orphanedRegex, '');
+
+    // 3. Handle carriage returns (\r)
+    const lines = cleaned.split('\n');
+    const processedLines = lines.map((line) => {
+      if (!line.includes('\r')) return line;
+      const segments = line.split('\r');
+      return segments[segments.length - 1];
+    });
+
+    return processedLines
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n') // Collapse excessive newlines
+      .trim();
   }
 
   private handleReadFile({ path }: { path: string }): Promise<string> {
@@ -80,7 +110,14 @@ export class ToolExecutor {
 
   private async handleRunCommand({ command }: { command: string }): Promise<string> {
     const [cmd, ...args] = command.split(' ');
-    const process = await this.wc.spawn(cmd!, args);
+    // Set TERM=dumb and NO_COLOR=1 to minimize escape sequences from tools.
+    const process = await this.wc.spawn(cmd!, args, {
+      env: {
+        TERM: 'dumb',
+        NO_COLOR: '1',
+        FORCE_COLOR: '0',
+      }
+    });
     // Echo the command to the terminal so the user can see what the agent is running.
     this.onOutput?.(`\r\n\x1b[2m$ ${command}\x1b[0m\r\n`);
     return withTimeout(this.collectStream(process.output), COMMAND_TIMEOUT_MS, 'run_command');

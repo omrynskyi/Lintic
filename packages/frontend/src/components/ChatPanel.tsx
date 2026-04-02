@@ -106,23 +106,64 @@ function parseToolUse(content: string): { content: string | null; tool_actions: 
   const tool_actions: LocalToolAction[] = [];
   let remainingText = content;
 
-  // 1. Look for ANY JSON block that looks like tool_use
-  // This is more robust than matching only at the start
-  const jsonRegex = /\{[\s\S]*?"__type"\s*:\s*"tool_use"[\s\S]*?\}/g;
-  let jsonMatch;
-  while ((jsonMatch = jsonRegex.exec(content)) !== null) {
+  // 1. Try parsing the whole thing if it looks like a tool_use JSON block
+  if (content.trim().startsWith('{') && content.includes('"__type"') && content.includes('"tool_use"')) {
     try {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed.tool_calls) {
-        tool_actions.push({ tool_calls: parsed.tool_calls, tool_results: [] });
-        remainingText = remainingText.replace(jsonMatch[0], parsed.content || '');
+      const parsed = JSON.parse(content.trim());
+      if (parsed.__type === 'tool_use' && parsed.tool_calls) {
+        return {
+          content: parsed.content || null,
+          tool_actions: [{ tool_calls: parsed.tool_calls, tool_results: [] }]
+        };
       }
     } catch {
-      // Not valid JSON
+      // Fall back to regex/extraction if direct parse fails
     }
   }
 
-  // 2. Look for <function/NAME{...} patterns
+  // 2. Look for ANY JSON block that looks like tool_use using a more robust approach
+  // We look for the start sequence and then try to find the matching closing brace
+  const marker = '"__type"';
+  let startIndex = remainingText.indexOf(marker);
+  
+  while (startIndex !== -1) {
+    // Find the start of the object containing this marker
+    let objStart = remainingText.lastIndexOf('{', startIndex);
+    if (objStart !== -1) {
+      // Basic brace counting to find the matching end brace
+      let depth = 0;
+      let objEnd = -1;
+      for (let i = objStart; i < remainingText.length; i++) {
+        if (remainingText[i] === '{') depth++;
+        else if (remainingText[i] === '}') {
+          depth--;
+          if (depth === 0) {
+            objEnd = i;
+            break;
+          }
+        }
+      }
+
+      if (objEnd !== -1) {
+        const potentialJson = remainingText.slice(objStart, objEnd + 1);
+        try {
+          const parsed = JSON.parse(potentialJson);
+          if (parsed.__type === 'tool_use' && parsed.tool_calls) {
+            tool_actions.push({ tool_calls: parsed.tool_calls, tool_results: [] });
+            remainingText = remainingText.slice(0, objStart) + (parsed.content || '') + remainingText.slice(objEnd + 1);
+            // Restart search from current position as remainingText has changed
+            startIndex = remainingText.indexOf(marker);
+            continue;
+          }
+        } catch {
+          // Not valid JSON
+        }
+      }
+    }
+    startIndex = remainingText.indexOf(marker, startIndex + 1);
+  }
+
+  // 3. Look for <function/NAME{...} patterns (fallback for some models)
   const functionRegex = /<function\/(\w+)(\{[\s\S]*?\})/g;
   let funcMatch;
   while ((funcMatch = functionRegex.exec(remainingText)) !== null) {
@@ -347,7 +388,6 @@ export function ChatPanel({
         {messages.map((msg) => {
           const isUser = msg.role === 'user';
           
-          // Try to parse tool use from content
           let displayContent = msg.content;
           let displayToolActions = msg.tool_actions || [];
           
@@ -375,7 +415,7 @@ export function ChatPanel({
                 </div>
               ) : (
                 <>
-                  {/* Tool action cards (before text content) */}
+                  {/* Tool action cards */}
                   {displayToolActions.length > 0 && (
                     <div className="w-full" data-testid="tool-actions-container">
                       {displayToolActions.map((action, i) => (
@@ -389,7 +429,6 @@ export function ChatPanel({
                       className="w-full text-sm chat-markdown break-words"
                       style={{ color: 'var(--color-text-agent-msg)' }}
                       data-testid="agent-message"
-                      // eslint-disable-next-line @typescript-eslint/naming-convention
                       dangerouslySetInnerHTML={{ __html: renderMarkdown(displayContent) }}
                     />
                   )}
@@ -476,6 +515,7 @@ export function ChatPanel({
             <div className="flex items-center gap-3">
               {loading ? (
                 <button
+                  type="button"
                   className="w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-red-500/20"
                   style={{ background: 'var(--color-bg-stop-btn)', color: 'var(--color-status-error-text)' }}
                   onClick={stopAgent}
@@ -486,11 +526,11 @@ export function ChatPanel({
                 </button>
               ) : (
                 <button
-                  className="px-4 h-9 rounded-full flex items-center gap-1 transition-all hover:scale-[1.02]"
+                  type="button"
+                  className="h-10 px-5 rounded-full flex items-center justify-center gap-2 transition-all hover:scale-[1.05]"
                   style={{
-                    background: exhausted || !input.trim() ? 'transparent' : 'var(--color-text-main)',
-                    color: exhausted || !input.trim() ? 'var(--color-text-dimmer)' : 'var(--color-bg-input)',
-                    opacity: exhausted || !input.trim() ? 0.3 : 1,
+                    background: exhausted || !input.trim() ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
+                    color: exhausted || !input.trim() ? 'rgba(255,255,255,0.2)' : '#000000',
                     cursor: exhausted || !input.trim() ? 'not-allowed' : 'pointer',
                   }}
                   onClick={() => void sendMessage()}
@@ -498,7 +538,7 @@ export function ChatPanel({
                   aria-label="Send message"
                   data-testid="chat-send"
                 >
-                  <CornerDownLeft size={16} className="opacity-60" />
+                  <CornerDownLeft size={16} />
                   <Send size={16} />
                 </button>
               )}
@@ -520,7 +560,7 @@ export function ChatPanel({
         </div>
         <div className="flex items-center gap-4">
           <span className="text-[12px] font-medium opacity-50" style={{ color: 'var(--color-text-main)' }}>
-            {Math.round(100 - tokenPct)}% Tokens Used
+            {Math.round(100 - tokenPct)}% tokens used
           </span>
           <div className="w-40 h-1 rounded-full overflow-hidden bg-white/10">
             <div 

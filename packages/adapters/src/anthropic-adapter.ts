@@ -77,14 +77,20 @@ export class AnthropicAdapter implements AgentAdapter {
       throw new AdapterError('AnthropicAdapter: call init() before sendMessage()', 0, 'not_initialized');
     }
 
-    const messages: AnthropicMessage[] = [...context.history.map(toAnthropicMessage)];
+    const systemMessages = context.history.filter(m => m.role === 'system');
+    const otherMessages = context.history.filter(m => m.role !== 'system');
+
+    const messages: AnthropicMessage[] = otherMessages.map(toAnthropicMessage);
     if (msg !== null) messages.push({ role: 'user', content: msg });
+
+    const systemPrompt = systemMessages.map(m => m.content).filter(Boolean).join('\n\n');
 
     const MAX_OUTPUT_TOKENS = 4096;
     const requestBody = {
       model: this.config.model,
       max_tokens: Math.min(context.constraints_remaining.tokens_remaining, MAX_OUTPUT_TOKENS),
       messages,
+      system: systemPrompt || undefined,
       tools: toAnthropicTools(TOOLS),
     };
 
@@ -201,7 +207,7 @@ function toAnthropicMessage(msg: Message): AnthropicMessage {
   }
 
   return {
-    role: msg.role as 'user' | 'assistant',
+    role: (msg.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
     content: msg.content ?? '',
   };
 }

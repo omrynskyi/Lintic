@@ -34,17 +34,16 @@ export function SplitPane({ left, right }: SplitPaneProps) {
   }, []);
 
   return (
-    // On small screens (<md) stack vertically; on md+ use horizontal split with drag
     <div
       ref={containerRef}
-      className="flex flex-col md:flex-row h-full w-full overflow-hidden p-3 gap-3"
+      className="flex flex-col md:flex-row h-full w-full overflow-hidden gap-[5px]"
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
     >
       {/* Left pane (IDE) */}
       <div
-        className="overflow-hidden md:h-full h-1/2 rounded-[var(--radius-md)] shadow-lg bg-[var(--color-bg-code)]"
+        className="overflow-hidden md:h-full h-1/2 rounded-[var(--radius-lg)] shadow-lg bg-[var(--color-bg-code)]"
         style={{ width: `${leftPct}%` }}
         data-testid="pane-left"
       >
@@ -53,11 +52,11 @@ export function SplitPane({ left, right }: SplitPaneProps) {
 
       {/* Right pane (Chat) with resize handle on its left edge */}
       <div
-        className="relative overflow-hidden md:h-full flex-1 h-1/2 rounded-[var(--radius-md)] shadow-lg bg-[var(--color-bg-panel)]"
+        className="relative overflow-hidden md:h-full flex-1 h-1/2 rounded-[var(--radius-lg)] shadow-lg bg-[var(--color-bg-panel)]"
         data-testid="pane-right"
       >
         <div
-          className="hidden md:block absolute -left-2 top-0 bottom-0 w-3 cursor-col-resize z-50 hover:bg-[var(--color-brand-orange)]/10 transition-colors"
+          className="hidden md:block absolute -left-2 top-0 bottom-0 w-3 cursor-col-resize z-50 hover:bg-white/5 transition-colors"
           onMouseDown={onMouseDown}
           role="separator"
           aria-orientation="vertical"

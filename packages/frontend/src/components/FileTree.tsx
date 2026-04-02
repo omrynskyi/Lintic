@@ -1,14 +1,33 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { 
+  FilePlus, 
+  FolderPlus, 
+  ChevronLeft, 
+  ChevronRight, 
+  File, 
+  Folder, 
+  X, 
+  ChevronDown,
+  Edit2,
+  Trash2,
+  Copy
+} from 'lucide-react';
+import { ContextMenu, ContextMenuItem } from './ContextMenu.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface FileTreeProps {
   files: Record<string, string>;
+  directories: string[];
   activeFile: string | null;
   onFileSelect: (path: string) => void;
   onFileCreate: (name: string) => void;
+  onFolderCreate: (name: string) => void;
   onFileDelete: (path: string) => void;
+  onRename: (oldPath: string, newPath: string) => void;
+  onDuplicate: (path: string) => void;
+  onMove: (oldPath: string, newPath: string) => void;
 }
 
 interface RenderNode {
@@ -22,23 +41,24 @@ interface RenderNode {
 
 const IGNORED = ['node_modules', '.git', '.DS_Store'];
 
-export function buildRenderTree(files: Record<string, string>): RenderNode[] {
-  // Filter out any path whose segments include an ignored name
-  const paths = Object.keys(files).filter(
+export function buildRenderTree(files: Record<string, string>, directories: string[]): RenderNode[] {
+  const filePaths = Object.keys(files).filter(
     (p) => !p.split('/').some((seg) => IGNORED.includes(seg)),
   );
+  
+  const allPaths = Array.from(new Set([...filePaths, ...directories]));
 
-  // Derive all directory paths from file path prefixes
   const dirSet = new Set<string>();
-  for (const p of paths) {
+  for (const p of allPaths) {
     const segs = p.split('/');
+    // Add all parent directories to the set
     for (let i = 1; i < segs.length; i++) {
       dirSet.add(segs.slice(0, i).join('/'));
     }
   }
 
-  // Only leaf paths (not a directory prefix) become file nodes
-  const leafFiles = paths.filter((p) => !dirSet.has(p));
+  // A path is a directory if it's in our explicit directories list OR if it's a parent of another path
+  const isActuallyDir = (p: string) => directories.includes(p) || dirSet.has(p);
 
   type INode = { isDir: boolean; path: string; children: Map<string, INode> };
 
@@ -46,14 +66,19 @@ export function buildRenderTree(files: Record<string, string>): RenderNode[] {
     const seg = segs[depth]!;
     const isLast = depth === segs.length - 1;
     const nodePath = segs.slice(0, depth + 1).join('/');
+    
     if (!map.has(seg)) {
-      map.set(seg, { isDir: !isLast, path: nodePath, children: new Map() });
+      map.set(seg, { 
+        isDir: !isLast || isActuallyDir(nodePath), 
+        path: nodePath, 
+        children: new Map() 
+      });
     }
     if (!isLast) insert(map.get(seg)!.children, segs, depth + 1);
   }
 
   const root = new Map<string, INode>();
-  for (const fp of leafFiles) insert(root, fp.split('/'), 0);
+  for (const fp of allPaths) insert(root, fp.split('/'), 0);
 
   function toArr(map: Map<string, INode>): RenderNode[] {
     return [...map.entries()]
@@ -72,38 +97,6 @@ export function buildRenderTree(files: Record<string, string>): RenderNode[] {
   return toArr(root);
 }
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-function FileIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
-      <path
-        fill="var(--color-icon-file)"
-        d="M3 1.5A1.5 1.5 0 014.5 0h5.793L13 2.707V14.5A1.5 1.5 0 0111.5 16h-7A1.5 1.5 0 013 14.5v-13zm1.5-.5a.5.5 0 00-.5.5v13a.5.5 0 00.5.5h7a.5.5 0 00.5-.5V3h-2.5A.5.5 0 019 2.5V1H4.5z"
-      />
-      <path fill="var(--color-icon-file)" fillOpacity={0.5} d="M9 1l3 3H9V1z" />
-    </svg>
-  );
-}
-
-function FolderIcon({ open }: { open: boolean }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
-      {open ? (
-        <path
-          fill="var(--color-icon-folder-open)"
-          d="M1 3.5A1.5 1.5 0 012.5 2h2.764c.958 0 1.76.56 2.311 1.184C7.985 3.648 8.48 4 9 4h4.5A1.5 1.5 0 0115 5.5v1H1V3.5zm0 3v6A1.5 1.5 0 002.5 14h11a1.5 1.5 0 001.5-1.5v-6H1z"
-        />
-      ) : (
-        <path
-          fill="var(--color-icon-folder-closed)"
-          d="M1 3.5A1.5 1.5 0 012.5 2h2.764c.958 0 1.76.56 2.311 1.184C7.985 3.648 8.48 4 9 4h4.5A1.5 1.5 0 0115 5.5v7A1.5 1.5 0 0113.5 14h-11A1.5 1.5 0 011 12.5v-9z"
-        />
-      )}
-    </svg>
-  );
-}
-
 // ─── Tree node renderer ───────────────────────────────────────────────────────
 
 interface NodeProps {
@@ -114,32 +107,71 @@ interface NodeProps {
   onToggle: (path: string) => void;
   onFileSelect: (path: string) => void;
   onFileDelete: (path: string) => void;
+  onFolderSelect: (path: string) => void;
+  onContextMenu: (e: React.MouseEvent, path: string, isDir: boolean) => void;
+  renamingPath: string | null;
+  onRenameSubmit: (newName: string) => void;
+  onRenameCancel: () => void;
+  onDragStart: (e: React.DragEvent, path: string) => void;
+  onDragOver: (e: React.DragEvent, path: string, isDir: boolean) => void;
+  onDragLeave: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent, targetPath: string, isDir: boolean) => void;
 }
 
-function TreeNode({ node, depth, activeFile, expanded, onToggle, onFileSelect, onFileDelete }: NodeProps) {
-  const indent = 12 + depth * 14;
+function TreeNode({ 
+  node, depth, activeFile, expanded, onToggle, onFileSelect, onFileDelete, onFolderSelect, 
+  onContextMenu, renamingPath, onRenameSubmit, onRenameCancel,
+  onDragStart, onDragOver, onDragLeave, onDrop
+}: NodeProps) {
+  const indent = 16 + depth * 12;
   const isOpen = expanded.has(node.path);
+  const isRenaming = renamingPath === node.path;
+  const [newName, setNewName] = useState(node.name);
+
+  // Sync internal name if node changes externally
+  useEffect(() => {
+    setNewName(node.name);
+  }, [node.name]);
 
   if (node.isDir) {
     return (
-      <>
-        <motion.li
-          initial={{ opacity: 0, x: -4 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.1 }}
-          className="flex items-center gap-1.5 py-[3px] cursor-pointer"
-          style={{ paddingLeft: `${indent}px`, paddingRight: '6px', color: 'var(--color-text-muted)' }}
-          onClick={() => onToggle(node.path)}
-          data-testid="folder-node"
-          aria-label={node.name}
+      <div
+        onDragOver={(e) => onDragOver(e, node.path, true)}
+        onDragLeave={onDragLeave}
+        onDrop={(e) => onDrop(e, node.path, true)}
+      >
+        <div
+          className="flex items-center gap-2 py-1.5 cursor-pointer hover:bg-white/5 transition-colors group"
+          style={{ paddingLeft: `${indent}px`, paddingRight: '12px' }}
+          onClick={() => {
+            onToggle(node.path);
+            onFolderSelect(node.path);
+          }}
+          onContextMenu={(e) => onContextMenu(e, node.path, true)}
+          draggable
+          onDragStart={(e) => onDragStart(e, node.path)}
         >
-          <span style={{ color: 'var(--color-text-dimmer)', fontSize: '8px', width: '8px', flexShrink: 0 }}>
-            {isOpen ? '▼' : '▶'}
+          <span className="text-[var(--color-text-dim)]">
+            {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </span>
-          <FolderIcon open={isOpen} />
-          <span className="text-xs truncate">{node.name}</span>
-        </motion.li>
+          <Folder size={14} className="text-[var(--color-icon-folder)] opacity-80" />
+          {isRenaming ? (
+            <input
+              autoFocus
+              className="flex-1 bg-white/10 text-[13px] outline-none text-white px-1 rounded"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onRenameSubmit(newName);
+                if (e.key === 'Escape') onRenameCancel();
+              }}
+              onBlur={() => onRenameSubmit(newName)}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="text-[13px] text-[var(--color-text-main)] font-medium truncate">{node.name}</span>
+          )}
+        </div>
         {isOpen &&
           node.children.map((child) => (
             <TreeNode
@@ -151,72 +183,98 @@ function TreeNode({ node, depth, activeFile, expanded, onToggle, onFileSelect, o
               onToggle={onToggle}
               onFileSelect={onFileSelect}
               onFileDelete={onFileDelete}
+              onFolderSelect={onFolderSelect}
+              onContextMenu={onContextMenu}
+              renamingPath={renamingPath}
+              onRenameSubmit={onRenameSubmit}
+              onRenameCancel={onRenameCancel}
+              onDragStart={onDragStart}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
             />
           ))}
-      </>
+      </div>
     );
   }
 
   const isActive = node.path === activeFile;
   return (
-    <motion.li
-      initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -4 }}
-      transition={{ duration: 0.12, ease: 'easeOut' }}
-      role="option"
-      aria-selected={isActive}
-      aria-label={node.path}
-      className="flex items-center gap-2 py-[3px] cursor-pointer group"
+    <div
+      className={`flex items-center gap-2 py-1.5 cursor-pointer group transition-colors ${
+        isActive ? 'bg-[var(--color-bg-active-node)]' : 'hover:bg-white/5'
+      }`}
       style={{
-        paddingLeft: `${indent}px`,
-        paddingRight: '6px',
-        background: isActive ? 'var(--color-bg-active-node)' : undefined,
-        color: isActive ? 'var(--color-text-main)' : 'var(--color-text-dim)',
-      }}
-      onMouseEnter={(e) => {
-        if (!isActive) {
-          (e.currentTarget as HTMLLIElement).style.background = 'var(--color-bg-hover-node)';
-          (e.currentTarget as HTMLLIElement).style.color = 'var(--color-text-muted)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive) {
-          (e.currentTarget as HTMLLIElement).style.background = '';
-          (e.currentTarget as HTMLLIElement).style.color = 'var(--color-text-dim)';
-        }
+        paddingLeft: `${indent + 20}px`,
+        paddingRight: '12px',
       }}
       onClick={() => onFileSelect(node.path)}
+      onContextMenu={(e) => onContextMenu(e, node.path, false)}
+      draggable
+      onDragStart={(e) => onDragStart(e, node.path)}
+      onDragOver={(e) => onDragOver(e, node.path, false)}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => onDrop(e, node.path, false)}
     >
-      <FileIcon />
-      <span className="text-xs truncate flex-1">{node.name}</span>
-      <button
-        aria-label={`Delete ${node.path}`}
-        className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-        style={{ color: 'var(--color-text-dim)', padding: '1px' }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#884444'; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-dim)'; }}
-        onClick={(e) => {
-          e.stopPropagation();
-          onFileDelete(node.path);
-        }}
-      >
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z" />
-        </svg>
-      </button>
-    </motion.li>
+      <File size={14} className="text-[var(--color-icon-file)] opacity-60" />
+      {isRenaming ? (
+        <input
+          autoFocus
+          className="flex-1 bg-white/10 text-[13px] outline-none text-white px-1 rounded"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onRenameSubmit(newName);
+            if (e.key === 'Escape') onRenameCancel();
+          }}
+          onBlur={() => onRenameSubmit(newName)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span className={`text-[13px] truncate flex-1 ${isActive ? 'text-[var(--color-text-bold)] font-bold' : 'text-[var(--color-text-main)]'}`}>
+          {node.name}
+        </span>
+      )}
+      {!isRenaming && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onFileDelete(node.path);
+          }}
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-white/10 rounded"
+        >
+          <X size={12} className="text-[var(--color-text-dim)]" />
+        </button>
+      )}
+    </div>
   );
 }
 
 // ─── Public component ─────────────────────────────────────────────────────────
 
-export function FileTree({ files, activeFile, onFileSelect, onFileCreate, onFileDelete }: FileTreeProps) {
-  const [isCreating, setIsCreating] = useState(false);
+export function FileTree({ 
+  files, 
+  directories, 
+  activeFile, 
+  onFileSelect, 
+  onFileCreate, 
+  onFolderCreate, 
+  onFileDelete,
+  onRename,
+  onDuplicate,
+  onMove
+}: FileTreeProps) {
+  const [createType, setCreateType] = useState<'file' | 'folder' | null>(null);
   const [newName, setNewName] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [focusedFolder, setFocusedFolder] = useState<string | null>(null);
+  
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, path: string, isDir: boolean } | null>(null);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
 
-  const tree = buildRenderTree(files);
+  const tree = buildRenderTree(files, directories);
 
   function toggleDir(path: string) {
     setExpanded((prev) => {
@@ -227,112 +285,231 @@ export function FileTree({ files, activeFile, onFileSelect, onFileCreate, onFile
     });
   }
 
-  function expandParents(filePath: string) {
-    const segs = filePath.split('/');
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      for (let i = 1; i < segs.length; i++) {
-        next.add(segs.slice(0, i).join('/'));
-      }
-      return next;
-    });
-  }
-
   function submitCreate() {
     const trimmed = newName.trim();
     if (trimmed) {
-      onFileCreate(trimmed);
-      expandParents(trimmed);
+      const path = focusedFolder ? `${focusedFolder}/${trimmed}` : trimmed;
+      if (createType === 'file') onFileCreate(path);
+      else if (createType === 'folder') {
+        onFolderCreate(path);
+        setExpanded(prev => new Set(prev).add(path));
+      }
     }
-    setIsCreating(false);
+    setCreateType(null);
     setNewName('');
   }
 
-  function cancelCreate() {
-    setIsCreating(false);
-    setNewName('');
+  function handleContextMenu(e: React.MouseEvent, path: string, isDir: boolean) {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, path, isDir });
   }
+
+  function handleRenameSubmit(newName: string) {
+    if (renamingPath && newName && newName !== renamingPath.split('/').pop()) {
+      const parts = renamingPath.split('/');
+      parts[parts.length - 1] = newName;
+      onRename(renamingPath, parts.join('/'));
+    }
+    setRenamingPath(null);
+  }
+
+  // Drag and Drop handlers
+  const dragPath = useRef<string | null>(null);
+
+  function handleDragStart(e: React.DragEvent, path: string) {
+    dragPath.current = path;
+    e.dataTransfer.setData('text/plain', path);
+    e.dataTransfer.effectAllowed = 'move';
+    
+    // Create a ghost image or just let default happen
+    const ghost = document.createElement('div');
+    ghost.style.display = 'none';
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 0, 0);
+  }
+
+  function handleDragOver(e: React.DragEvent, targetPath: string, isDir: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!dragPath.current || dragPath.current === targetPath) return;
+    
+    // Check if target is descendant of dragged (invalid)
+    if (targetPath && targetPath.startsWith(dragPath.current + '/')) return;
+
+    e.dataTransfer.dropEffect = 'move';
+    (e.currentTarget as HTMLElement).classList.add('bg-white/10');
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).classList.remove('bg-white/10');
+  }
+
+  function handleDrop(e: React.DragEvent, targetPath: string, isDir: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).classList.remove('bg-white/10');
+    
+    if (!dragPath.current || dragPath.current === targetPath) return;
+    
+    // Determine target directory
+    const targetDir = isDir ? targetPath : targetPath.split('/').slice(0, -1).join('/');
+    const fileName = dragPath.current.split('/').pop()!;
+    const newPath = targetDir ? `${targetDir}/${fileName}` : fileName;
+
+    if (newPath !== dragPath.current) {
+      onMove(dragPath.current, newPath);
+    }
+    dragPath.current = null;
+  }
+
+  const menuItems: ContextMenuItem[] = contextMenu ? [
+    { 
+      label: 'Rename', 
+      icon: <Edit2 size={14} />, 
+      onClick: () => setRenamingPath(contextMenu.path) 
+    },
+    { 
+      label: 'Duplicate', 
+      icon: <Copy size={14} />, 
+      onClick: () => onDuplicate(contextMenu.path) 
+    },
+    { 
+      label: 'Delete', 
+      icon: <Trash2 size={14} />, 
+      danger: true, 
+      onClick: () => onFileDelete(contextMenu.path) 
+    },
+  ] : [];
 
   return (
-    <div
-      className="flex flex-col h-full shrink-0 overflow-hidden select-none"
-      style={{ width: '200px', background: 'var(--color-bg-sidebar)' }}
+    <motion.div
+      layout
+      initial={false}
+      animate={{ width: isCollapsed ? '48px' : '220px' }}
+      transition={{ duration: 0.3, ease: 'easeInOut' }}
+      className="flex flex-col h-full shrink-0 overflow-hidden select-none relative"
+      style={{ background: 'var(--color-bg-sidebar)' }}
+      onClick={() => setFocusedFolder(null)}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onDrop={(e) => handleDrop(e, '', true)}
     >
       {/* Explorer header */}
       <div
-        className="flex items-center justify-between px-3 shrink-0"
-        style={{ height: '36px' }}
+        className="flex items-center justify-between px-4 shrink-0"
+        style={{ height: '48px' }}
       >
-        <span
-          className="text-[9px] font-semibold uppercase tracking-widest"
-          style={{ color: 'var(--color-text-dim)' }}
-        >
-          Explorer
-        </span>
-        <button
-          aria-label="New File"
-          title="New File"
-          className="flex items-center justify-center w-5 h-5 rounded transition-colors"
-          style={{ color: 'var(--color-text-dim)' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-muted)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-dim)'; }}
-          onClick={() => setIsCreating(true)}
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M9.5 1.1l3.4 3.5.1.4v2h-1V6H9V2H4v11h4v1H3.5l-.5-.5v-12l.5-.5h5.7l.3.1zM10 2v3h2.9L10 2zm4 11h-2v-2H11v2H9v1h2v2h1v-2h2v-1z"/>
-          </svg>
-        </button>
+        {!isCollapsed && (
+          <motion.span 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-[14px] font-bold text-[var(--color-text-dim)]"
+          >
+            Files
+          </motion.span>
+        )}
+        <div className={`flex items-center ${isCollapsed ? 'flex-col gap-4' : 'gap-2'}`}>
+          {!isCollapsed && (
+            <>
+              <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setCreateType('file'); }} 
+                className="p-1 hover:bg-white/5 rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
+              >
+                <FilePlus size={16} />
+              </button>
+              <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setCreateType('folder'); }}
+                className="p-1 hover:bg-white/5 rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
+              >
+                <FolderPlus size={16} />
+              </button>
+            </>
+          )}
+          <button 
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIsCollapsed(!isCollapsed); }}
+            className="p-1 hover:bg-white/5 rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
+          >
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        </div>
       </div>
 
       {/* File list */}
-      <ul role="listbox" className="flex-1 overflow-y-auto">
-        <AnimatePresence>
-          {isCreating && (
-            <motion.li
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.1, ease: 'easeOut' }}
-              className="flex items-center gap-2 py-[3px]"
-              style={{ paddingLeft: '12px', paddingRight: '8px' }}
-            >
-              <FileIcon />
-              <input
-                autoFocus
-                type="text"
-                className="flex-1 min-w-0 bg-transparent text-xs outline-none"
-                style={{
-                  color: 'var(--color-text-main)',
-                  paddingBottom: '1px',
-                }}
-                placeholder="filename.ts"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitCreate();
-                  if (e.key === 'Escape') cancelCreate();
-                }}
-                onBlur={submitCreate}
-              />
-            </motion.li>
-          )}
-        </AnimatePresence>
+      <AnimatePresence>
+        {!isCollapsed && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 overflow-y-auto"
+          >
+            {createType && (
+              <div 
+                className="flex items-center gap-2 py-1.5 bg-white/5"
+                style={{ paddingLeft: focusedFolder ? `${(focusedFolder.split('/').length + 1) * 12 + 16}px` : '16px' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {createType === 'file' ? (
+                  <File size={14} className="text-[var(--color-icon-file)]" />
+                ) : (
+                  <Folder size={14} className="text-[var(--color-icon-folder)]" />
+                )}
+                <input
+                  autoFocus
+                  type="text"
+                  className="flex-1 min-w-0 bg-transparent text-[13px] outline-none text-[var(--color-text-main)]"
+                  placeholder={createType === 'file' ? "filename.ts" : "folder name"}
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitCreate();
+                    if (e.key === 'Escape') setCreateType(null);
+                  }}
+                  onBlur={submitCreate}
+                />
+              </div>
+            )}
 
-        <AnimatePresence>
-          {tree.map((node) => (
-            <TreeNode
-              key={node.path}
-              node={node}
-              depth={0}
-              activeFile={activeFile}
-              expanded={expanded}
-              onToggle={toggleDir}
-              onFileSelect={onFileSelect}
-              onFileDelete={onFileDelete}
-            />
-          ))}
-        </AnimatePresence>
-      </ul>
-    </div>
+            <div className="py-2" onClick={(e) => e.stopPropagation()}>
+              {tree.map((node) => (
+                <TreeNode
+                  key={node.path}
+                  node={node}
+                  depth={0}
+                  activeFile={activeFile}
+                  expanded={expanded}
+                  onToggle={toggleDir}
+                  onFileSelect={onFileSelect}
+                  onFileDelete={onFileDelete}
+                  onFolderSelect={setFocusedFolder}
+                  onContextMenu={handleContextMenu}
+                  renamingPath={renamingPath}
+                  onRenameSubmit={handleRenameSubmit}
+                  onRenameCancel={() => setRenamingPath(null)}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {contextMenu && (
+        <ContextMenu 
+          x={contextMenu.x} 
+          y={contextMenu.y} 
+          items={menuItems} 
+          onClose={() => setContextMenu(null)} 
+        />
+      )}
+    </motion.div>
   );
 }

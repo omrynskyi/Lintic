@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { File, X } from 'lucide-react';
 
 interface TabBarProps {
   tabs: string[];
@@ -12,52 +13,47 @@ export function TabBar({ tabs, activeTab, onTabSelect, onTabClose }: TabBarProps
 
   return (
     <div
-      className="flex items-stretch overflow-x-auto shrink-0"
+      className="flex items-center gap-1 overflow-x-auto shrink-0 px-2"
       role="tablist"
-      style={{ background: 'var(--color-bg-sidebar)', height: '34px' }}
+      style={{ background: 'var(--color-bg-sidebar)', height: '48px' }}
     >
       <AnimatePresence initial={false}>
         {tabs.map((tab) => {
           const isActive = tab === activeTab;
+          const fileName = tab.split('/').pop() || tab;
           return (
             <motion.div
               key={tab}
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: 'auto' }}
-              exit={{ opacity: 0, width: 0 }}
-              transition={{ duration: 0.12, ease: 'easeOut' }}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.1 }}
               role="tab"
               aria-selected={isActive}
-              tabIndex={0}
               onClick={() => onTabSelect(tab)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') onTabSelect(tab);
-              }}
-              className="flex items-center gap-1.5 px-3 cursor-pointer text-xs shrink-0 group overflow-hidden"
-              style={{
-                background: isActive ? 'var(--color-bg-code)' : 'transparent',
-                color: isActive ? 'var(--color-text-main)' : 'var(--color-text-muted)',
-                borderTopLeftRadius: isActive ? 'var(--radius-md)' : '0',
-                borderTopRightRadius: isActive ? 'var(--radius-md)' : '0',
-                minWidth: '80px',
-                maxWidth: '160px',
-              }}
+              className={`flex items-center gap-2 px-4 py-2 cursor-pointer text-[13px] shrink-0 rounded-xl transition-all group ${
+                isActive 
+                  ? 'bg-[var(--color-bg-tab)] text-[var(--color-text-bold)]' 
+                  : 'text-[var(--color-text-dim)] hover:bg-white/5'
+              }`}
             >
-              <span className="truncate flex-1">{tab}</span>
+              <File 
+                size={14} 
+                className={isActive ? 'text-[var(--color-brand-yellow)]' : 'text-[var(--color-text-dim)]'} 
+              />
+              <span className={`truncate ${isActive ? 'font-bold' : 'font-medium'}`}>{fileName}</span>
               <button
+                type="button"
                 aria-label={`Close ${tab}`}
-                className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                style={{ color: '#444444', lineHeight: 1 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#888888'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#444444'; }}
+                className={`ml-1 transition-opacity p-0.5 hover:bg-white/10 rounded ${
+                  isActive ? 'opacity-40 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'
+                }`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onTabClose(tab);
                 }}
               >
-                <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z" />
-                </svg>
+                <X size={12} />
               </button>
             </motion.div>
           );

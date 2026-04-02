@@ -97,7 +97,7 @@ export class OpenAIAdapter implements AgentAdapter {
       );
     }
 
-    const messages: OpenAIChatMessage[] = [...context.history.map(toOpenAIMessage)];
+    const messages: OpenAIChatMessage[] = context.history.flatMap(toOpenAIMessages);
     if (msg !== null) messages.push({ role: 'user', content: msg });
 
     // max_tokens caps *output* tokens for this single call.
@@ -187,22 +187,18 @@ export class OpenAIAdapter implements AgentAdapter {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function toOpenAIMessage(msg: Message): OpenAIChatMessage {
+function toOpenAIMessages(msg: Message): OpenAIChatMessage[] {
   if (msg.role === 'tool') {
-    const result = msg.tool_results?.[0];
-    const out: OpenAIChatMessage = {
-      role: 'tool',
-      content: result?.output ?? '',
-      tool_call_id: result?.tool_call_id ?? '',
-    };
-    if (result?.name !== undefined) {
-      out.name = result.name;
-    }
-    return out;
+    return (msg.tool_results ?? []).map(result => ({
+      role: 'tool' as const,
+      content: result.output,
+      tool_call_id: result.tool_call_id,
+      name: result.name,
+    }));
   }
 
   if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-    return {
+    return [{
       role: 'assistant',
       content: msg.content,
       tool_calls: msg.tool_calls.map(tc => ({
@@ -210,13 +206,13 @@ function toOpenAIMessage(msg: Message): OpenAIChatMessage {
         type: 'function' as const,
         function: { name: tc.name, arguments: JSON.stringify(tc.input) },
       })),
-    };
+    }];
   }
 
-  return {
-    role: msg.role,
+  return [{
+    role: msg.role as 'system' | 'user' | 'assistant',
     content: msg.content,
-  };
+  }];
 }
 
 function fromOpenAIToolCall(tc: OpenAIToolCall): ToolCall {
