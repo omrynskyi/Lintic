@@ -6,6 +6,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
+    "build": "tsc -p ../core/tsconfig.json && tsc -p ../adapters/tsconfig.json && tsc -p tsconfig.build.json",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc -p ../core/tsconfig.json && tsc -p ../adapters/tsconfig.json && tsc --noEmit",
     "test": "vitest run"

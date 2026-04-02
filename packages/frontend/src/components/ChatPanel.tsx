@@ -2,6 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { marked, Renderer } from 'marked';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
+import { 
+  Send, 
+  CornerDownLeft, 
+  ChevronDown, 
+  Square, 
+  MessageSquare,
+  AlertCircle
+} from 'lucide-react';
 import { ToolActionCard } from './ToolActionCard.js';
 import type { LocalToolAction, LocalToolCall, LocalToolResult } from './ToolActionCard.js';
 
@@ -89,6 +97,53 @@ interface ChatPanelProps {
   agentConfig?: AgentConfig;
 }
 
+function generateId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** Helper to parse JSON tool use from assistant content */
+function parseToolUse(content: string): { content: string | null; tool_actions: LocalToolAction[] } {
+  const tool_actions: LocalToolAction[] = [];
+  let remainingText = content;
+
+  // 1. Look for ANY JSON block that looks like tool_use
+  // This is more robust than matching only at the start
+  const jsonRegex = /\{[\s\S]*?"__type"\s*:\s*"tool_use"[\s\S]*?\}/g;
+  let jsonMatch;
+  while ((jsonMatch = jsonRegex.exec(content)) !== null) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.tool_calls) {
+        tool_actions.push({ tool_calls: parsed.tool_calls, tool_results: [] });
+        remainingText = remainingText.replace(jsonMatch[0], parsed.content || '');
+      }
+    } catch {
+      // Not valid JSON
+    }
+  }
+
+  // 2. Look for <function/NAME{...} patterns
+  const functionRegex = /<function\/(\w+)(\{[\s\S]*?\})/g;
+  let funcMatch;
+  while ((funcMatch = functionRegex.exec(remainingText)) !== null) {
+    try {
+      const name = funcMatch[1];
+      const input = JSON.parse(funcMatch[2]!);
+      tool_actions.push({
+        tool_calls: [{ id: generateId(), name: name!, input }],
+        tool_results: []
+      });
+      remainingText = remainingText.replace(funcMatch[0], '');
+    } catch {
+      // Invalid JSON in function call
+    }
+  }
+
+  return {
+    content: remainingText.trim() || null,
+    tool_actions
+  };
+}
 
 // Configure a custom renderer with highlight.js code highlighting.
 const renderer = new Renderer();
@@ -100,10 +155,6 @@ renderer.code = ({ text, lang }: { text: string; lang?: string | null }) => {
 
 function renderMarkdown(content: string): string {
   return marked(content, { renderer }) as string;
-}
-
-function generateId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 export function ChatPanel({
@@ -186,7 +237,6 @@ export function ChatPanel({
     const agentConfigBody = agentConfig ? { agent_config: agentConfig } : {};
 
     try {
-      // ── Open SSE stream ────────────────────────────────────────────────────
       const res = await fetch(`${apiBase}/api/sessions/${sessionId}/messages/stream`, {
         method: 'POST',
         headers: jsonHeaders,
@@ -199,12 +249,9 @@ export function ChatPanel({
         throw new Error(errBody.error ?? `HTTP ${res.status}`);
       }
 
-      // ── Process SSE events ─────────────────────────────────────────────────
       for await (const { event, data } of readSSEStream(res.body)) {
         if (event === 'tool_calls') {
           const { request_id, tool_calls } = data as SSEToolCallsPayload;
-
-          // Show pending card immediately (before tools run)
           const msgId = generateId();
           setMessages((prev) => [
             ...prev,
@@ -217,17 +264,15 @@ export function ChatPanel({
             },
           ]);
 
-          // Execute tools locally (or stub if no executor)
           const toolResults: LocalToolResult[] = onExecuteTools
             ? await onExecuteTools(tool_calls)
-            : tool_calls.map((c) => ({
+            : tool_calls.map((c: LocalToolCall) => ({
                 tool_call_id: c.id,
                 name: c.name,
                 output: 'Tool execution not available',
                 is_error: true,
               }));
 
-          // Update card with results
           setMessages((prev) =>
             prev.map((m) =>
               m.id === msgId
@@ -236,7 +281,6 @@ export function ChatPanel({
             ),
           );
 
-          // POST results to unblock the server loop — no need to await response
           void fetch(`${apiBase}/api/sessions/${sessionId}/tool-results/${request_id}`, {
             method: 'POST',
             headers: jsonHeaders,
@@ -264,7 +308,6 @@ export function ChatPanel({
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') {
-        // User clicked Stop — suppress error
       } else {
         setError(err instanceof Error ? err.message : 'Unknown error');
         setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
@@ -289,97 +332,93 @@ export function ChatPanel({
   const isLowTokens = tokenPct < 20;
 
   return (
-    <div className="flex flex-col h-full bg-transparent">
-      {/* Header */}
-      <div
-        className="shrink-0 px-3 flex items-center justify-between"
-        style={{ height: '36px' }}
-      >
-        <span
-          className="text-[9px] font-semibold uppercase tracking-widest"
-          style={{ color: 'var(--color-text-dim)' }}
-        >
-          Agent
-        </span>
-      </div>
-
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--color-bg-chat)' }}>
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
+      <div className="flex-1 overflow-y-auto px-4 flex flex-col gap-10 relative">
         {messages.length === 0 && !loading && (
           <div
-            className="flex-1 flex items-center justify-center text-xs"
-            style={{ color: 'var(--color-text-dimmer)' }}
+            className="flex-1 flex items-center justify-center text-xs opacity-40 pt-12"
+            style={{ color: 'var(--color-text-dim)' }}
           >
             Ask the agent to help with your solution.
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
-          >
-            <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--color-text-dim)' }}>
-              {msg.role === 'user' ? 'You' : 'Agent'}
-            </span>
+        {messages.map((msg) => {
+          const isUser = msg.role === 'user';
+          
+          // Try to parse tool use from content
+          let displayContent = msg.content;
+          let displayToolActions = msg.tool_actions || [];
+          
+          if (!isUser && msg.content) {
+            const parsed = parseToolUse(msg.content);
+            displayContent = parsed.content || '';
+            if (parsed.tool_actions.length > 0) {
+              displayToolActions = [...displayToolActions, ...parsed.tool_actions];
+            }
+          }
+          
+          return (
+            <div
+              key={msg.id}
+              className={`flex flex-col gap-6 ${isUser ? 'sticky top-0 z-10 pt-4 pb-12' : ''}`}
+              style={isUser ? { background: 'var(--color-bg-chat)' } : {}}
+            >
+              {/* Text content */}
+              {isUser ? (
+                <div
+                  className="w-full rounded-[25px] px-8 py-5 text-sm whitespace-pre-wrap break-words border-none shadow-none"
+                  style={{ background: 'var(--color-bg-user-msg)', color: 'var(--color-text-user-msg)' }}
+                >
+                  {displayContent}
+                </div>
+              ) : (
+                <>
+                  {/* Tool action cards (before text content) */}
+                  {displayToolActions.length > 0 && (
+                    <div className="w-full" data-testid="tool-actions-container">
+                      {displayToolActions.map((action, i) => (
+                        <ToolActionCard key={i} action={action} />
+                      ))}
+                    </div>
+                  )}
 
-            {/* Tool action cards (before text content) */}
-            {msg.tool_actions && msg.tool_actions.length > 0 && (
-              <div className="w-full max-w-[95%]" data-testid="tool-actions-container">
-                {msg.tool_actions.map((action, i) => (
-                  <ToolActionCard key={i} action={action} />
-                ))}
-              </div>
-            )}
-
-            {/* Text content */}
-            {msg.role === 'user' ? (
-              <div
-                className="max-w-[90%] rounded-[var(--radius-md)] px-3 py-2 text-xs whitespace-pre-wrap break-words"
-                style={{ background: 'var(--color-bg-user-msg)', color: 'var(--color-text-user-msg)' }}
-              >
-                {msg.content}
-              </div>
-            ) : msg.content ? (
-              <div
-                className="max-w-[95%] rounded-[var(--radius-md)] px-3 py-2 text-xs chat-markdown break-words"
-                style={{ background: 'var(--color-bg-agent-msg)', color: 'var(--color-text-agent-msg)', border: '1px solid var(--color-border-main)' }}
-                data-testid="agent-message"
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-              />
-            ) : null}
-          </div>
-        ))}
+                  {displayContent && (
+                    <div
+                      className="w-full text-sm chat-markdown break-words"
+                      style={{ color: 'var(--color-text-agent-msg)' }}
+                      data-testid="agent-message"
+                      // eslint-disable-next-line @typescript-eslint/naming-convention
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(displayContent) }}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
 
         {loading && (
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-2 py-2">
             <div
               data-testid="loading-spinner"
-              className="flex gap-1 items-center px-3 py-2 rounded"
-              style={{ background: 'var(--color-bg-agent-msg)' }}
+              className="flex gap-2 items-center px-5 py-3 rounded-full"
+              style={{ background: 'var(--color-bg-agent-msg)', opacity: 0.6 }}
             >
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full animate-bounce"
-                style={{ background: 'var(--color-text-muted)', animationDelay: '0ms' }}
-              />
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full animate-bounce"
-                style={{ background: 'var(--color-text-muted)', animationDelay: '150ms' }}
-              />
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full animate-bounce"
-                style={{ background: 'var(--color-text-muted)', animationDelay: '300ms' }}
-              />
+              <span className="w-1.5 h-1.5 rounded-full animate-bounce bg-current" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full animate-bounce bg-current" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full animate-bounce bg-current" style={{ animationDelay: '300ms' }} />
             </div>
           </div>
         )}
 
         {error && (
           <div
-            className="text-xs px-3 py-2 rounded"
+            className="text-xs px-6 py-4 rounded-[25px] flex items-center gap-3"
             style={{ background: 'var(--color-bg-error)', color: 'var(--color-status-error)' }}
           >
+            <AlertCircle size={16} />
             {error}
           </div>
         )}
@@ -387,69 +426,109 @@ export function ChatPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div
-        className="shrink-0 px-3 pb-3 pt-2"
-        style={{ borderTop: '1px solid var(--color-border-main)' }}
-      >
-        {exhausted && (
-          <div
-            className="text-xs mb-2 px-2 py-1 rounded text-center"
-            style={{ background: 'var(--color-border-main)', color: 'var(--color-text-muted)' }}
-          >
-            {constraints.interactionsRemaining <= 0
-              ? 'No interactions remaining.'
-              : 'Token budget exhausted.'}
-          </div>
-        )}
-        <div className="flex gap-2 items-end">
+      {/* Input Section */}
+      <div className="shrink-0 px-4 pt-4">
+        <div
+          className="rounded-[25px] pt-5 pb-2 pl-5 pr-5 flex flex-col gap-5 border-none"
+          style={{
+            background: 'var(--color-bg-input)',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.2)'
+          }}
+        >
           <textarea
             ref={textareaRef}
-            className="flex-1 rounded-[var(--radius-md)] px-3 py-2 text-xs resize-none outline-none"
+            className="w-full text-[15px] resize-none outline-none border-none bg-transparent"
             style={{
-              background: 'var(--color-bg-input)',
               color: 'var(--color-text-main)',
-              border: '1px solid var(--color-border-main)',
-              minHeight: '60px',
-              maxHeight: '160px',
+              minHeight: '44px',
+              maxHeight: '140px',
               fontFamily: 'inherit',
             }}
-            placeholder={exhausted ? 'Constraints exhausted' : 'Ask the agent… (Enter to send, Shift+Enter for newline)'}
+            placeholder={exhausted ? 'Constraints exhausted' : 'Talk to the agent...'}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={exhausted || loading}
-            rows={2}
+            rows={1}
             data-testid="chat-input"
           />
-          {loading ? (
-            <button
-              className="shrink-0 px-4 py-2 rounded-[var(--radius-md)] text-xs font-medium transition-colors"
-              style={{ background: 'var(--color-bg-stop-btn)', color: 'var(--color-status-error-text)', cursor: 'pointer', border: '1px solid var(--color-status-error)' }}
-              onClick={stopAgent}
-              aria-label="Stop agent"
-              data-testid="stop-button"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              className="shrink-0 px-4 py-2 rounded-[var(--radius-md)] text-xs font-medium transition-colors"
-              style={{
-                background: exhausted || !input.trim() ? 'var(--color-border-main)' : 'var(--color-bg-send-btn)',
-                color: exhausted || !input.trim() ? 'var(--color-text-dimmest)' : '#ffffff',
-                cursor: exhausted || !input.trim() ? 'not-allowed' : 'pointer',
-              }}
-              onClick={() => void sendMessage()}
-              disabled={exhausted || !input.trim()}
-              aria-label="Send message"
-              data-testid="chat-send"
-            >
-              Send
-            </button>
-          )}
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              {/* Model Dropdown Mock */}
+              <div
+                className="flex items-center gap-2 text-[13px] font-medium opacity-60 cursor-pointer hover:opacity-100 transition-opacity"
+                style={{ color: 'var(--color-text-main)' }}
+              >
+                <span>{agentConfig?.model || 'Opus 4.6'}</span>
+                <ChevronDown size={14} />
+              </div>
+              {/* Level/Setting Dropdown Mock */}
+              <div
+                className="flex items-center gap-2 text-[13px] font-medium opacity-60 cursor-pointer hover:opacity-100 transition-opacity"
+                style={{ color: 'var(--color-text-main)' }}
+              >
+                <span>Medium</span>
+                <ChevronDown size={14} />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {loading ? (
+                <button
+                  className="w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-red-500/20"
+                  style={{ background: 'var(--color-bg-stop-btn)', color: 'var(--color-status-error-text)' }}
+                  onClick={stopAgent}
+                  aria-label="Stop agent"
+                  data-testid="stop-button"
+                >
+                  <Square size={14} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  className="px-4 h-9 rounded-full flex items-center gap-1 transition-all hover:scale-[1.02]"
+                  style={{
+                    background: exhausted || !input.trim() ? 'transparent' : 'var(--color-text-main)',
+                    color: exhausted || !input.trim() ? 'var(--color-text-dimmer)' : 'var(--color-bg-input)',
+                    opacity: exhausted || !input.trim() ? 0.3 : 1,
+                    cursor: exhausted || !input.trim() ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={() => void sendMessage()}
+                  disabled={exhausted || !input.trim()}
+                  aria-label="Send message"
+                  data-testid="chat-send"
+                >
+                  <CornerDownLeft size={16} className="opacity-60" />
+                  <Send size={16} />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Usage Bar */}
+      <div 
+        className="shrink-0 h-12 px-5 flex items-center justify-between border-none"
+        style={{ 
+          background: 'transparent'
+        }}
+      >
+        <div className="flex items-center gap-2 opacity-50" style={{ color: 'var(--color-text-main)' }}>
+          <span className="text-[12px] font-medium tracking-tight">{constraints.interactionsRemaining} / {constraints.maxInteractions}</span>
+          <MessageSquare size={13} />
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-[12px] font-medium opacity-50" style={{ color: 'var(--color-text-main)' }}>
+            {Math.round(100 - tokenPct)}% Tokens Used
+          </span>
+          <div className="w-40 h-1 rounded-full overflow-hidden bg-white/10">
+            <div 
+              className="h-full transition-all duration-300"
+              style={{ width: `${100 - tokenPct}%`, background: isLowTokens ? 'var(--color-status-error)' : 'var(--color-status-diff-add)' }}
+            />
+          </div>
+        </div>
+      </div>    </div>
   );
 }

@@ -123,7 +123,6 @@ export function IdePanel({ terminalRef }: IdePanelProps) {
             style={{
               height: 200,
               flexShrink: 0,
-              borderTop: '1px solid var(--color-border-main)',
               overflow: 'hidden',
               background: 'var(--color-bg-ui)',
             }}

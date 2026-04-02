@@ -1,0 +1,9 @@
+.git
+.github
+node_modules
+coverage
+dist
+data/*.db
+packages/*/dist
+packages/backend/lintic.db
+npm-debug.log

@@ -94,9 +94,8 @@ export function AssessmentLinkLoader({
       data-testid="assessment-loader"
     >
       <div
-        className="max-w-md rounded-2xl border px-5 py-4 text-sm"
+        className="max-w-md rounded-2xl px-5 py-4 text-sm"
         style={{
-          borderColor: 'var(--color-border-main)',
           background: 'var(--color-bg-panel)',
           color: error ? 'var(--color-status-error-text)' : 'var(--color-text-main)',
         }}

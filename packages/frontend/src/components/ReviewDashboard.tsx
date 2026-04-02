@@ -107,9 +107,8 @@ export function ReviewDashboard({
     return (
       <div className="h-screen flex items-center justify-center px-6">
         <div
-          className="max-w-md rounded-2xl border px-5 py-4 text-sm"
+          className="max-w-md rounded-2xl px-5 py-4 text-sm"
           style={{
-            borderColor: 'var(--color-border-main)',
             background: 'var(--color-bg-panel)',
             color: 'var(--color-status-error-text)',
           }}
@@ -123,8 +122,8 @@ export function ReviewDashboard({
   return (
     <div className="h-screen overflow-hidden flex flex-col" style={{ background: 'var(--color-bg-app)' }}>
       <header
-        className="shrink-0 px-5 py-4 border-b flex items-center justify-between gap-4"
-        style={{ borderColor: 'var(--color-border-main)' }}
+        className="shrink-0 px-5 py-4 flex items-center justify-between gap-4"
+        style={{ background: 'var(--color-bg-panel)' }}
       >
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-[0.24em]" style={{ color: 'var(--color-text-dim)' }}>
@@ -141,10 +140,9 @@ export function ReviewDashboard({
           <button
             type="button"
             onClick={() => triggerJsonDownload(`review-${sessionId}.json`, data)}
-            className="rounded-full px-3 py-2 text-xs font-medium border"
+            className="rounded-full px-3 py-2 text-xs font-medium"
             style={{
-              borderColor: 'var(--color-border-main)',
-              background: 'var(--color-bg-panel)',
+              background: 'var(--color-bg-app)',
               color: 'var(--color-text-main)',
             }}
           >
@@ -153,10 +151,9 @@ export function ReviewDashboard({
           <button
             type="button"
             onClick={onToggleTheme}
-            className="rounded-full px-3 py-2 text-xs font-medium border"
+            className="rounded-full px-3 py-2 text-xs font-medium"
             style={{
-              borderColor: 'var(--color-border-main)',
-              background: 'var(--color-bg-panel)',
+              background: 'var(--color-bg-app)',
               color: 'var(--color-text-main)',
             }}
           >
@@ -165,13 +162,13 @@ export function ReviewDashboard({
         </div>
       </header>
 
-      <div className="shrink-0 px-5 py-4 border-b" style={{ borderColor: 'var(--color-border-main)' }}>
+      <div className="shrink-0 px-5 py-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {data.metrics.map((metric) => (
             <div
               key={metric.name}
-              className="rounded-2xl border px-4 py-3"
-              style={{ borderColor: 'var(--color-border-main)', background: 'var(--color-bg-panel)' }}
+              className="rounded-2xl px-4 py-3"
+              style={{ background: 'var(--color-bg-panel)' }}
             >
               <div className="text-[11px] uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-dim)' }}>
                 {metric.label}
@@ -189,7 +186,7 @@ export function ReviewDashboard({
         </div>
       </div>
 
-      <div className="shrink-0 px-5 py-4 border-b" style={{ borderColor: 'var(--color-border-main)' }}>
+      <div className="shrink-0 px-5 py-4">
         <div className="flex items-center justify-between gap-4 mb-3">
           <div>
             <div className="text-[11px] uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-dim)' }}>
@@ -219,9 +216,8 @@ export function ReviewDashboard({
               type="button"
               data-testid={`timeline-event-${index}`}
               onClick={() => setSelectedEventIndex(index)}
-              className="shrink-0 rounded-full px-3 py-1.5 text-xs border transition-colors"
+              className="shrink-0 rounded-full px-3 py-1.5 text-xs transition-colors"
               style={{
-                borderColor: index === selectedEventIndex ? 'var(--color-border-accent)' : 'var(--color-border-main)',
                 background: index === selectedEventIndex ? 'var(--color-brand-orange-pale)' : 'var(--color-bg-panel)',
                 color: 'var(--color-text-main)',
               }}
@@ -233,7 +229,7 @@ export function ReviewDashboard({
       </div>
 
       <div className="flex-1 min-h-0 grid lg:grid-cols-[1.2fr_0.8fr] gap-0">
-        <section className="min-h-0 overflow-auto px-5 py-4 border-r" style={{ borderColor: 'var(--color-border-main)' }}>
+        <section className="min-h-0 overflow-auto px-5 py-4">
           <div className="text-[11px] uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--color-text-dim)' }}>
             Conversation Replay
           </div>
@@ -246,11 +242,11 @@ export function ReviewDashboard({
                   key={entry.id}
                   ref={(node) => { conversationRefs.current[index] = node; }}
                   data-testid={`conversation-entry-${index}`}
-                  className="rounded-2xl border px-4 py-3"
+                  className="rounded-2xl px-4 py-3"
                   style={{
                     opacity: isPast ? 1 : 0.45,
-                    borderColor: isAnchor ? 'var(--color-border-accent)' : 'var(--color-border-main)',
                     background: entry.title === 'You' ? 'var(--color-bg-user-msg)' : 'var(--color-bg-agent-msg)',
+                    boxShadow: isAnchor ? '0 0 0 2px var(--color-brand-orange)' : 'none',
                   }}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -278,17 +274,17 @@ export function ReviewDashboard({
             Code State
           </div>
           <div
-            className="rounded-2xl border overflow-hidden"
-            style={{ borderColor: 'var(--color-border-main)', background: 'var(--color-bg-panel)' }}
+            className="rounded-2xl overflow-hidden"
+            style={{ background: 'var(--color-bg-panel)' }}
           >
             <div
-              className="px-4 py-3 border-b text-sm font-medium"
-              style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-main)' }}
+              className="px-4 py-3 text-sm font-medium"
+              style={{ color: 'var(--color-text-main)', background: 'var(--color-bg-app)' }}
             >
               {codeState.activePath ?? 'No file changes captured yet'}
             </div>
             <div className="grid md:grid-cols-2">
-              <div className="border-r min-h-[280px]" style={{ borderColor: 'var(--color-border-main)' }}>
+              <div className="min-h-[280px]">
                 <div className="px-4 py-2 text-[11px] uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-dim)' }}>
                   Snapshot
                 </div>

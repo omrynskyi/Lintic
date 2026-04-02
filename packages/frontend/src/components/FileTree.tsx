@@ -169,11 +169,10 @@ function TreeNode({ node, depth, activeFile, expanded, onToggle, onFileSelect, o
       aria-label={node.path}
       className="flex items-center gap-2 py-[3px] cursor-pointer group"
       style={{
-        paddingLeft: isActive ? `${indent - 2}px` : `${indent}px`,
+        paddingLeft: `${indent}px`,
         paddingRight: '6px',
         background: isActive ? 'var(--color-bg-active-node)' : undefined,
         color: isActive ? 'var(--color-text-main)' : 'var(--color-text-dim)',
-        borderLeft: isActive ? '2px solid var(--color-border-accent)' : '2px solid transparent',
       }}
       onMouseEnter={(e) => {
         if (!isActive) {
@@ -304,7 +303,6 @@ export function FileTree({ files, activeFile, onFileSelect, onFileCreate, onFile
                 className="flex-1 min-w-0 bg-transparent text-xs outline-none"
                 style={{
                   color: 'var(--color-text-main)',
-                  borderBottom: '1px solid var(--color-border-accent)',
                   paddingBottom: '1px',
                 }}
                 placeholder="filename.ts"

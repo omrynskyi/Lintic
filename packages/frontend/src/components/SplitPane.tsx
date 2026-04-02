@@ -44,7 +44,7 @@ export function SplitPane({ left, right }: SplitPaneProps) {
     >
       {/* Left pane (IDE) */}
       <div
-        className="overflow-hidden md:h-full h-1/2 rounded-[var(--radius-md)] border border-[var(--color-border-main)] shadow-lg bg-[var(--color-bg-code)]"
+        className="overflow-hidden md:h-full h-1/2 rounded-[var(--radius-md)] shadow-lg bg-[var(--color-bg-code)]"
         style={{ width: `${leftPct}%` }}
         data-testid="pane-left"
       >
@@ -53,7 +53,7 @@ export function SplitPane({ left, right }: SplitPaneProps) {
 
       {/* Right pane (Chat) with resize handle on its left edge */}
       <div
-        className="relative overflow-hidden md:h-full flex-1 h-1/2 rounded-[var(--radius-md)] border border-[var(--color-border-main)] shadow-lg bg-[var(--color-bg-panel)]"
+        className="relative overflow-hidden md:h-full flex-1 h-1/2 rounded-[var(--radius-md)] shadow-lg bg-[var(--color-bg-panel)]"
         data-testid="pane-right"
       >
         <div

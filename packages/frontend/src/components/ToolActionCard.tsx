@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 // ─── Local types (mirror @lintic/core shapes used in AgentLoopResult) ─────────
 
@@ -29,12 +30,6 @@ const OUTPUT_MAX_CHARS = 500;
 function truncate(text: string): { text: string; truncated: boolean } {
   if (text.length <= OUTPUT_MAX_CHARS) return { text, truncated: false };
   return { text: text.slice(0, OUTPUT_MAX_CHARS), truncated: true };
-}
-
-function formatParams(input: Record<string, unknown>): string {
-  return Object.entries(input)
-    .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
-    .join(', ');
 }
 
 // ─── Sub-renderers ────────────────────────────────────────────────────────────
@@ -95,52 +90,54 @@ function DefaultOutput({ output, isError }: { output: string; isError: boolean }
 
 function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalToolResult | undefined }) {
   const [open, setOpen] = useState(false);
-  const paramStr = formatParams(call.input);
   const isError = result?.is_error ?? false;
+
+  // Determine the primary parameter to show in the header (e.g., path for write_file)
+  let mainParam = '';
+  if (call.name === 'write_file' || call.name === 'read_file') {
+    mainParam = (call.input['path'] as string) || '';
+  } else if (call.name === 'run_command') {
+    mainParam = (call.input['command'] as string) || '';
+  } else if (call.name === 'search_files') {
+    mainParam = (call.input['pattern'] as string) || '';
+  }
+
+  const displayName = call.name
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 
   return (
     <div
       data-testid="tool-action-card"
-      style={{
-        border: `1px solid ${isError ? 'var(--color-border-tool-error)' : 'var(--color-border-tool)'}`,
-        borderRadius: '4px',
-        overflow: 'hidden',
-        marginBottom: '4px',
-      }}
+      className="mb-4"
     >
       {/* Header — toggle */}
       <button
         data-testid="tool-action-toggle"
         onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80"
         style={{
-          width: '100%',
-          textAlign: 'left',
-          padding: '4px 8px',
-          background: isError ? 'var(--color-bg-tool-error)' : 'var(--color-bg-tool-header)',
-          border: 'none',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          fontFamily: 'monospace',
-          fontSize: '11px',
-          color: isError ? 'var(--color-status-error-text)' : 'var(--color-text-tool-name)',
+          color: isError ? 'var(--color-status-error-text)' : 'var(--color-text-main)',
         }}
         aria-expanded={open}
       >
-        <span style={{ color: 'var(--color-text-dimmest)', width: '8px', flexShrink: 0 }}>{open ? '▼' : '▶'}</span>
-        <span style={{ fontWeight: 600 }}>{call.name}</span>
-        {paramStr && (
-          <span style={{ color: 'var(--color-text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {paramStr}
+        <span className="font-bold">{displayName}:</span>
+        {mainParam && (
+          <span className="opacity-40 overflow-hidden text-ellipsis whitespace-nowrap font-normal">
+            {mainParam}
           </span>
         )}
+        <ChevronDown 
+          size={12} 
+          className={`transition-transform duration-200 opacity-40 ${open ? 'rotate-180' : ''}`} 
+        />
         {isError && (
           <span
             data-testid="tool-action-error-badge"
-            style={{ marginLeft: 'auto', color: 'var(--color-status-error-text)', fontSize: '10px', flexShrink: 0 }}
+            className="ml-2 text-[10px] text-red-500 font-bold"
           >
-            Error
+            (Error)
           </span>
         )}
       </button>
@@ -149,29 +146,28 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
       {open && (
         <div
           data-testid="tool-action-body"
-          style={{ padding: '6px 8px', background: 'var(--color-bg-tool-body)', borderTop: '1px solid var(--color-border-tool)' }}
+          className="mt-2 p-6 rounded-[25px] bg-opacity-80"
+          style={{ 
+            background: 'var(--color-bg-tool-body)', 
+          }}
         >
-          {/* Parameters table */}
+          {/* Parameters table for other params */}
           {Object.keys(call.input).length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '6px' }}>
-              <tbody>
-                {Object.entries(call.input).map(([k, v]) => (
-                  <tr key={k}>
-                    <td style={{ fontFamily: 'monospace', fontSize: '10px', color: 'var(--color-text-dimmer)', paddingRight: '8px', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
-                      {k}
-                    </td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '10px', color: 'var(--color-text-muted)', wordBreak: 'break-all' }}>
-                      {typeof v === 'string' ? v : JSON.stringify(v)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="mb-4 space-y-2">
+              {Object.entries(call.input).map(([k, v]) => (
+                <div key={k} className="flex flex-col gap-1 text-[11px] font-mono">
+                  <span className="opacity-50 font-bold uppercase text-[9px] tracking-wider">{k}:</span>
+                  <div className="opacity-90 break-all p-2 rounded-lg bg-black/5 dark:bg-white/5">
+                    {typeof v === 'string' ? v : JSON.stringify(v)}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
 
           {/* Result */}
           {result !== undefined && (
-            <div style={{ borderTop: '1px solid var(--color-border-tool)', paddingTop: '6px' }}>
+            <div className="mt-4 pt-4">
               {call.name === 'write_file' && !isError ? (
                 <DiffPreview content={result.output === 'ok' ? (call.input['content'] as string | undefined) ?? '' : result.output} />
               ) : call.name === 'run_command' || call.name === 'search_files' ? (

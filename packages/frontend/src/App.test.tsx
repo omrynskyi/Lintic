@@ -90,7 +90,7 @@ vi.mock('./lib/review-replay.js', () => ({
 
 describe('App prompt display', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     localStorage.clear();
     Object.defineProperty(window, 'matchMedia', {
       writable: true,

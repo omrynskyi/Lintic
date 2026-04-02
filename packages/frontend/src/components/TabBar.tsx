@@ -37,8 +37,6 @@ export function TabBar({ tabs, activeTab, onTabSelect, onTabClose }: TabBarProps
               style={{
                 background: isActive ? 'var(--color-bg-code)' : 'transparent',
                 color: isActive ? 'var(--color-text-main)' : 'var(--color-text-muted)',
-                borderRight: '1px solid var(--color-border-main)',
-                borderTop: isActive ? '2px solid var(--color-brand-orange)' : '2px solid transparent',
                 borderTopLeftRadius: isActive ? 'var(--radius-md)' : '0',
                 borderTopRightRadius: isActive ? 'var(--radius-md)' : '0',
                 minWidth: '80px',

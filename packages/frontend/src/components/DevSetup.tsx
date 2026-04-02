@@ -103,7 +103,7 @@ export function DevSetup({ apiBase = '', onSessionReady }: DevSetupProps) {
   const inputStyle: React.CSSProperties = {
     background: '#141414',
     color: '#cccccc',
-    border: '1px solid #222222',
+    border: 'none',
     borderRadius: '4px',
     padding: '6px 10px',
     fontSize: '12px',
@@ -225,7 +225,7 @@ export function DevSetup({ apiBase = '', onSessionReady }: DevSetupProps) {
             style={{
               background: loading || reviewLoading ? '#1a1a1a' : '#2a2216',
               color: loading || reviewLoading ? '#444444' : '#f0c29a',
-              border: '1px solid #3a2c18',
+              border: 'none',
               borderRadius: '4px',
               padding: '8px 16px',
               fontSize: '12px',

@@ -313,10 +313,10 @@ For UI stories, also include:
 **Description:** As a candidate, I need to see the assessment prompt clearly when I start my session so I know what to build.
 
 **Acceptance Criteria:**
-- [ ] Prompts defined in lintic.yml under prompts array with id, title, description, tags
-- [ ] On session start, prompt title and description render in a dismissible panel above the IDE
-- [ ] Prompt remains accessible via a "View Prompt" button in the top bar
-- [ ] Typecheck passes
+- [x] Prompts defined in lintic.yml under prompts array with id, title, description, tags
+- [x] On session start, prompt title and description render in a dismissible panel above the IDE
+- [x] Prompt remains accessible via a "View Prompt" button in the top bar
+- [x] Typecheck passes
 - [ ] Verify in browser using dev-browser skill
 
 ### US-019: Docker build and compose configuration

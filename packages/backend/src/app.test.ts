@@ -1,3 +1,6 @@
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test, expect } from 'vitest';
 import request from 'supertest';
 import type {
@@ -205,6 +208,58 @@ describe('GET /health', () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ok' });
+  });
+});
+
+describe('frontend static serving', () => {
+  function createFrontendDist(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'lintic-frontend-dist-'));
+    writeFileSync(join(dir, 'index.html'), '<!doctype html><html><body><div id="root">Lintic App</div></body></html>');
+    mkdirSync(join(dir, 'assets'));
+    writeFileSync(join(dir, 'assets', 'app.js'), 'console.log("asset");');
+    return dir;
+  }
+
+  test('serves frontend HTML at the root path', async () => {
+    const frontendDistPath = createFrontendDist();
+
+    try {
+      const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG, { frontendDistPath });
+      const res = await request(app).get('/');
+
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('Lintic App');
+    } finally {
+      rmSync(frontendDistPath, { recursive: true, force: true });
+    }
+  });
+
+  test('falls back to index.html for SPA routes', async () => {
+    const frontendDistPath = createFrontendDist();
+
+    try {
+      const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG, { frontendDistPath });
+      const res = await request(app).get('/review/sess-123');
+
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('Lintic App');
+    } finally {
+      rmSync(frontendDistPath, { recursive: true, force: true });
+    }
+  });
+
+  test('does not rewrite unknown API routes to the frontend app', async () => {
+    const frontendDistPath = createFrontendDist();
+
+    try {
+      const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG, { frontendDistPath });
+      const res = await request(app).get('/api/unknown');
+
+      expect(res.status).toBe(404);
+      expect(res.text).not.toContain('Lintic App');
+    } finally {
+      rmSync(frontendDistPath, { recursive: true, force: true });
+    }
   });
 });
 

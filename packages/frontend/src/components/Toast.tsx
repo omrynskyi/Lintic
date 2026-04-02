@@ -36,7 +36,7 @@ function ToastItem({ toast, onDismiss }: { toast: ToastMessage; onDismiss: (id: 
   return (
     <div
       className="pointer-events-auto flex items-center gap-3 px-4 py-2.5 rounded shadow-lg text-xs"
-      style={{ background: '#1a2a1a', color: '#90d890', border: '1px solid #1e3a1e', maxWidth: '320px' }}
+      style={{ background: '#1a2a1a', color: '#90d890', maxWidth: '320px' }}
       role="alert"
       data-testid="toast"
     >

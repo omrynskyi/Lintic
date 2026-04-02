@@ -6,10 +6,32 @@ Open-source, self-hostable AI coding assessment platform. Candidates get a brows
 
 ```bash
 npm install
+npm run build
 npm run typecheck
 npm run lint
 npm run test
 ```
+
+## Docker Deployment
+
+Lintic now ships as a single production image where the backend serves the built frontend and API from the same container.
+
+1. Export the required environment variables:
+
+```bash
+export LINTIC_API_KEY=your-provider-key
+export LINTIC_ADMIN_KEY=your-admin-key
+export LINTIC_SECRET_KEY=your-signing-secret
+```
+
+2. Review `lintic.yml` and keep `${...}` placeholders for secrets you want injected from the environment.
+3. Start the stack:
+
+```bash
+docker compose up --build
+```
+
+The app will be available at `http://localhost:3000`, `./lintic.yml` is mounted read-only into the container, and `./data` persists the SQLite database between restarts. The container also exposes `GET /health` for health checks.
 
 ## Contributing
 

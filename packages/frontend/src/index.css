@@ -21,9 +21,11 @@
   --color-bg-active-node: #FFFAF5;
   --color-bg-hover-node: #FFF7F0;
   --color-bg-input: #FFFFFF;
+  --color-bg-chat: #F5F0EB;
   --color-bg-user-msg: var(--color-brand-sky-pale);
   --color-bg-agent-msg: #FFFFFF;
   --color-bg-bar-empty: #F5F0EB;
+  --color-bg-usage-bar: #F5F0EB;
   --color-bg-error: #FFF0F0;
   --color-bg-stop-btn: #FFEBEB;
   --color-bg-send-btn: var(--color-brand-orange);
@@ -32,11 +34,13 @@
   --color-bg-tool-error: #FFF5F5;
 
   /* Borders */
-  --color-border-main: rgba(0, 0, 0, 0.08);
-  --color-border-muted: rgba(0, 0, 0, 0.04);
-  --color-border-accent: var(--color-brand-orange);
-  --color-border-tool: rgba(0, 0, 0, 0.06);
-  --color-border-tool-error: rgba(232, 116, 97, 0.2);
+  --color-border-main: transparent;
+  --color-border-muted: transparent;
+  --color-border-accent: transparent;
+  --color-border-chat-input: transparent;
+  --color-border-tool: transparent;
+  --color-border-tool-error: transparent;
+  --color-border: transparent;
 
   /* Text & Icons */
   --color-text-main: #1A1520;
@@ -63,10 +67,10 @@
   --color-icon-folder-closed: #C8A44A;
 
   /* Border Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-sm: 25px;
+  --radius-md: 25px;
+  --radius-lg: 25px;
+  --radius-xl: 25px;
 }
 
 /* Dark Mode Overrides */
@@ -85,9 +89,11 @@
   --color-bg-active-node: #242424;
   --color-bg-hover-node: #202020;
   --color-bg-input: #1a1a1a;
-  --color-bg-user-msg: #1e2a3a;
+  --color-bg-chat: #0a0a0a;
+  --color-bg-user-msg: #1a1a1a;
   --color-bg-agent-msg: #1a1a1a;
   --color-bg-bar-empty: #222222;
+  --color-bg-usage-bar: #0a0a0a;
   --color-bg-error: #2a1a1a;
   --color-bg-stop-btn: #2a1212;
   --color-bg-send-btn: #162a4a;
@@ -96,11 +102,13 @@
   --color-bg-tool-error: #201212;
 
   /* Borders */
-  --color-border-main: rgba(255, 255, 255, 0.1);
-  --color-border-muted: rgba(255, 255, 255, 0.05);
-  --color-border-accent: var(--color-brand-orange);
-  --color-border-tool: rgba(255, 255, 255, 0.1);
-  --color-border-tool-error: rgba(232, 116, 97, 0.3);
+  --color-border-main: transparent;
+  --color-border-muted: transparent;
+  --color-border-accent: transparent;
+  --color-border-chat-input: transparent;
+  --color-border-tool: transparent;
+  --color-border-tool-error: transparent;
+  --color-border: transparent;
 
   /* Text & Icons */
   --color-text-main: #eeeeee;
@@ -123,4 +131,57 @@
 
   /* Icon Colors */
   --color-icon-file: #888888;
+}
+
+/* Chat Markdown Styling */
+.chat-markdown {
+  line-height: 1.6;
+}
+
+.chat-markdown p {
+  margin-bottom: 1em;
+}
+
+.chat-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown pre {
+  margin: 1em 0;
+  padding: 1.25rem;
+  background-color: #0d1117;
+  border-radius: 12px;
+  overflow-x: auto;
+  border: none;
+}
+
+.chat-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85em;
+}
+
+.chat-markdown .hljs-pre {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+.chat-markdown ul, .chat-markdown ol {
+  margin-bottom: 1em;
+  padding-left: 1.5em;
+}
+
+.chat-markdown li {
+  margin-bottom: 0.25em;
+}
+
+.chat-markdown a {
+  color: var(--color-brand-sky);
+  text-decoration: underline;
+}
+
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3, .chat-markdown h4 {
+  margin: 1.5em 0 0.5em 0;
+  font-weight: 600;
+  color: var(--color-text-bold);
 }

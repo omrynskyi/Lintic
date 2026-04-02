@@ -40,7 +40,7 @@ export function TopBar({
   return (
     <header
       className="flex items-center justify-between px-4 shrink-0 gap-4"
-      style={{ height: '44px', borderBottom: '1px solid var(--color-border-main)' }}
+      style={{ height: '44px' }}
     >
       {/* Logo + brand */}
       <div className="flex items-center gap-2 min-w-0">
@@ -65,7 +65,6 @@ export function TopBar({
             onClick={onOpenReviewDebug}
             className="rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]"
             style={{
-              border: '1px solid var(--color-border-main)',
               background: 'var(--color-bg-panel)',
               color: 'var(--color-text-main)',
             }}
@@ -81,7 +80,6 @@ export function TopBar({
             onClick={onViewPrompt}
             className="rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]"
             style={{
-              border: '1px solid var(--color-border-main)',
               background: 'var(--color-bg-panel)',
               color: 'var(--color-text-main)',
             }}

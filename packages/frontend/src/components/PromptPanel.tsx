@@ -8,9 +8,8 @@ interface PromptPanelProps {
 export function PromptPanel({ prompt, onDismiss }: PromptPanelProps) {
   return (
     <section
-      className="shrink-0 border-b px-4 py-3"
+      className="shrink-0 px-4 py-3"
       style={{
-        borderColor: 'var(--color-border-main)',
         background: 'var(--color-bg-panel)',
       }}
       data-testid="prompt-panel"
@@ -44,10 +43,10 @@ export function PromptPanel({ prompt, onDismiss }: PromptPanelProps) {
               {prompt.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                  className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
                   style={{
-                    borderColor: 'var(--color-border-main)',
                     color: 'var(--color-text-muted)',
+                    background: 'var(--color-bg-app)',
                   }}
                 >
                   {tag}
@@ -59,9 +58,9 @@ export function PromptPanel({ prompt, onDismiss }: PromptPanelProps) {
         <button
           type="button"
           onClick={onDismiss}
-          className="rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]"
+          className="rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]"
           style={{
-            borderColor: 'var(--color-border-main)',
+            background: 'var(--color-bg-app)',
             color: 'var(--color-text-main)',
           }}
           data-testid="dismiss-prompt"
