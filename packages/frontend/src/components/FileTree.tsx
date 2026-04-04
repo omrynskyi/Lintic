@@ -11,7 +11,9 @@ import {
   ChevronDown,
   Edit2,
   Trash2,
-  Copy
+  Copy,
+  FileText,
+  ClipboardList
 } from 'lucide-react';
 import { ContextMenu, ContextMenuItem } from './ContextMenu.js';
 
@@ -40,6 +42,10 @@ interface RenderNode {
 // ─── Tree builder ─────────────────────────────────────────────────────────────
 
 const IGNORED = ['node_modules', '.git', '.DS_Store'];
+
+function isPlansRoot(path: string): boolean {
+  return path === 'plans';
+}
 
 export function buildRenderTree(files: Record<string, string>, directories: string[]): RenderNode[] {
   const filePaths = Object.keys(files).filter(
@@ -89,6 +95,9 @@ export function buildRenderTree(files: Record<string, string>, directories: stri
         children: node.isDir ? toArr(node.children) : [],
       }))
       .sort((a, b) => {
+        if (isPlansRoot(a.path) !== isPlansRoot(b.path)) {
+          return isPlansRoot(a.path) ? -1 : 1;
+        }
         if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
@@ -134,6 +143,10 @@ function TreeNode({
   }, [node.name]);
 
   if (node.isDir) {
+    const folderIcon = isPlansRoot(node.path)
+      ? <ClipboardList size={14} className="text-[#7DD3FC] opacity-90" />
+      : <Folder size={14} className="text-[var(--color-icon-folder)] opacity-80" />;
+
     return (
       <div
         onDragOver={(e) => onDragOver(e, node.path, true)}
@@ -158,7 +171,7 @@ function TreeNode({
           <span className="text-[var(--color-text-dim)]">
             {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </span>
-          <Folder size={14} className="text-[var(--color-icon-folder)] opacity-80" />
+          {folderIcon}
           {isRenaming ? (
             <input
               autoFocus
@@ -203,6 +216,9 @@ function TreeNode({
   }
 
   const isActive = node.path === activeFile;
+  const fileIcon = node.path.startsWith('plans/')
+    ? <FileText size={14} className="text-[#93C5FD] opacity-85" />
+    : <File size={14} className="text-[var(--color-icon-file)] opacity-60" />;
   return (
     <div
       className={`flex items-center gap-2 py-1.5 cursor-pointer group transition-colors ${
@@ -223,7 +239,7 @@ function TreeNode({
       onDragLeave={onDragLeave}
       onDrop={(e) => onDrop(e, node.path, false)}
     >
-      <File size={14} className="text-[var(--color-icon-file)] opacity-60" />
+      {fileIcon}
       {isRenaming ? (
         <input
           autoFocus

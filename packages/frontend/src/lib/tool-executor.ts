@@ -125,6 +125,11 @@ export class ToolExecutor {
   }
 
   private async handleWriteFile({ path, content }: { path: string; content: string }): Promise<string> {
+    const segments = path.split('/').filter(Boolean);
+    if (segments.length > 1) {
+      const parentDir = `${path.startsWith('/') ? '/' : ''}${segments.slice(0, -1).join('/')}`;
+      await withTimeout(this.wc.fs.mkdir(parentDir, { recursive: true }), FILE_TIMEOUT_MS, 'write_file_mkdir');
+    }
     await withTimeout(this.wc.fs.writeFile(path, content), FILE_TIMEOUT_MS, 'write_file');
     return 'ok';
   }

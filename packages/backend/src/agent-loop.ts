@@ -1,12 +1,13 @@
 import type { AgentAdapter, AgentResponse, Message, SessionContext, ToolCall, ToolResult, TokenUsage } from '@lintic/core';
 
-export type ToolRunner = (calls: ToolCall[]) => Promise<ToolResult[]>;
+export type ToolRunner = (calls: ToolCall[], description: string | null) => Promise<ToolResult[]>;
 
 export type LoopEvent =
   | { type: 'tool_action'; data: ToolAction }
   | { type: 'done'; data: AgentLoopResult };
 
 export interface ToolAction {
+  description: string | null;
   tool_calls: ToolCall[];
   tool_results: ToolResult[];
 }
@@ -70,9 +71,14 @@ export async function runAgentLoop(
     toolCallsUsed += calls.length;
 
     // Execute tools via the injected runner.
-    const results = await toolRunner(calls);
-    tool_actions.push({ tool_calls: calls, tool_results: results });
-    onEvent?.({ type: 'tool_action', data: { tool_calls: calls, tool_results: results } });
+    const results = await toolRunner(calls, response.content);
+    const action: ToolAction = {
+      description: response.content,
+      tool_calls: calls,
+      tool_results: results,
+    };
+    tool_actions.push(action);
+    onEvent?.({ type: 'tool_action', data: action });
 
     // Build the continuation history.
     // On the first iteration the user message hasn't been added yet.

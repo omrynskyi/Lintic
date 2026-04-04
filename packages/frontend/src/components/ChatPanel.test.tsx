@@ -475,6 +475,41 @@ describe('ChatPanel', () => {
     });
   });
 
+  test('renders the streamed tool description before tool execution details', async () => {
+    const toolCalls: LocalToolCall[] = [
+      { id: 'tc-1', name: 'read_file', input: { path: '/app/index.ts' } },
+    ];
+    const toolResults: LocalToolResult[] = [
+      { tool_call_id: 'tc-1', name: 'read_file', output: 'hello', is_error: false },
+    ];
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(historyResponse)
+      .mockResolvedValueOnce(
+        makeSSEResponse([
+          { event: 'tool_calls', data: { request_id: 'req-1', description: 'Inspecting the entrypoint first.', tool_calls: toolCalls } },
+          { event: 'done', data: sseAgentDone('I read the file') },
+        ]),
+      )
+      .mockResolvedValue(okResponse);
+
+    render(
+      <ChatPanel
+        sessionId="s1"
+        constraints={defaultConstraints}
+        onExecuteTools={vi.fn().mockResolvedValue(toolResults)}
+      />,
+    );
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'read a file' } });
+    fireEvent.click(screen.getByTestId('chat-send'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('tool-action-description')).toHaveTextContent('Inspecting the entrypoint first.'),
+    );
+  });
+
   test('calls onExecuteTools with tool_calls from tool_calls event', async () => {
     const toolCalls: LocalToolCall[] = [
       { id: 'tc-1', name: 'run_command', input: { command: 'npm test' } },
@@ -577,6 +612,44 @@ describe('ChatPanel', () => {
     await waitFor(() => expect(screen.getByTestId('agent-message')).toBeInTheDocument());
   });
 
+  test('calls onPlanGenerated when a plan file is written successfully', async () => {
+    const toolCalls: LocalToolCall[] = [
+      { id: 'tc-1', name: 'write_file', input: { path: 'plans/2026-04-04-101500-plan.md', content: '# Plan' } },
+    ];
+    const toolResults: LocalToolResult[] = [
+      { tool_call_id: 'tc-1', name: 'write_file', output: 'ok', is_error: false },
+    ];
+    const onPlanGenerated = vi.fn();
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(historyResponse)
+      .mockResolvedValueOnce(
+        makeSSEResponse([
+          { event: 'tool_calls', data: { request_id: 'req-1', description: 'Writing the plan file.', tool_calls: toolCalls } },
+          { event: 'done', data: sseAgentDone('Plan ready') },
+        ]),
+      )
+      .mockResolvedValue(okResponse);
+
+    render(
+      <ChatPanel
+        sessionId="s1"
+        constraints={defaultConstraints}
+        mode="plan"
+        onPlanGenerated={onPlanGenerated}
+        onExecuteTools={vi.fn().mockResolvedValue(toolResults)}
+      />,
+    );
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'make a plan' } });
+    fireEvent.click(screen.getByTestId('chat-send'));
+
+    await waitFor(() =>
+      expect(onPlanGenerated).toHaveBeenCalledWith('plans/2026-04-04-101500-plan.md'),
+    );
+  });
+
   test('forwards agentConfig to backend in request body', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(historyResponse)
@@ -599,7 +672,71 @@ describe('ChatPanel', () => {
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
     const [url, init] = vi.mocked(fetch).mock.calls[1]!;
     expect(String(url)).toContain('messages/stream');
-    const body = JSON.parse(init?.body as string) as { agent_config?: unknown };
+    const body = JSON.parse(init?.body as string) as { agent_config?: unknown; mode?: string };
     expect(body.agent_config).toEqual(agentConfig);
+    expect(body.mode).toBe('build');
+  });
+
+  test('allows switching between Build and Plan modes', async () => {
+    const onModeChange = vi.fn();
+    render(
+      <ChatPanel
+        sessionId="s1"
+        constraints={defaultConstraints}
+        mode="build"
+        onModeChange={onModeChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('mode-toggle-plan'));
+    expect(onModeChange).toHaveBeenCalledWith('plan');
+  });
+
+  test('sends plan mode when the panel is in Plan mode', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(historyResponse)
+      .mockResolvedValueOnce(makeSSEResponse([{ event: 'done', data: sseAgentDone('ok') }]));
+
+    render(<ChatPanel sessionId="s1" constraints={defaultConstraints} mode="plan" />);
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'plan this' } });
+    fireEvent.click(screen.getByTestId('chat-send'));
+
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
+    const [, init] = vi.mocked(fetch).mock.calls[1]!;
+    const body = JSON.parse(init?.body as string) as { mode?: string };
+    expect(body.mode).toBe('plan');
+  });
+
+  test('approves the latest plan and starts a Build-mode turn', async () => {
+    const onApprovePlan = vi.fn().mockResolvedValue('Implement the approved plan.');
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(historyResponse)
+      .mockResolvedValueOnce(makeSSEResponse([{ event: 'done', data: sseAgentDone('Implementation started') }]));
+
+    render(
+      <ChatPanel
+        sessionId="s1"
+        constraints={defaultConstraints}
+        latestPlanPath="plans/2026-04-04-101500-plan.md"
+        onApprovePlan={onApprovePlan}
+        mode="plan"
+      />,
+    );
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByTestId('approve-plan'));
+
+    await waitFor(() =>
+      expect(onApprovePlan).toHaveBeenCalledWith('plans/2026-04-04-101500-plan.md'),
+    );
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
+
+    const [, init] = vi.mocked(fetch).mock.calls[1]!;
+    const body = JSON.parse(init?.body as string) as { message?: string; mode?: string };
+    expect(body.message).toBe('Implement the approved plan.');
+    expect(body.mode).toBe('build');
   });
 });

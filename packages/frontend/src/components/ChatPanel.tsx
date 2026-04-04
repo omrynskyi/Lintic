@@ -13,6 +13,8 @@ import {
 import { ToolActionCard } from './ToolActionCard.js';
 import type { LocalToolAction, LocalToolCall, LocalToolResult } from './ToolActionCard.js';
 
+export type AgentMode = 'build' | 'plan';
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -41,13 +43,14 @@ export interface AgentConfig {
 interface SSEDonePayload {
   content: string | null;
   stop_reason: string;
-  tool_actions: Array<{ tool_calls: LocalToolCall[]; tool_results: LocalToolResult[] }>;
+  tool_actions: Array<{ description?: string | null; tool_calls: LocalToolCall[]; tool_results: LocalToolResult[] }>;
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
   constraints_remaining: { tokens_remaining: number; interactions_remaining: number; seconds_remaining: number };
 }
 
 interface SSEToolCallsPayload {
   request_id: string;
+  description?: string | null;
   tool_calls: LocalToolCall[];
 }
 
@@ -99,6 +102,11 @@ interface ChatPanelProps {
   agentConfig?: AgentConfig;
   /** Notifies the parent when a turn is actively running. */
   onLoadingChange?: (loading: boolean) => void;
+  mode?: AgentMode;
+  onModeChange?: (mode: AgentMode) => void;
+  latestPlanPath?: string | null;
+  onPlanGenerated?: (path: string) => void;
+  onApprovePlan?: (path: string) => Promise<string>;
 }
 
 function generateId() {
@@ -143,8 +151,8 @@ function parseToolUse(content: string): { content: string | null; tool_actions: 
       const parsed = JSON.parse(content.trim());
       if (parsed.__type === 'tool_use' && parsed.tool_calls) {
         return {
-          content: parsed.content || null,
-          tool_actions: [{ tool_calls: parsed.tool_calls, tool_results: [] }]
+          content: null,
+          tool_actions: [{ description: parsed.content || null, tool_calls: parsed.tool_calls, tool_results: [] }]
         };
       }
     } catch {
@@ -180,8 +188,8 @@ function parseToolUse(content: string): { content: string | null; tool_actions: 
         try {
           const parsed = JSON.parse(potentialJson);
           if (parsed.__type === 'tool_use' && parsed.tool_calls) {
-            tool_actions.push({ tool_calls: parsed.tool_calls, tool_results: [] });
-            remainingText = remainingText.slice(0, objStart) + (parsed.content || '') + remainingText.slice(objEnd + 1);
+            tool_actions.push({ description: parsed.content || null, tool_calls: parsed.tool_calls, tool_results: [] });
+            remainingText = remainingText.slice(0, objStart) + remainingText.slice(objEnd + 1);
             // Restart search from current position as remainingText has changed
             startIndex = remainingText.indexOf(marker);
             continue;
@@ -239,6 +247,11 @@ export function ChatPanel({
   onStopTools,
   agentConfig,
   onLoadingChange,
+  mode = 'build',
+  onModeChange,
+  latestPlanPath,
+  onPlanGenerated,
+  onApprovePlan,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -299,9 +312,10 @@ export function ChatPanel({
     abortRef.current?.abort();
   }, [onStopTools]);
 
-  const sendMessage = useCallback(async () => {
-    const text = input.trim();
+  const sendMessage = useCallback(async (overrideText?: string, overrideMode?: AgentMode) => {
+    const text = (overrideText ?? input).trim();
     if (!text || loading || exhausted || !sessionId) return;
+    const selectedMode = overrideMode ?? mode;
 
     const userMsg: ChatMessage = {
       id: generateId(),
@@ -326,7 +340,7 @@ export function ChatPanel({
       const res = await fetch(`${apiBase}/api/sessions/${sessionId}/messages/stream`, {
         method: 'POST',
         headers: jsonHeaders,
-        body: JSON.stringify({ message: text, ...agentConfigBody }),
+        body: JSON.stringify({ message: text, mode: selectedMode, ...agentConfigBody }),
         signal: ctrl.signal,
       });
 
@@ -337,7 +351,7 @@ export function ChatPanel({
 
       for await (const { event, data } of readSSEStream(res.body)) {
         if (event === 'tool_calls') {
-          const { request_id, tool_calls } = data as SSEToolCallsPayload;
+          const { request_id, description, tool_calls } = data as SSEToolCallsPayload;
           const msgId = generateId();
           setMessages((prev) => [
             ...prev,
@@ -345,7 +359,7 @@ export function ChatPanel({
               id: msgId,
               role: 'assistant',
               content: '',
-              tool_actions: [{ tool_calls, tool_results: [] }],
+              tool_actions: [{ description: description ?? null, tool_calls, tool_results: [] }],
               timestamp: Date.now(),
             },
           ]);
@@ -362,10 +376,23 @@ export function ChatPanel({
           setMessages((prev) =>
             prev.map((m) =>
               m.id === msgId
-                ? { ...m, tool_actions: [{ tool_calls, tool_results: toolResults }] }
+                ? { ...m, tool_actions: [{ description: description ?? null, tool_calls, tool_results: toolResults }] }
                 : m,
             ),
           );
+
+          const generatedPlanPath = tool_calls
+            .map((call) => ({
+              path: typeof call.input['path'] === 'string' ? String(call.input['path']) : null,
+              result: toolResults.find((result) => result.tool_call_id === call.id),
+              name: call.name,
+            }))
+            .filter(({ path, result, name }) => name === 'write_file' && path?.startsWith('plans/') && !result?.is_error)
+            .at(-1)?.path;
+
+          if (generatedPlanPath) {
+            onPlanGenerated?.(generatedPlanPath);
+          }
 
           void fetch(`${apiBase}/api/sessions/${sessionId}/tool-results/${request_id}`, {
             method: 'POST',
@@ -401,7 +428,31 @@ export function ChatPanel({
       setLoading(false);
       abortRef.current = null;
     }
-  }, [input, loading, exhausted, sessionId, apiBase, sessionToken, agentConfig, onExecuteTools, onConstraintsUpdate]);
+  }, [
+    agentConfig,
+    apiBase,
+    exhausted,
+    input,
+    loading,
+    mode,
+    onConstraintsUpdate,
+    onExecuteTools,
+    onPlanGenerated,
+    sessionId,
+    sessionToken,
+  ]);
+
+  const approvePlan = useCallback(async () => {
+    if (!latestPlanPath || !onApprovePlan || loading) return;
+
+    try {
+      const approvedMessage = await onApprovePlan(latestPlanPath);
+      onModeChange?.('build');
+      await sendMessage(approvedMessage, 'build');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to approve plan');
+    }
+  }, [latestPlanPath, loading, onApprovePlan, onModeChange, sendMessage]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -466,7 +517,6 @@ export function ChatPanel({
             const contentBlocks: string[] = [];
             
             for (const msg of group.messages) {
-              let displayContent = msg.content;
               if (msg.tool_actions) {
                 allToolActions.push(...msg.tool_actions);
               }
@@ -546,7 +596,13 @@ export function ChatPanel({
               maxHeight: '140px',
               fontFamily: 'inherit',
             }}
-            placeholder={exhausted ? 'Constraints exhausted' : 'Talk to the agent...'}
+            placeholder={
+              exhausted
+                ? 'Constraints exhausted'
+                : mode === 'plan'
+                  ? 'Ask the agent to inspect the repo and write a plan...'
+                  : 'Tell the agent what to build...'
+            }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -565,17 +621,46 @@ export function ChatPanel({
                 <span>{agentConfig?.model || 'Opus 4.6'}</span>
                 <ChevronDown size={14} />
               </div>
-              {/* Level/Setting Dropdown Mock */}
-              <div
-                className="flex items-center gap-2 text-[13px] font-medium opacity-60 cursor-pointer hover:opacity-100 transition-opacity"
-                style={{ color: 'var(--color-text-main)' }}
-              >
-                <span>Medium</span>
-                <ChevronDown size={14} />
+              <div className="flex items-center rounded-full bg-white/5 p-1">
+                {(['build', 'plan'] as const).map((option) => {
+                  const active = mode === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      data-testid={`mode-toggle-${option}`}
+                      onClick={() => onModeChange?.(option)}
+                      disabled={loading}
+                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold transition-colors"
+                      style={{
+                        background: active ? '#FFFFFF' : 'transparent',
+                        color: active ? '#000000' : 'rgba(255,255,255,0.6)',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        opacity: loading ? 0.6 : 1,
+                      }}
+                    >
+                      {option === 'build' ? 'Build' : 'Plan'}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div className="flex items-center gap-3">
+              {latestPlanPath && onApprovePlan && !loading ? (
+                <button
+                  type="button"
+                  data-testid="approve-plan"
+                  onClick={() => void approvePlan()}
+                  className="px-3 py-1.5 rounded-full flex items-center justify-center text-[12px] font-semibold transition-all hover:scale-[1.03]"
+                  style={{
+                    background: 'rgba(16,185,129,0.15)',
+                    color: '#6EE7B7',
+                  }}
+                >
+                  Approve plan
+                </button>
+              ) : null}
               {loading ? (
                 <button
                   type="button"
@@ -590,7 +675,7 @@ export function ChatPanel({
               ) : (
                 <button
                   type="button"
-                  className="h-10 px-5 rounded-full flex items-center justify-center gap-2 transition-all hover:scale-[1.05]"
+                  className="px-3 py-1.5 rounded-full flex items-center justify-center gap-2 text-[12px] font-semibold transition-all hover:scale-[1.05]"
                   style={{
                     background: exhausted || !input.trim() ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
                     color: exhausted || !input.trim() ? 'rgba(255,255,255,0.2)' : '#000000',

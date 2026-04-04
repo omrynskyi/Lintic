@@ -170,4 +170,14 @@ describe('buildRenderTree', () => {
     expect(tree[0]!.isDir).toBe(true);
     expect(tree[1]!.isDir).toBe(false);
   });
+
+  test('pins plans directory at the top of the root tree', () => {
+    const tree = buildRenderTree({
+      'src/index.ts': '',
+      'plans/2026-04-04-101500-plan.md': '',
+      'README.md': '',
+    }, ['src', 'plans']);
+
+    expect(tree[0]!.path).toBe('plans');
+  });
 });

@@ -4,14 +4,14 @@ import { TopBar } from './components/TopBar.js';
 import { SplitPane } from './components/SplitPane.js';
 import { IdePanel } from './components/IdePanel.js';
 import { ChatPanel } from './components/ChatPanel.js';
-import type { AgentConfig } from './components/ChatPanel.js';
+import type { AgentConfig, AgentMode } from './components/ChatPanel.js';
 import { DevSetup } from './components/DevSetup.js';
 import type { DevSession } from './components/DevSetup.js';
 import { Toast } from './components/Toast.js';
 import type { ToastMessage } from './components/Toast.js';
 import { useConstraintTimer } from './lib/useConstraintTimer.js';
 import { ToolExecutor } from './lib/tool-executor.js';
-import { getWebContainer, writeFile } from './lib/webcontainer.js';
+import { getWebContainer, readFile, writeFile } from './lib/webcontainer.js';
 import type { WebContainer } from '@webcontainer/api';
 import type { LocalToolCall, LocalToolResult } from './components/ToolActionCard.js';
 import type { TerminalHandle } from './components/Terminal.js';
@@ -62,8 +62,10 @@ export function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | undefined>(undefined);
   const [agentConfig, setAgentConfig] = useState<AgentConfig | undefined>(undefined);
+  const [agentMode, setAgentMode] = useState<AgentMode>('build');
   const [activePrompt, setActivePrompt] = useState<PromptSummary | null>(null);
   const [fileToOpen, setFileToOpen] = useState<string | null>(null);
+  const [latestPlanPath, setLatestPlanPath] = useState<string | null>(null);
   const wcRef = useRef<WebContainer | null>(null);
   const executorRef = useRef<ToolExecutor | null>(null);
   const terminalRef = useRef<TerminalHandle>(null);
@@ -145,6 +147,8 @@ export function App() {
       setSessionToken(saved.sessionToken);
       setActivePrompt(saved.prompt);
       setAgentConfig(undefined);
+      setAgentMode('build');
+      setLatestPlanPath(null);
       setSubmitConfirmationOpen(false);
       if (validation.status === 'submitted') {
         setSubmittedStats(validation.stats);
@@ -162,7 +166,9 @@ export function App() {
     setSessionId(session.sessionId);
     setSessionToken(session.sessionToken);
     setAgentConfig(session.agentConfig);
+    setAgentMode('build');
     setActivePrompt(session.prompt);
+    setLatestPlanPath(null);
     setSubmittedStats(null);
     setSubmitConfirmationOpen(false);
     setAppState('active');
@@ -211,6 +217,22 @@ export function App() {
       addToast('Failed to open instructions');
     }
   }, [activePrompt, addToast]);
+
+  const handlePlanGenerated = useCallback((path: string) => {
+    setLatestPlanPath(path);
+    setFileToOpen(`${path}-${Date.now()}`);
+  }, []);
+
+  const handleApprovePlan = useCallback(async (path: string) => {
+    const plan = await readFile(path);
+    return [
+      `Implement the approved plan from \`${path}\`.`,
+      '',
+      'Follow the plan closely, but adapt if the repository requires a small correction.',
+      '',
+      plan,
+    ].join('\n');
+  }, []);
 
   const handleOpenSubmitConfirmation = useCallback(() => {
     if (!sessionId || chatLoading || submittingTask || appState !== 'active') {
@@ -285,7 +307,9 @@ export function App() {
           setSessionId(nextSessionId);
           setSessionToken(nextSessionToken);
           setAgentConfig(undefined);
+          setAgentMode('build');
           setActivePrompt(prompt);
+          setLatestPlanPath(null);
           setAssessmentToken(null);
           window.history.replaceState({}, '', '/');
           setAppState('resuming');
@@ -375,6 +399,11 @@ export function App() {
                 sessionId={sessionId}
                 sessionToken={sessionToken}
                 agentConfig={agentConfig}
+                mode={agentMode}
+                onModeChange={setAgentMode}
+                latestPlanPath={latestPlanPath}
+                onPlanGenerated={handlePlanGenerated}
+                onApprovePlan={handleApprovePlan}
                 onExecuteTools={handleExecuteTools}
                 onStopTools={handleStopTools}
                 constraints={{

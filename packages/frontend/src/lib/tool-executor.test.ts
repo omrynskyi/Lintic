@@ -21,6 +21,7 @@ function toolCall(overrides: Partial<ToolCall> & Pick<ToolCall, 'name' | 'input'
 // ─── Mock WebContainer ────────────────────────────────────────────────────────
 
 const mockFs = {
+  mkdir: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
   readdir: vi.fn(),
@@ -83,9 +84,11 @@ describe('ToolExecutor', () => {
 
   describe('write_file', () => {
     test('returns "ok" on success', async () => {
+      mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.writeFile.mockResolvedValue(undefined);
       const result = await executor.execute(toolCall({ name: 'write_file', input: { path: '/app/out.ts', content: 'const x = 1;' } }));
       expect(result).toEqual({ tool_call_id: 'tc-1', name: 'write_file', output: 'ok', is_error: false });
+      expect(mockFs.mkdir).toHaveBeenCalledWith('/app', { recursive: true });
       expect(mockFs.writeFile).toHaveBeenCalledWith('/app/out.ts', 'const x = 1;');
     });
 

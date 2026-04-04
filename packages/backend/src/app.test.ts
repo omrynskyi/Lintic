@@ -201,12 +201,16 @@ class FakeDb implements DatabaseAdapter {
 
 class FakeAdapter implements AgentAdapter {
   lastUsage: TokenUsage = { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 };
+  lastContext: SessionContext | null = null;
+  lastMessage: string | null = null;
 
   init(_config: AgentConfig): Promise<void> {
     return Promise.resolve();
   }
 
   sendMessage(_msg: string | null, _ctx: SessionContext): Promise<AgentResponse> {
+    this.lastMessage = _msg;
+    this.lastContext = _ctx;
     return Promise.resolve({
       content: 'Hello from the agent!',
       usage: this.lastUsage,
@@ -1087,6 +1091,37 @@ describe('POST /api/sessions/:id/messages/stream', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({});
     expect(res.status).toBe(400);
+  });
+
+  test('uses the Build system prompt by default', async () => {
+    const db = new FakeDb();
+    const adapter = new FakeAdapter();
+    const app = createApp(db, adapter, TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+
+    await request(app)
+      .post(`/api/sessions/${id}/messages/stream`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Hello' });
+
+    expect(adapter.lastContext?.history[0]?.role).toBe('system');
+    expect(adapter.lastContext?.history[0]?.content).toContain('Your goal is to help the candidate complete their coding task efficiently.');
+  });
+
+  test('uses the Plan system prompt and includes a generated plan path', async () => {
+    const db = new FakeDb();
+    const adapter = new FakeAdapter();
+    const app = createApp(db, adapter, TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+
+    await request(app)
+      .post(`/api/sessions/${id}/messages/stream`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Plan this task', mode: 'plan' });
+
+    expect(adapter.lastContext?.history[0]?.role).toBe('system');
+    expect(adapter.lastContext?.history[0]?.content).toContain('Your only job for this turn is to create an implementation plan.');
+    expect(adapter.lastContext?.history[0]?.content).toMatch(/plans\/\d{4}-\d{2}-\d{2}-\d{6}-plan\.md/);
   });
 
   test('streams text/event-stream with done event containing agent content', async () => {

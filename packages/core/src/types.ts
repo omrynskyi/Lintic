@@ -27,6 +27,8 @@ export interface AgentConfig {
   model: string;
 }
 
+export type AgentRequestMode = 'build' | 'plan';
+
 // ─── Tool Calling ────────────────────────────────────────────────────────────
 
 export type ToolName =

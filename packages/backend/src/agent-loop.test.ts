@@ -18,8 +18,8 @@ function endTurnResponse(content: string, u = usage(10)): AgentResponse {
   return { content, usage: u, stop_reason: 'end_turn' };
 }
 
-function toolUseResponse(calls: ToolCall[], u = usage(10)): AgentResponse {
-  return { content: null, tool_calls: calls, usage: u, stop_reason: 'tool_use' };
+function toolUseResponse(calls: ToolCall[], u = usage(10), content: string | null = null): AgentResponse {
+  return { content, tool_calls: calls, usage: u, stop_reason: 'tool_use' };
 }
 
 function toolCall(id: string, name: ToolCall['name'] = 'read_file'): ToolCall {
@@ -71,7 +71,7 @@ describe('runAgentLoop', () => {
     const toolResult = { tool_call_id: 'tc-1', name: 'read_file' as const, output: 'content', is_error: false };
 
     adapter.responses = [
-      toolUseResponse([call]),
+      toolUseResponse([call], usage(10), 'Reading the file first.'),
       endTurnResponse('Done after reading'),
     ];
     noopRunner.mockResolvedValueOnce([toolResult]);
@@ -81,9 +81,11 @@ describe('runAgentLoop', () => {
     expect(result.content).toBe('Done after reading');
     expect(result.stop_reason).toBe('end_turn');
     expect(result.tool_actions).toHaveLength(1);
+    expect(result.tool_actions[0]!.description).toBe('Reading the file first.');
     expect(result.tool_actions[0]!.tool_calls).toEqual([call]);
     expect(result.tool_actions[0]!.tool_results).toEqual([toolResult]);
     expect(noopRunner).toHaveBeenCalledTimes(1);
+    expect(noopRunner).toHaveBeenCalledWith([call], 'Reading the file first.');
   });
 
   test('chains three tool iterations before end_turn', async () => {

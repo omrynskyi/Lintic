@@ -18,6 +18,7 @@ export interface LocalToolResult {
 }
 
 export interface LocalToolAction {
+  description?: string | null;
   tool_calls: LocalToolCall[];
   tool_results: LocalToolResult[];
 }
@@ -176,7 +177,10 @@ export function ToolActionCard({ action }: { action: LocalToolAction | LocalTool
   const actions = Array.isArray(action) ? action : [action];
   
   // Flatten all tool calls across all actions
-  const allCalls = actions.flatMap(a => a.tool_calls.map(call => ({
+  const allCalls = actions.flatMap((a, actionIndex) => a.tool_calls.map((call, callIndex) => ({
+    actionIndex,
+    callIndex,
+    description: a.description,
     call,
     result: a.tool_results.find(r => r.tool_call_id === call.id)
   })));
@@ -187,8 +191,21 @@ export function ToolActionCard({ action }: { action: LocalToolAction | LocalTool
 
   return (
     <div className="w-full flex flex-col">
-      {visibleCalls.map(({ call, result }) => (
-        <SingleToolCard key={call.id} call={call} result={result} />
+      {visibleCalls.map(({ actionIndex, callIndex, description, call, result }) => (
+        <div key={call.id} className="flex flex-col">
+          {callIndex === 0 && description && (
+            <div
+              data-testid="tool-action-description"
+              className="mb-1 px-5 text-[12px] text-white/45 leading-relaxed"
+            >
+              {description}
+            </div>
+          )}
+          <SingleToolCard call={call} result={result} />
+          {showAll && actionIndex < actions.length - 1 && callIndex === actions[actionIndex]!.tool_calls.length - 1 ? (
+            <div className="h-2" />
+          ) : null}
+        </div>
       ))}
       
       {hasMore && (

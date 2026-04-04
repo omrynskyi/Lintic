@@ -3,8 +3,9 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { App } from './App.js';
 
-const { mockWriteFile, mockIdePanel } = vi.hoisted(() => ({
+const { mockWriteFile, mockReadFile, mockIdePanel } = vi.hoisted(() => ({
   mockWriteFile: vi.fn().mockResolvedValue(undefined),
+  mockReadFile: vi.fn().mockResolvedValue('# Approved plan'),
   mockIdePanel: vi.fn(),
 }));
 
@@ -79,13 +80,45 @@ vi.mock('./components/IdePanel.js', () => ({
 }));
 
 vi.mock('./components/ChatPanel.js', () => ({
-  ChatPanel: ({ onLoadingChange }: { onLoadingChange?: (loading: boolean) => void }) => (
+  ChatPanel: ({
+    onLoadingChange,
+    mode,
+    onModeChange,
+    latestPlanPath,
+    onPlanGenerated,
+    onApprovePlan,
+  }: {
+    onLoadingChange?: (loading: boolean) => void;
+    mode?: 'build' | 'plan';
+    onModeChange?: (mode: 'build' | 'plan') => void;
+    latestPlanPath?: string | null;
+    onPlanGenerated?: (path: string) => void;
+    onApprovePlan?: (path: string) => Promise<string>;
+  }) => (
     <div data-testid="chat-panel">
+      <div data-testid="mock-chat-mode">{mode}</div>
       <button type="button" data-testid="mock-chat-busy" onClick={() => onLoadingChange?.(true)}>
         Busy
       </button>
       <button type="button" data-testid="mock-chat-idle" onClick={() => onLoadingChange?.(false)}>
         Idle
+      </button>
+      <button type="button" data-testid="mock-switch-plan" onClick={() => onModeChange?.('plan')}>
+        Plan
+      </button>
+      <button
+        type="button"
+        data-testid="mock-plan-generated"
+        onClick={() => onPlanGenerated?.('plans/2026-04-04-101500-plan.md')}
+      >
+        Plan Generated
+      </button>
+      <button
+        type="button"
+        data-testid="mock-approve-plan"
+        onClick={() => void onApprovePlan?.(latestPlanPath ?? 'plans/2026-04-04-101500-plan.md')}
+      >
+        Approve Plan
       </button>
     </div>
   ),
@@ -168,6 +201,7 @@ vi.mock('./lib/useConstraintTimer.js', () => ({
 
 vi.mock('./lib/webcontainer.js', () => ({
   getWebContainer: vi.fn().mockResolvedValue(null),
+  readFile: mockReadFile,
   writeFile: mockWriteFile,
 }));
 
@@ -207,6 +241,33 @@ describe('App prompt display', () => {
       );
       expect(mockIdePanel).toHaveBeenLastCalledWith(expect.stringMatching(/^instructions\.md-/));
     });
+  });
+
+  test('opens generated plans in the IDE and reads them when approved', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('mock-start-session'));
+    fireEvent.click(screen.getByTestId('mock-plan-generated'));
+
+    await waitFor(() => {
+      expect(mockIdePanel).toHaveBeenLastCalledWith(expect.stringMatching(/^plans\/2026-04-04-101500-plan\.md-/));
+    });
+
+    fireEvent.click(screen.getByTestId('mock-approve-plan'));
+
+    await waitFor(() => {
+      expect(mockReadFile).toHaveBeenCalledWith('plans/2026-04-04-101500-plan.md');
+    });
+  });
+
+  test('tracks Build and Plan mode in app state', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('mock-start-session'));
+    expect(screen.getByTestId('mock-chat-mode')).toHaveTextContent('build');
+
+    fireEvent.click(screen.getByTestId('mock-switch-plan'));
+    expect(screen.getByTestId('mock-chat-mode')).toHaveTextContent('plan');
   });
 
   test('renders the admin dashboard on the admin route', () => {

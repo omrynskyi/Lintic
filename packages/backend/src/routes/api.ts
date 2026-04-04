@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   AdminAssessmentLinkDetail,
   AdminAssessmentLinkSummary,
+  AgentRequestMode,
   AssessmentLinkRecord,
   AssessmentLinkStatus,
   DatabaseAdapter,
@@ -35,7 +36,7 @@ import { requireToken } from '../middleware/auth.js';
 import { requireAdminKey } from '../middleware/admin-auth.js';
 import { runAgentLoop } from '../agent-loop.js';
 import type { ToolRunner } from '../agent-loop.js';
-import { DEFAULT_SYSTEM_PROMPT } from '../prompts.js';
+import { buildSystemPrompt } from '../prompts.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ function asyncRoute(fn: (req: Request, res: Response) => Promise<void>): Request
 
 /** Reconstruct a Message[] from stored rows, deserialising tool_use assistant turns and tool result rows. */
 function buildHistory(storedMessages: StoredMessage[]): Message[] {
-  let history: Message[] = storedMessages.map((m) => {
+  return storedMessages.map((m) => {
     if (m.role === 'assistant') {
       try {
         const parsed = JSON.parse(m.content) as { __type?: string; content: string | null; tool_calls: ToolCall[] };
@@ -68,17 +69,16 @@ function buildHistory(storedMessages: StoredMessage[]): Message[] {
     }
     return { role: m.role as MessageRole, content: m.content };
   });
-
-  if (!history.some(m => m.role === 'system')) {
-    history = [{ role: 'system', content: DEFAULT_SYSTEM_PROMPT }, ...history];
-  }
-  return history;
 }
 
 function isAgentConfig(v: unknown): v is AgentConfig {
   if (typeof v !== 'object' || v === null) return false;
   const c = v as Record<string, unknown>;
   return typeof c['provider'] === 'string' && typeof c['api_key'] === 'string' && typeof c['model'] === 'string';
+}
+
+function isAgentRequestMode(v: unknown): v is AgentRequestMode {
+  return v === 'build' || v === 'plan';
 }
 
 function isConstraintOverride(v: unknown): v is Partial<Constraint> {
@@ -93,6 +93,29 @@ function mergeConstraints(base: Constraint, override?: Partial<Constraint>): Con
     context_window: override?.context_window ?? base.context_window,
     time_limit_minutes: override?.time_limit_minutes ?? base.time_limit_minutes,
   };
+}
+
+function createRequestHistory(
+  storedMessages: StoredMessage[],
+  mode: AgentRequestMode,
+  planFilePath?: string,
+): Message[] {
+  const history = buildHistory(storedMessages).filter((message) => message.role !== 'system');
+  const promptOptions = planFilePath ? { planFilePath } : {};
+  return [{
+    role: 'system',
+    content: buildSystemPrompt(mode, promptOptions),
+  }, ...history];
+}
+
+function generatePlanFilePath(now = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  return `plans/${year}-${month}-${day}-${hours}${minutes}${seconds}-plan.md`;
 }
 
 function buildBaseUrl(req: Request): string {
@@ -462,7 +485,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
   // POST /api/sessions/:id/messages — single LLM call; stores tool_calls in DB if stop_reason='tool_use'
   router.post('/sessions/:id/messages', requireToken(db), asyncRoute(async (req, res) => {
     const sessionId = req.params['id'] as string;
-    const body = req.body as { message?: unknown; agent_config?: unknown };
+    const body = req.body as { message?: unknown; agent_config?: unknown; mode?: unknown };
 
     if (typeof body.message !== 'string' || !body.message.trim()) {
       res.status(400).json({ error: 'message is required and must be a non-empty string' });
@@ -491,8 +514,10 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
+    const mode: AgentRequestMode = isAgentRequestMode(body.mode) ? body.mode : 'build';
+    const planFilePath = mode === 'plan' ? generatePlanFilePath() : undefined;
     const storedMessages = await db.getMessages(sessionId);
-    const history: Message[] = buildHistory(storedMessages);
+    const history: Message[] = createRequestHistory(storedMessages, mode, planFilePath);
 
     const constraints_remaining: ConstraintsRemaining = {
       tokens_remaining: Math.max(0, session.constraint.max_session_tokens - session.tokens_used),
@@ -560,7 +585,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
   // POST /api/sessions/:id/tool-results — round-trip continuation: store tool results and make one LLM call
   router.post('/sessions/:id/tool-results', requireToken(db), asyncRoute(async (req, res) => {
     const sessionId = req.params['id'] as string;
-    const body = req.body as { tool_results?: unknown; agent_config?: unknown };
+    const body = req.body as { tool_results?: unknown; agent_config?: unknown; mode?: unknown };
 
     if (!Array.isArray(body.tool_results)) {
       res.status(400).json({ error: 'tool_results must be a non-empty array' });
@@ -593,8 +618,9 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     await db.addMessage(sessionId, 'tool', JSON.stringify(toolResults), 0);
 
     // Rebuild history (now includes the tool results we just stored)
+    const mode: AgentRequestMode = isAgentRequestMode(body.mode) ? body.mode : 'build';
     const storedMessages = await db.getMessages(sessionId);
-    const history: Message[] = buildHistory(storedMessages);
+    const history: Message[] = createRequestHistory(storedMessages, mode);
 
     const constraints_remaining: ConstraintsRemaining = {
       tokens_remaining: Math.max(0, session.constraint.max_session_tokens - session.tokens_used),
@@ -659,13 +685,15 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
   // POST /api/sessions/:id/messages/stream — SSE agent loop (wires runAgentLoop server-side)
   router.post('/sessions/:id/messages/stream', requireToken(db), (req, res) => {
     const sessionId = req.params['id'] as string;
-    const body = req.body as { message?: unknown; agent_config?: unknown };
+    const body = req.body as { message?: unknown; agent_config?: unknown; mode?: unknown };
 
     if (typeof body.message !== 'string' || !body.message.trim()) {
       res.status(400).json({ error: 'message is required and must be a non-empty string' });
       return;
     }
     const message = body.message;
+    const mode: AgentRequestMode = isAgentRequestMode(body.mode) ? body.mode : 'build';
+    const planFilePath = mode === 'plan' ? generatePlanFilePath() : undefined;
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -691,7 +719,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
         ) { sendEvent('error', { error: 'Session constraints exhausted' }); res.end(); return; }
 
         const storedMessages = await db.getMessages(sessionId);
-        const history = buildHistory(storedMessages);
+        const history = createRequestHistory(storedMessages, mode, planFilePath);
         const constraints_remaining: ConstraintsRemaining = {
           tokens_remaining: Math.max(0, session.constraint.max_session_tokens - session.tokens_used),
           interactions_remaining: Math.max(0, session.constraint.max_interactions - session.interactions_used),
@@ -705,9 +733,9 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
         const reqAdapter = await resolveAdapter(adapter, body.agent_config);
 
-        const toolRunner: ToolRunner = (calls) => {
+        const toolRunner: ToolRunner = (calls, description) => {
           const requestId = randomUUID();
-          sendEvent('tool_calls', { request_id: requestId, tool_calls: calls });
+          sendEvent('tool_calls', { request_id: requestId, description, tool_calls: calls });
           return new Promise<ToolResult[]>((resolve) => registerPendingTools(requestId, resolve));
         };
 
@@ -724,7 +752,11 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
         // Persist each tool round-trip
         for (const action of loopResult.tool_actions) {
-          const encoded = JSON.stringify({ __type: 'tool_use', content: null, tool_calls: action.tool_calls });
+          const encoded = JSON.stringify({
+            __type: 'tool_use',
+            content: action.description,
+            tool_calls: action.tool_calls,
+          });
           await db.addMessage(sessionId, 'assistant', encoded, 0);
           await db.addMessage(sessionId, 'tool', JSON.stringify(action.tool_results), 0);
         }
@@ -738,7 +770,10 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
         // Record replay events
         const now = Date.now();
         for (const action of loopResult.tool_actions) {
-          await db.addReplayEvent(sessionId, 'tool_call', now, { tool_calls: action.tool_calls });
+          await db.addReplayEvent(sessionId, 'tool_call', now, {
+            description: action.description,
+            tool_calls: action.tool_calls,
+          });
           await db.addReplayEvent(sessionId, 'tool_result', now, { tool_results: action.tool_results });
         }
         await db.addReplayEvent(sessionId, 'agent_response', now, {
