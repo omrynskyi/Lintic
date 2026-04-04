@@ -84,7 +84,7 @@ export class OpenAIAdapter implements AgentAdapter {
       return Promise.reject(new AdapterError('OpenAIAdapter: api_key is required', 0, 'missing_api_key'));
     }
     this.config = config;
-    this.baseUrl = (config.base_url ?? 'https://api.openai.com').replace(/\/$/, '');
+    this.baseUrl = resolveDefaultBaseUrl(config).replace(/\/$/, '');
     return Promise.resolve();
   }
 
@@ -183,6 +183,18 @@ export class OpenAIAdapter implements AgentAdapter {
   getTools(): ToolDefinition[] {
     return TOOLS;
   }
+}
+
+function resolveDefaultBaseUrl(config: AgentConfig): string {
+  if (config.base_url) {
+    return config.base_url;
+  }
+
+  if (config.provider === 'groq') {
+    return 'https://api.groq.com/openai';
+  }
+
+  return 'https://api.openai.com';
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

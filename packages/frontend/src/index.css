@@ -37,6 +37,7 @@
   --color-text-muted: #A3A3A3;
   --color-text-dim: #737373;
   --color-text-dimmest: #404040;
+  --color-text-user-msg: #F5F5F5;
   --color-text-tool-name: #D97706;
   
   /* Status Colors */
@@ -126,3 +127,11 @@
   color: var(--color-text-bold);
 }
 
+/* Utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

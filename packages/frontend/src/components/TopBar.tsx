@@ -22,6 +22,7 @@ function formatTime(seconds: number): string {
 export function TopBar({
   secondsRemaining,
   onViewPrompt,
+  onOpenReviewDebug,
   isDark,
   taskName = 'Library Backend Service',
   deliverables = 'PRD + Implementation',
@@ -64,6 +65,17 @@ export function TopBar({
               className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#1A1A1A] text-[#E8622A] text-[13px] font-bold tracking-tight hover:brightness-125 transition-all border border-white/5 shadow-lg"
             >
               View full prompt
+            </button>
+          ) : null}
+
+          {onOpenReviewDebug ? (
+            <button
+              type="button"
+              data-testid="open-review-debug"
+              onClick={onOpenReviewDebug}
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#1A1A1A] text-[#90b8d8] text-[13px] font-bold tracking-tight hover:brightness-125 transition-all border border-white/5 shadow-lg"
+            >
+              Open review
             </button>
           ) : null}
         </div>

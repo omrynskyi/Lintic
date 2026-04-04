@@ -79,6 +79,17 @@ describe('init', () => {
     );
     vi.unstubAllGlobals();
   });
+
+  test('uses Groq OpenAI-compatible base_url for provider groq by default', async () => {
+    const adapter = new OpenAIAdapter();
+    await adapter.init({ provider: 'groq', api_key: 'gsk-test', model: 'llama-3.3-70b-versatile' });
+    vi.stubGlobal('fetch', mockFetch(makeSuccessResponse()));
+    await adapter.sendMessage('hi', makeContext());
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
+      'https://api.groq.com/openai/v1/chat/completions',
+    );
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('sendMessage', () => {
@@ -276,7 +287,7 @@ describe('getCapabilities', () => {
 });
 
 describe('getTools', () => {
-  test('returns all 5 tool definitions', async () => {
+  test('returns all 8 tool definitions', async () => {
     const adapter = new OpenAIAdapter();
     await adapter.init({ provider: 'openai-compatible', api_key: 'sk-test', model: 'gpt-4o' });
     const tools = adapter.getTools();
@@ -286,6 +297,6 @@ describe('getTools', () => {
     expect(names).toContain('run_command');
     expect(names).toContain('list_directory');
     expect(names).toContain('search_files');
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(8);
   });
 });

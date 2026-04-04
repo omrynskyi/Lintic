@@ -33,6 +33,9 @@ export type ToolName =
   | 'read_file'
   | 'write_file'
   | 'run_command'
+  | 'read_terminal_output'
+  | 'list_processes'
+  | 'kill_process'
   | 'list_directory'
   | 'search_files';
 

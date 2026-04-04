@@ -48,6 +48,7 @@ export function App() {
   const [activePrompt, setActivePrompt] = useState<PromptSummary | null>(null);
   const [fileToOpen, setFileToOpen] = useState<string | null>(null);
   const wcRef = useRef<WebContainer | null>(null);
+  const executorRef = useRef<ToolExecutor | null>(null);
   const terminalRef = useRef<TerminalHandle>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isDark, setIsDark] = useState(true);
@@ -98,7 +99,10 @@ export function App() {
       return;
     }
     getWebContainer()
-      .then((wc) => { wcRef.current = wc; })
+      .then((wc) => {
+        wcRef.current = wc;
+        executorRef.current = new ToolExecutor(wc, (chunk) => terminalRef.current?.write(chunk));
+      })
       .catch(() => { });
   }, [reviewSessionId, assessmentToken]);
 
@@ -121,11 +125,18 @@ export function App() {
           is_error: true,
         }));
       }
-      const executor = new ToolExecutor(wc, (chunk) => terminalRef.current?.write(chunk));
-      return executor.executeAll(calls as any) as Promise<LocalToolResult[]>;
+      if (!executorRef.current) {
+        executorRef.current = new ToolExecutor(wc, (chunk) => terminalRef.current?.write(chunk));
+      }
+      return executorRef.current.executeAll(calls as any) as Promise<LocalToolResult[]>;
     },
     [],
   );
+
+  const handleStopTools = useCallback(() => {
+    const running = executorRef.current?.getRunningProcessIds() ?? [];
+    executorRef.current?.stopProcesses(running);
+  }, []);
 
   const handleOpenReviewDebug = useCallback(() => {
     if (!sessionId) {
@@ -215,6 +226,7 @@ export function App() {
                 sessionToken={sessionToken}
                 agentConfig={agentConfig}
                 onExecuteTools={handleExecuteTools}
+                onStopTools={handleStopTools}
                 constraints={{
                   tokensRemaining: constraints.tokensRemaining,
                   maxTokens: constraints.maxTokens,

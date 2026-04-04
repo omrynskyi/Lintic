@@ -95,15 +95,15 @@ For UI stories, also include:
 **Description:** As a company admin deploying on Vercel or other serverless platforms, I need a Postgres adapter so session data persists without a local filesystem.
 
 **Acceptance Criteria:**
-- [ ] PostgresAdapter implements DatabaseAdapter interface using pg library
-- [ ] Connects via DATABASE_URL environment variable or lintic.yml database.connection_string
-- [ ] Auto-runs CREATE TABLE IF NOT EXISTS on first connection for sessions and messages tables
-- [ ] All methods behave identically to SQLiteAdapter (same return types, same error semantics)
-- [ ] Connection pooling configured with sensible defaults (max 10 connections)
-- [ ] Graceful handling of connection failures with retry and descriptive error messages
-- [ ] Unit tests with a mocked pg client that verify query generation
-- [ ] Integration test instructions in README for running against a local Postgres
-- [ ] Typecheck passes
+- [x] PostgresAdapter implements DatabaseAdapter interface using pg library
+- [x] Connects via DATABASE_URL environment variable or lintic.yml database.connection_string
+- [x] Auto-runs CREATE TABLE IF NOT EXISTS on first connection for sessions and messages tables
+- [x] All methods behave identically to SQLiteAdapter (same return types, same error semantics)
+- [x] Connection pooling configured with sensible defaults (max 10 connections)
+- [x] Graceful handling of connection failures with retry and descriptive error messages
+- [x] Unit tests with a mocked pg client that verify query generation
+- [x] Integration test instructions in README for running against a local Postgres
+- [x] Typecheck passes
 
 ### US-006: OpenAI-compatible agent adapter
 

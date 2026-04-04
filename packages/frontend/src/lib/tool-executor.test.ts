@@ -4,14 +4,14 @@ import type { ToolCall } from '@lintic/core';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeProcess(output: string) {
+function makeProcess(output: string, exitCode = 0) {
   const stream = new ReadableStream<string>({
     start(controller) {
       controller.enqueue(output);
       controller.close();
     },
   });
-  return { output: stream, exit: Promise.resolve(0), input: {} as WritableStream<string> };
+  return { output: stream, exit: Promise.resolve(exitCode), input: {} as WritableStream<string>, kill: vi.fn() };
 }
 
 function toolCall(overrides: Partial<ToolCall> & Pick<ToolCall, 'name' | 'input'>): ToolCall {
@@ -100,10 +100,12 @@ describe('ToolExecutor', () => {
   // ── run_command ────────────────────────────────────────────────────────────
 
   describe('run_command', () => {
-    test('returns combined output on success', async () => {
+    test('starts command and returns a process id immediately', async () => {
       mockWc.spawn.mockResolvedValue(makeProcess('build success\n'));
       const result = await executor.execute(toolCall({ name: 'run_command', input: { command: 'npm run build' } }));
-      expect(result).toEqual({ tool_call_id: 'tc-1', name: 'run_command', output: 'build success', is_error: false });
+      expect(result.is_error).toBe(false);
+      expect(result.output).toContain('"process_id":"proc-1"');
+      expect(result.output).toContain('"status":"running"');
       expect(mockWc.spawn).toHaveBeenCalledWith('npm', ['run', 'build'], commandEnv);
     });
 
@@ -113,16 +115,45 @@ describe('ToolExecutor', () => {
       expect(mockWc.spawn).toHaveBeenCalledWith('node', ['index.js', '--port', '3000'], commandEnv);
     });
 
-    test('returns error result on timeout', async () => {
-      vi.useFakeTimers();
-      const neverEndingStream = new ReadableStream<string>({ start() { /* never closes */ } });
-      mockWc.spawn.mockResolvedValue({ output: neverEndingStream, exit: new Promise(() => {}), input: {} });
-      const promise = executor.execute(toolCall({ name: 'run_command', input: { command: 'sleep 60' } }));
-      await vi.runAllTimersAsync();
-      const result = await promise;
-      expect(result.is_error).toBe(true);
-      expect(result.output).toMatch(/Timeout/i);
-      vi.useRealTimers();
+    test('list_processes and read_terminal_output expose running command state', async () => {
+      mockWc.spawn.mockResolvedValue(makeProcess('server booted\n'));
+      await executor.execute(toolCall({ name: 'run_command', input: { command: 'node server.js' } }));
+
+      const listResult = await executor.execute(toolCall({ name: 'list_processes', input: {} }));
+      expect(listResult.output).toContain('"process_id":"proc-1"');
+      expect(listResult.output).toContain('"command":"node server.js"');
+
+      const outputResult = await executor.execute(
+        toolCall({ name: 'read_terminal_output', input: { process_id: 'proc-1' } }),
+      );
+      expect(outputResult.output).toContain('"process_id":"proc-1"');
+      expect(outputResult.output).toContain('server booted');
+    });
+
+    test('read_terminal_output includes stderr/stdout after a failed process exits', async () => {
+      mockWc.spawn.mockResolvedValue(makeProcess("Error: Cannot find module 'express'\n", 1));
+      await executor.execute(toolCall({ name: 'run_command', input: { command: 'node library.js' } }));
+
+      await Promise.resolve();
+
+      const outputResult = await executor.execute(
+        toolCall({ name: 'read_terminal_output', input: { process_id: 'proc-1' } }),
+      );
+      expect(outputResult.output).toContain('"status":"failed"');
+      expect(outputResult.output).toContain(`Cannot find module 'express'`);
+    });
+
+    test('kill_process terminates a tracked command', async () => {
+      const proc = makeProcess('watching\n');
+      mockWc.spawn.mockResolvedValue(proc);
+      await executor.execute(toolCall({ name: 'run_command', input: { command: 'npm run dev' } }));
+
+      const killResult = await executor.execute(
+        toolCall({ name: 'kill_process', input: { process_id: 'proc-1' } }),
+      );
+
+      expect(proc.kill).toHaveBeenCalled();
+      expect(killResult.output).toContain('"status":"killed"');
     });
   });
 
@@ -146,6 +177,16 @@ describe('ToolExecutor', () => {
       const result = await executor.execute(toolCall({ name: 'list_directory', input: { path: '/nope' } }));
       expect(result.is_error).toBe(true);
       expect(result.output).toContain('No such directory');
+    });
+
+    test('defaults path to current directory when omitted', async () => {
+      mockFs.readdir.mockResolvedValue([
+        { name: 'package.json', isDirectory: () => false, isFile: () => true },
+      ]);
+      const result = await executor.execute(toolCall({ name: 'list_directory', input: {} }));
+      expect(result.is_error).toBe(false);
+      expect(result.output).toBe('package.json');
+      expect(mockFs.readdir).toHaveBeenCalledWith('.', { withFileTypes: true });
     });
   });
 

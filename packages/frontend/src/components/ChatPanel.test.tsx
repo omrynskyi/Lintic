@@ -139,6 +139,33 @@ describe('ChatPanel', () => {
     await waitFor(() => expect(screen.getByText('Hello from agent')).toBeInTheDocument());
   });
 
+  test('keeps optimistic user messages when history finishes loading later', async () => {
+    let resolveHistory!: (value: Response) => void;
+    const delayedHistory = new Promise<Response>((resolve) => { resolveHistory = resolve; });
+
+    vi.mocked(fetch)
+      .mockReturnValueOnce(delayedHistory)
+      .mockResolvedValueOnce(makeSSEResponse([{ event: 'done', data: sseAgentDone('Hello from agent') }]));
+
+    render(<ChatPanel sessionId="s1" constraints={defaultConstraints} />);
+
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Hello agent' } });
+    fireEvent.click(screen.getByTestId('chat-send'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('user-message')).toHaveTextContent('Hello agent'),
+    );
+
+    await act(async () => {
+      resolveHistory(historyResponse);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('user-message')).toHaveTextContent('Hello agent'),
+    );
+    await waitFor(() => expect(screen.getByText('Hello from agent')).toBeInTheDocument());
+  });
+
   test('sends message on Enter keydown', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(historyResponse)
@@ -291,6 +318,7 @@ describe('ChatPanel', () => {
   });
 
   test('clicking Stop clears the spinner and hides Stop button', async () => {
+    const onStopTools = vi.fn();
     vi.mocked(fetch)
       .mockResolvedValueOnce(historyResponse)
       .mockImplementationOnce(
@@ -302,7 +330,7 @@ describe('ChatPanel', () => {
           }),
       );
 
-    render(<ChatPanel sessionId="s1" constraints={defaultConstraints} />);
+    render(<ChatPanel sessionId="s1" constraints={defaultConstraints} onStopTools={onStopTools} />);
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1));
 
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'run something slow' } });
@@ -311,6 +339,8 @@ describe('ChatPanel', () => {
     await waitFor(() => expect(screen.getByTestId('stop-button')).toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId('stop-button'));
+
+    expect(onStopTools).toHaveBeenCalledTimes(1);
 
     await waitFor(() => {
       expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();

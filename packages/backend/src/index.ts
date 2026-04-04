@@ -1,11 +1,11 @@
-import { loadConfig, SQLiteAdapter } from '@lintic/core';
+import { loadConfig } from '@lintic/core';
 import { OpenAIAdapter, AnthropicAdapter } from '@lintic/adapters';
 import { createApp } from './app.js';
-import { findConfigPath, loadEnv, resolveDatabasePath, resolveFrontendDistPath } from './runtime.js';
+import { createDatabase, findConfigPath, loadEnv, resolveFrontendDistPath } from './runtime.js';
 
 loadEnv();
 const config = loadConfig(findConfigPath());
-const db = new SQLiteAdapter(resolveDatabasePath(config));
+const db = await createDatabase(config);
 
 const adapter =
   config.agent.provider === 'anthropic-native' ? new AnthropicAdapter() : new OpenAIAdapter();

@@ -51,11 +51,34 @@ export const TOOLS: ToolDefinition[] = [
   },
   {
     name: 'run_command',
-    description: 'Run a shell command and return stdout and stderr.',
+    description: 'Start a shell command in the terminal without blocking. Returns a process id you can inspect later.',
     parameters: {
       command: { type: 'string', description: 'Shell command to execute.' },
     },
     required: ['command'],
+  },
+  {
+    name: 'read_terminal_output',
+    description: 'Read the latest captured terminal output for a running or completed process.',
+    parameters: {
+      process_id: { type: 'string', description: 'Process id returned by run_command.' },
+      max_chars: { type: 'number', description: 'Maximum number of trailing characters to return.' },
+    },
+    required: ['process_id'],
+  },
+  {
+    name: 'list_processes',
+    description: 'List tracked terminal processes and their current status.',
+    parameters: {},
+    required: [],
+  },
+  {
+    name: 'kill_process',
+    description: 'Terminate a tracked terminal process by id.',
+    parameters: {
+      process_id: { type: 'string', description: 'Process id returned by run_command.' },
+    },
+    required: ['process_id'],
   },
   {
     name: 'list_directory',
@@ -63,7 +86,7 @@ export const TOOLS: ToolDefinition[] = [
     parameters: {
       path: { type: 'string', description: 'Path to the directory to list.' },
     },
-    required: ['path'],
+    required: [],
   },
   {
     name: 'search_files',

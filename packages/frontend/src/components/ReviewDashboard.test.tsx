@@ -62,7 +62,7 @@ describe('ReviewDashboard', () => {
   test('updates selected event from timeline controls', async () => {
     render(<ReviewDashboard sessionId="sess-1" isDark={false} onToggleTheme={() => undefined} />);
 
-    await waitFor(() => expect(screen.getByTestId('timeline-scrubber')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('timeline-event-1')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('timeline-event-1'));
 
     await waitFor(() => {

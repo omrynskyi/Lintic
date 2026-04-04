@@ -93,12 +93,41 @@ interface ChatPanelProps {
   onConstraintsUpdate?: (updated: Partial<ChatConstraints>) => void;
   /** When provided, used to execute tool calls locally (WebContainer). */
   onExecuteTools?: (calls: LocalToolCall[]) => Promise<LocalToolResult[]>;
+  /** When provided, called when the user stops the current turn so in-flight tools can be terminated. */
+  onStopTools?: () => void;
   /** When provided, forwarded to the backend as `agent_config` for per-request adapter creation. */
   agentConfig?: AgentConfig;
 }
 
 function generateId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+const MESSAGE_DEDUPE_WINDOW_MS = 5_000;
+
+function isSameMessage(a: ChatMessage, b: ChatMessage): boolean {
+  if (a.id === b.id) {
+    return true;
+  }
+
+  return (
+    a.role === b.role &&
+    a.content === b.content &&
+    Math.abs(a.timestamp - b.timestamp) <= MESSAGE_DEDUPE_WINDOW_MS
+  );
+}
+
+function mergeMessages(existing: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+  const merged = [...existing];
+
+  for (const message of incoming) {
+    if (!merged.some((candidate) => isSameMessage(candidate, message))) {
+      merged.push(message);
+    }
+  }
+
+  merged.sort((a, b) => a.timestamp - b.timestamp);
+  return merged;
 }
 
 /** Helper to parse JSON tool use from assistant content */
@@ -205,6 +234,7 @@ export function ChatPanel({
   apiBase = '',
   onConstraintsUpdate,
   onExecuteTools,
+  onStopTools,
   agentConfig,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -225,6 +255,7 @@ export function ChatPanel({
 
   // Load history when sessionId changes.
   useEffect(() => {
+    setMessages([]);
     if (!sessionId) return;
     const headers: HeadersInit = sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {};
     void (async () => {
@@ -234,16 +265,16 @@ export function ChatPanel({
         const data = (await res.json()) as {
           messages: Array<{ id: string; role: 'user' | 'assistant'; content: string; created_at: string }>;
         };
-        setMessages(
-          data.messages
-            .filter((m) => m.role === 'user' || m.role === 'assistant')
-            .map((m) => ({
-              id: m.id,
-              role: m.role,
-              content: m.content,
-              timestamp: new Date(m.created_at).getTime(),
-            })),
-        );
+        const loadedMessages = data.messages
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: new Date(m.created_at).getTime(),
+          }));
+
+        setMessages((prev) => mergeMessages(prev, loadedMessages));
       } catch {
         // Ignore load errors.
       }
@@ -251,8 +282,9 @@ export function ChatPanel({
   }, [sessionId, apiBase, sessionToken]);
 
   const stopAgent = useCallback(() => {
+    onStopTools?.();
     abortRef.current?.abort();
-  }, []);
+  }, [onStopTools]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -402,14 +434,14 @@ export function ChatPanel({
           return (
             <div
               key={msg.id}
-              className={`flex flex-col gap-6 ${isUser ? 'sticky top-0 z-10 pt-4 pb-12' : ''}`}
-              style={isUser ? { background: 'var(--color-bg-chat)' } : {}}
+              className="flex flex-col gap-6 py-1"
             >
               {/* Text content */}
               {isUser ? (
                 <div
                   className="w-full rounded-[25px] px-8 py-5 text-sm whitespace-pre-wrap break-words border-none shadow-none"
                   style={{ background: 'var(--color-bg-user-msg)', color: 'var(--color-text-user-msg)' }}
+                  data-testid="user-message"
                 >
                   {displayContent}
                 </div>

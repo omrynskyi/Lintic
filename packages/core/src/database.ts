@@ -1,5 +1,6 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import Database from 'better-sqlite3';
+import { Pool, type PoolConfig } from 'pg';
 import type { Session, SessionStatus, Constraint, MessageRole, ReplayEventType } from './types.js';
 
 // ─── Stored Message ───────────────────────────────────────────────────────────
@@ -88,6 +89,94 @@ interface ReplayEventRow {
   payload: string; // JSON text
 }
 
+const SQLITE_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    token TEXT NOT NULL,
+    prompt_id TEXT NOT NULL,
+    candidate_email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at INTEGER NOT NULL,
+    closed_at INTEGER,
+    max_session_tokens INTEGER NOT NULL,
+    max_message_tokens INTEGER NOT NULL,
+    max_interactions INTEGER NOT NULL,
+    context_window INTEGER NOT NULL,
+    time_limit_minutes INTEGER NOT NULL,
+    tokens_used INTEGER NOT NULL DEFAULT 0,
+    interactions_used INTEGER NOT NULL DEFAULT 0,
+    score REAL
+  );
+
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    token_count INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS replay_events (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    type      TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    payload   TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_replay_events_session
+    ON replay_events(session_id, timestamp ASC);
+
+  CREATE TABLE IF NOT EXISTS assessment_link_uses (
+    link_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    used_at INTEGER NOT NULL
+  );
+`;
+
+const POSTGRES_SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    token TEXT NOT NULL,
+    prompt_id TEXT NOT NULL,
+    candidate_email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at BIGINT NOT NULL,
+    closed_at BIGINT,
+    max_session_tokens INTEGER NOT NULL,
+    max_message_tokens INTEGER NOT NULL,
+    max_interactions INTEGER NOT NULL,
+    context_window INTEGER NOT NULL,
+    time_limit_minutes INTEGER NOT NULL,
+    tokens_used INTEGER NOT NULL DEFAULT 0,
+    interactions_used INTEGER NOT NULL DEFAULT 0,
+    score DOUBLE PRECISION
+  )`,
+  `CREATE TABLE IF NOT EXISTS messages (
+    id BIGSERIAL PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    token_count INTEGER NOT NULL,
+    created_at BIGINT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS replay_events (
+    id BIGSERIAL PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    type TEXT NOT NULL,
+    timestamp BIGINT NOT NULL,
+    payload TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_replay_events_session
+    ON replay_events(session_id, timestamp ASC, id ASC)`,
+  `CREATE TABLE IF NOT EXISTS assessment_link_uses (
+    link_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    used_at BIGINT NOT NULL
+  )`,
+] as const;
+
 // ─── SQLiteAdapter ────────────────────────────────────────────────────────────
 
 export class SQLiteAdapter implements DatabaseAdapter {
@@ -99,51 +188,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
   }
 
   private init(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        token TEXT NOT NULL,
-        prompt_id TEXT NOT NULL,
-        candidate_email TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'active',
-        created_at INTEGER NOT NULL,
-        closed_at INTEGER,
-        max_session_tokens INTEGER NOT NULL,
-        max_message_tokens INTEGER NOT NULL,
-        max_interactions INTEGER NOT NULL,
-        context_window INTEGER NOT NULL,
-        time_limit_minutes INTEGER NOT NULL,
-        tokens_used INTEGER NOT NULL DEFAULT 0,
-        interactions_used INTEGER NOT NULL DEFAULT 0,
-        score REAL
-      );
-
-      CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL REFERENCES sessions(id),
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        token_count INTEGER NOT NULL,
-        created_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS replay_events (
-        id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL REFERENCES sessions(id),
-        type      TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        payload   TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_replay_events_session
-        ON replay_events(session_id, timestamp ASC);
-
-      CREATE TABLE IF NOT EXISTS assessment_link_uses (
-        link_id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL REFERENCES sessions(id),
-        used_at INTEGER NOT NULL
-      );
-    `);
+    this.db.exec(SQLITE_SCHEMA);
   }
 
   createSession(config: CreateSessionConfig): Promise<{ id: string; token: string }> {
@@ -282,7 +327,224 @@ export class SQLiteAdapter implements DatabaseAdapter {
   }
 }
 
+export interface PostgresAdapterConfig {
+  connectionString: string;
+  pool?: Pool;
+  poolConfig?: Omit<PoolConfig, 'connectionString'>;
+}
+
+export class PostgresAdapter implements DatabaseAdapter {
+  private readonly pool: Pool;
+  private initializationPromise: Promise<void> | null = null;
+
+  constructor(config: PostgresAdapterConfig) {
+    this.pool = config.pool ?? new Pool({
+      connectionString: config.connectionString,
+      max: 10,
+      ...config.poolConfig,
+    });
+  }
+
+  async initialize(): Promise<void> {
+    if (this.initializationPromise === null) {
+      this.initializationPromise = this.bootstrapSchema();
+    }
+    await this.initializationPromise;
+  }
+
+  async createSession(config: CreateSessionConfig): Promise<{ id: string; token: string }> {
+    await this.initialize();
+
+    const id = randomUUID();
+    const token = randomBytes(32).toString('hex');
+    const now = Date.now();
+
+    await this.pool.query(
+      `INSERT INTO sessions (
+        id, token, prompt_id, candidate_email, status, created_at,
+        max_session_tokens, max_message_tokens, max_interactions,
+        context_window, time_limit_minutes, tokens_used, interactions_used
+      ) VALUES (
+        $1, $2, $3, $4, 'active', $5,
+        $6, $7, $8,
+        $9, $10, 0, 0
+      )`,
+      [
+        id,
+        token,
+        config.prompt_id,
+        config.candidate_email,
+        now,
+        config.constraint.max_session_tokens,
+        config.constraint.max_message_tokens,
+        config.constraint.max_interactions,
+        config.constraint.context_window,
+        config.constraint.time_limit_minutes,
+      ],
+    );
+
+    return { id, token };
+  }
+
+  async getSession(id: string): Promise<Session | null> {
+    await this.initialize();
+    const result = await this.pool.query<SessionRow>('SELECT * FROM sessions WHERE id = $1', [id]);
+    return result.rows[0] ? rowToSession(normalizeSessionRow(result.rows[0])) : null;
+  }
+
+  async getSessionToken(id: string): Promise<string | null> {
+    await this.initialize();
+    const result = await this.pool.query<{ token: string }>('SELECT token FROM sessions WHERE id = $1', [id]);
+    return result.rows[0]?.token ?? null;
+  }
+
+  async addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void> {
+    await this.initialize();
+    await this.pool.query(
+      `INSERT INTO messages (session_id, role, content, token_count, created_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [sessionId, role, content, tokenCount, Date.now()],
+    );
+  }
+
+  async getMessages(sessionId: string): Promise<StoredMessage[]> {
+    await this.initialize();
+    const result = await this.pool.query<MessageRow>(
+      'SELECT * FROM messages WHERE session_id = $1 ORDER BY id ASC',
+      [sessionId],
+    );
+
+    return result.rows.map((row) => ({
+      id: Number(row.id),
+      session_id: row.session_id,
+      role: row.role as MessageRole,
+      content: row.content,
+      token_count: Number(row.token_count),
+      created_at: Number(row.created_at),
+    }));
+  }
+
+  async closeSession(id: string): Promise<void> {
+    await this.initialize();
+    await this.pool.query(
+      `UPDATE sessions SET status = 'completed', closed_at = $1 WHERE id = $2`,
+      [Date.now(), id],
+    );
+  }
+
+  async listSessions(): Promise<Session[]> {
+    await this.initialize();
+    const result = await this.pool.query<SessionRow>('SELECT * FROM sessions ORDER BY created_at DESC');
+    return result.rows.map((row) => rowToSession(normalizeSessionRow(row)));
+  }
+
+  async getSessionsByPrompt(promptId: string): Promise<Session[]> {
+    await this.initialize();
+    const result = await this.pool.query<SessionRow>(
+      'SELECT * FROM sessions WHERE prompt_id = $1 ORDER BY created_at DESC',
+      [promptId],
+    );
+    return result.rows.map((row) => rowToSession(normalizeSessionRow(row)));
+  }
+
+  async validateSessionToken(id: string, token: string): Promise<boolean> {
+    await this.initialize();
+    const result = await this.pool.query('SELECT id FROM sessions WHERE id = $1 AND token = $2', [id, token]);
+    return result.rows.length > 0;
+  }
+
+  async updateSessionUsage(id: string, additionalTokens: number, additionalInteractions: number): Promise<void> {
+    await this.initialize();
+    await this.pool.query(
+      `UPDATE sessions
+       SET tokens_used = tokens_used + $1, interactions_used = interactions_used + $2
+       WHERE id = $3`,
+      [additionalTokens, additionalInteractions, id],
+    );
+  }
+
+  async addReplayEvent(sessionId: string, type: ReplayEventType, timestamp: number, payload: unknown): Promise<void> {
+    await this.initialize();
+    await this.pool.query(
+      `INSERT INTO replay_events (session_id, type, timestamp, payload)
+       VALUES ($1, $2, $3, $4)`,
+      [sessionId, type, timestamp, JSON.stringify(payload)],
+    );
+  }
+
+  async getReplayEvents(sessionId: string): Promise<StoredReplayEvent[]> {
+    await this.initialize();
+    const result = await this.pool.query<ReplayEventRow>(
+      'SELECT * FROM replay_events WHERE session_id = $1 ORDER BY timestamp ASC, id ASC',
+      [sessionId],
+    );
+    return result.rows.map((row) => ({
+      id: Number(row.id),
+      session_id: row.session_id,
+      type: row.type as ReplayEventType,
+      timestamp: Number(row.timestamp),
+      payload: JSON.parse(row.payload) as unknown,
+    }));
+  }
+
+  async markAssessmentLinkUsed(linkId: string, sessionId: string): Promise<boolean> {
+    await this.initialize();
+    const result = await this.pool.query(
+      `INSERT INTO assessment_link_uses (link_id, session_id, used_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (link_id) DO NOTHING`,
+      [linkId, sessionId, Date.now()],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async isAssessmentLinkUsed(linkId: string): Promise<boolean> {
+    await this.initialize();
+    const result = await this.pool.query(
+      'SELECT link_id FROM assessment_link_uses WHERE link_id = $1',
+      [linkId],
+    );
+    return result.rows.length > 0;
+  }
+
+  async getAssessmentLinkSessionId(linkId: string): Promise<string | null> {
+    await this.initialize();
+    const result = await this.pool.query<{ session_id: string }>(
+      'SELECT session_id FROM assessment_link_uses WHERE link_id = $1',
+      [linkId],
+    );
+    return result.rows[0]?.session_id ?? null;
+  }
+
+  private async bootstrapSchema(): Promise<void> {
+    try {
+      for (const statement of POSTGRES_SCHEMA_STATEMENTS) {
+        await this.pool.query(statement);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to initialize PostgreSQL database schema: ${message}`);
+    }
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function normalizeSessionRow(row: SessionRow): SessionRow {
+  return {
+    ...row,
+    created_at: Number(row.created_at),
+    closed_at: row.closed_at === null ? null : Number(row.closed_at),
+    max_session_tokens: Number(row.max_session_tokens),
+    max_message_tokens: Number(row.max_message_tokens),
+    max_interactions: Number(row.max_interactions),
+    context_window: Number(row.context_window),
+    time_limit_minutes: Number(row.time_limit_minutes),
+    tokens_used: Number(row.tokens_used),
+    interactions_used: Number(row.interactions_used),
+    score: row.score === null ? null : Number(row.score),
+  };
+}
 
 function rowToSession(row: SessionRow): Session {
   const constraint: Constraint = {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { Config, Constraint } from '@lintic/core';
-import { resolveDatabasePath } from './runtime.js';
+import { resolveDatabasePath, resolvePostgresConnectionString } from './runtime.js';
 
 const BASE_CONSTRAINT: Constraint = {
   max_session_tokens: 50000,
@@ -49,5 +49,44 @@ describe('resolveDatabasePath', () => {
     const config = makeConfig();
 
     expect(resolveDatabasePath(config, undefined)).toBe('lintic.db');
+  });
+});
+
+describe('resolvePostgresConnectionString', () => {
+  test('prefers config.database.connection_string over DATABASE_URL', () => {
+    const config = makeConfig({
+      database: {
+        provider: 'postgres',
+        connection_string: 'postgres://config-user:pass@db/config',
+      },
+    });
+
+    expect(resolvePostgresConnectionString(config, 'postgres://env-user:pass@db/env')).toBe(
+      'postgres://config-user:pass@db/config',
+    );
+  });
+
+  test('falls back to DATABASE_URL when config.database.connection_string is absent', () => {
+    const config = makeConfig({
+      database: {
+        provider: 'postgres',
+      },
+    });
+
+    expect(resolvePostgresConnectionString(config, 'postgres://env-user:pass@db/env')).toBe(
+      'postgres://env-user:pass@db/env',
+    );
+  });
+
+  test('throws when postgres is selected and no connection string is available', () => {
+    const config = makeConfig({
+      database: {
+        provider: 'postgres',
+      },
+    });
+
+    expect(() => resolvePostgresConnectionString(config, undefined)).toThrow(
+      /database\.connection_string.*DATABASE_URL/i,
+    );
   });
 });

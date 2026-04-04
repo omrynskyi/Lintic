@@ -71,4 +71,20 @@ describe('TopBar', () => {
     fireEvent.click(screen.getByTestId('view-prompt'));
     expect(onViewPrompt).toHaveBeenCalledTimes(1);
   });
+
+  test('only renders the dev review button when a handler is provided', () => {
+    const { rerender } = render(<TopBar {...DEFAULT_PROPS} />);
+    expect(screen.queryByTestId('open-review-debug')).toBeNull();
+
+    rerender(<TopBar {...DEFAULT_PROPS} onOpenReviewDebug={() => {}} />);
+    expect(screen.getByTestId('open-review-debug')).toBeInTheDocument();
+  });
+
+  test('calls the dev review handler when clicked', () => {
+    const onOpenReviewDebug = vi.fn();
+    render(<TopBar {...DEFAULT_PROPS} onOpenReviewDebug={onOpenReviewDebug} />);
+
+    fireEvent.click(screen.getByTestId('open-review-debug'));
+    expect(onOpenReviewDebug).toHaveBeenCalledTimes(1);
+  });
 });
