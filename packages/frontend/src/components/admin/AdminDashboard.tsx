@@ -2,17 +2,17 @@ import { useEffect, useState } from 'react';
 import { AdminKeyProvider } from './AdminKeyContext.js';
 import { AdminNav } from './AdminNav.js';
 import { AdminOverview } from './AdminOverview.js';
-import { AdminSessions } from './AdminSessions.js';
-import { AdminLinks } from './AdminLinks.js';
+import { AdminAssessments } from './AdminLinks.js';
 import { AdminTasks } from './AdminTasks.js';
 import { AdminReviews } from './AdminReviews.js';
 import { AdminSettings } from './AdminSettings.js';
 
-export type AdminSection = 'overview' | 'sessions' | 'links' | 'tasks' | 'reviews' | 'settings';
+export type AdminSection = 'overview' | 'assessments' | 'tasks' | 'reviews' | 'settings';
 
 function sectionFromPathname(pathname: string): AdminSection {
-  if (pathname.startsWith('/admin/sessions')) return 'sessions';
-  if (pathname.startsWith('/admin/links')) return 'links';
+  if (pathname.startsWith('/admin/assessments')) return 'assessments';
+  if (pathname.startsWith('/admin/sessions')) return 'assessments';
+  if (pathname.startsWith('/admin/links')) return 'assessments';
   if (pathname.startsWith('/admin/tasks')) return 'tasks';
   if (pathname.startsWith('/admin/reviews')) return 'reviews';
   if (pathname.startsWith('/admin/settings')) return 'settings';
@@ -66,8 +66,7 @@ export function AdminDashboard({ isDark, onToggleTheme }: AdminDashboardProps) {
           {/* Content */}
           <div className="min-h-0 flex-1 overflow-auto">
             {section === 'overview' && <AdminOverview onNavigate={handleNavigate} />}
-            {section === 'sessions' && <AdminSessions onNavigate={handleNavigate} />}
-            {section === 'links' && <AdminLinks onNavigate={handleNavigate} />}
+            {section === 'assessments' && <AdminAssessments onNavigate={handleNavigate} />}
             {section === 'tasks' && <AdminTasks />}
             {section === 'reviews' && (
               <AdminReviews

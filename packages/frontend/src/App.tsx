@@ -19,10 +19,18 @@ import { ReviewDashboard } from './components/ReviewDashboard.js';
 import { getReviewSessionId } from './lib/review-replay.js';
 import { AssessmentLinkLoader } from './components/AssessmentLinkLoader.js';
 import { AdminDashboard } from './components/admin/AdminDashboard.js';
-import { saveSession, loadSession, clearSession, validateSession, restoreFiles } from './lib/session-persist.js';
+import {
+  saveSession,
+  loadSession,
+  clearSession,
+  validateSession,
+  restoreFiles,
+  type SessionSummaryStats,
+} from './lib/session-persist.js';
 import type { PromptSummary } from '@lintic/core';
+import { AssessmentSubmittedModal } from './components/AssessmentSubmittedModal.js';
 
-type AppState = 'setup' | 'active' | 'resuming';
+type AppState = 'setup' | 'active' | 'resuming' | 'submitted';
 const ENABLE_DEV_REVIEW_SHORTCUT = import.meta.env.DEV;
 
 function getAssessmentLinkToken(location: Location): string | null {
@@ -61,6 +69,10 @@ export function App() {
   const terminalRef = useRef<TerminalHandle>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isDark, setIsDark] = useState(true);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [submittingTask, setSubmittingTask] = useState(false);
+  const [submittedStats, setSubmittedStats] = useState<SessionSummaryStats | null>(null);
+  const [submitConfirmationOpen, setSubmitConfirmationOpen] = useState(false);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -123,8 +135,8 @@ export function App() {
     if (!saved) return;
 
     setAppState('resuming');
-    void validateSession(saved.sessionId, saved.sessionToken).then((constraints) => {
-      if (!constraints) {
+    void validateSession(saved.sessionId, saved.sessionToken).then((validation) => {
+      if (!validation) {
         clearSession();
         setAppState('setup');
         return;
@@ -133,7 +145,14 @@ export function App() {
       setSessionToken(saved.sessionToken);
       setActivePrompt(saved.prompt);
       setAgentConfig(undefined);
-      patchConstraints(constraints);
+      setSubmitConfirmationOpen(false);
+      if (validation.status === 'submitted') {
+        setSubmittedStats(validation.stats);
+        setAppState('submitted');
+        return;
+      }
+      patchConstraints(validation.constraints);
+      setSubmittedStats(null);
       setAppState('active');
       void restoreFiles(saved.sessionId, saved.sessionToken);
     });
@@ -144,6 +163,8 @@ export function App() {
     setSessionToken(session.sessionToken);
     setAgentConfig(session.agentConfig);
     setActivePrompt(session.prompt);
+    setSubmittedStats(null);
+    setSubmitConfirmationOpen(false);
     setAppState('active');
   }, []);
 
@@ -191,6 +212,54 @@ export function App() {
     }
   }, [activePrompt, addToast]);
 
+  const handleOpenSubmitConfirmation = useCallback(() => {
+    if (!sessionId || chatLoading || submittingTask || appState !== 'active') {
+      return;
+    }
+    setSubmitConfirmationOpen(true);
+  }, [appState, chatLoading, sessionId, submittingTask]);
+
+  const handleSubmitTask = useCallback(async () => {
+    if (!sessionId || !sessionToken || chatLoading || submittingTask) {
+      return;
+    }
+
+    setSubmittingTask(true);
+
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/close`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const body = await response.json() as { error?: string };
+          message = body.error ?? message;
+        } catch {
+          // Ignore non-JSON responses.
+        }
+        throw new Error(message);
+      }
+
+      const validation = await validateSession(sessionId, sessionToken);
+      if (!validation || validation.status !== 'submitted') {
+        throw new Error('Submitted state could not be loaded');
+      }
+
+      setSubmitConfirmationOpen(false);
+      setSubmittedStats(validation.stats);
+      setAppState('submitted');
+    } catch (error) {
+      addToast(
+        error instanceof Error ? `Failed to submit task: ${error.message}` : 'Failed to submit task',
+      );
+    } finally {
+      setSubmittingTask(false);
+    }
+  }, [addToast, chatLoading, sessionId, sessionToken, submittingTask]);
+
   if (reviewSessionId) {
     return (
       <ReviewDashboard
@@ -218,8 +287,27 @@ export function App() {
           setAgentConfig(undefined);
           setActivePrompt(prompt);
           setAssessmentToken(null);
-          setAppState('active');
           window.history.replaceState({}, '', '/');
+          setAppState('resuming');
+          void validateSession(nextSessionId, nextSessionToken).then((validation) => {
+            if (!validation) {
+              clearSession();
+              setSessionId(null);
+              setSessionToken(undefined);
+              setActivePrompt(null);
+              setAppState('setup');
+              return;
+            }
+            if (validation.status === 'submitted') {
+              setSubmittedStats(validation.stats);
+              setAppState('submitted');
+              return;
+            }
+            patchConstraints(validation.constraints);
+            setSubmittedStats(null);
+            setAppState('active');
+            void restoreFiles(nextSessionId, nextSessionToken);
+          });
         }}
       />
     );
@@ -271,6 +359,9 @@ export function App() {
         onToggleTheme={() => setIsDark(!isDark)}
         onViewPrompt={activePrompt ? handleViewPrompt : undefined}
         onOpenReviewDebug={ENABLE_DEV_REVIEW_SHORTCUT && sessionId ? handleOpenReviewDebug : undefined}
+        onSubmitTask={sessionId ? handleOpenSubmitConfirmation : undefined}
+        submitDisabled={!sessionId || chatLoading || submittingTask}
+        submittingTask={submittingTask}
       />
 
       <div className="flex-1 flex min-h-0 gap-[5px]">
@@ -302,6 +393,7 @@ export function App() {
                   }
                   patchConstraints(patch);
                 }}
+                onLoadingChange={setChatLoading}
               />
             }
           />
@@ -309,6 +401,36 @@ export function App() {
       </div>
 
       <Toast toasts={toasts} onDismiss={dismissToast} />
+      {submitConfirmationOpen ? (
+        <AssessmentSubmittedModal
+          mode="confirm"
+          promptTitle={activePrompt?.title ?? null}
+          submitting={submittingTask}
+          onCancel={() => {
+            if (!submittingTask) {
+              setSubmitConfirmationOpen(false);
+            }
+          }}
+          onConfirm={() => void handleSubmitTask()}
+        />
+      ) : null}
+      {appState === 'submitted' && submittedStats ? (
+        <AssessmentSubmittedModal
+          mode="submitted"
+          promptTitle={activePrompt?.title ?? null}
+          stats={submittedStats}
+          onDone={() => {
+            clearSession();
+            setSessionId(null);
+            setSessionToken(undefined);
+            setAgentConfig(undefined);
+            setActivePrompt(null);
+            setSubmittedStats(null);
+            setSubmitConfirmationOpen(false);
+            setAppState('setup');
+          }}
+        />
+      ) : null}
     </div>
   );
 }

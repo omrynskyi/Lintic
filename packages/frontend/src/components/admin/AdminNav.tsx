@@ -3,7 +3,6 @@ import {
   BarChart2,
   FileCode2,
   LayoutDashboard,
-  Link2,
   Moon,
   Settings,
   Sun,
@@ -19,8 +18,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'sessions', label: 'Live Sessions', icon: Activity },
-  { id: 'links', label: 'Links', icon: Link2 },
+  { id: 'assessments', label: 'Assessments', icon: Activity },
   { id: 'tasks', label: 'Tasks', icon: FileCode2 },
   { id: 'reviews', label: 'Reviews', icon: BarChart2 },
 ];

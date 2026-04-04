@@ -266,6 +266,31 @@ describe('ChatPanel', () => {
     });
   });
 
+  test('reports loading state while a turn is in flight', async () => {
+    const onLoadingChange = vi.fn();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(historyResponse)
+      .mockResolvedValueOnce(makeSSEResponse([{ event: 'done', data: sseAgentDone('hi') }]));
+
+    render(
+      <ChatPanel
+        sessionId="s1"
+        constraints={defaultConstraints}
+        onLoadingChange={onLoadingChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'hello' } });
+    fireEvent.click(screen.getByTestId('chat-send'));
+
+    await waitFor(() => {
+      expect(onLoadingChange).toHaveBeenCalledWith(true);
+    });
+    await waitFor(() => {
+      expect(onLoadingChange).toHaveBeenLastCalledWith(false);
+    });
+  });
+
   test('shows no session placeholder when sessionId is null', () => {
     render(<ChatPanel sessionId={null} constraints={defaultConstraints} />);
     expect(screen.getByTestId('chat-input')).toBeInTheDocument();

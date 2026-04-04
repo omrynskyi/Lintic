@@ -8,6 +8,9 @@ interface TopBarProps {
   onToggleTheme: () => void;
   onViewPrompt?: () => void;
   onOpenReviewDebug?: () => void;
+  onSubmitTask?: () => void;
+  submitDisabled?: boolean;
+  submittingTask?: boolean;
   taskName?: string;
   deliverables?: string;
 }
@@ -23,6 +26,9 @@ export function TopBar({
   secondsRemaining,
   onViewPrompt,
   onOpenReviewDebug,
+  onSubmitTask,
+  submitDisabled = false,
+  submittingTask = false,
   isDark,
   taskName = 'Library Backend Service',
   deliverables = 'PRD + Implementation',
@@ -91,9 +97,16 @@ export function TopBar({
         </div>
         <button
           type="button"
+          data-testid="submit-task"
+          onClick={onSubmitTask}
+          disabled={submitDisabled || !onSubmitTask}
           className="flex items-center gap-2 px-8 py-3 rounded-2xl bg-[#064E3B] text-[#10B981] text-[13px] font-bold tracking-tight hover:brightness-110 transition-all border border-[#10B981]/10 shadow-lg"
+          style={{
+            opacity: submitDisabled || !onSubmitTask ? 0.5 : 1,
+            cursor: submitDisabled || !onSubmitTask ? 'not-allowed' : 'pointer',
+          }}
         >
-          Submit task
+          {submittingTask ? 'Submitting...' : 'Submit task'}
         </button>
       </div>
     </header>

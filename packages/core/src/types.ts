@@ -162,6 +162,7 @@ export interface AdminAssessmentLinkSummary {
   created_at: number;
   expires_at: number;
   status: AssessmentLinkStatus;
+  session_status?: SessionStatus;
   prompt?: PromptSummary | null;
   consumed_session_id?: string;
 }

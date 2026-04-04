@@ -18,6 +18,27 @@ export interface RestoredConstraints {
   timeLimitSeconds: number;
 }
 
+export interface SessionSummaryStats {
+  tokensUsed: number;
+  maxTokens: number;
+  interactionsUsed: number;
+  maxInteractions: number;
+  startedAt: number;
+  submittedAt?: number;
+  timeSpentSeconds: number;
+}
+
+export type SessionValidationResult =
+  | {
+      status: 'active';
+      constraints: RestoredConstraints;
+      stats: SessionSummaryStats;
+    }
+  | {
+      status: 'submitted';
+      stats: SessionSummaryStats;
+    };
+
 interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -72,7 +93,7 @@ export async function validateSession(
   sessionId: string,
   sessionToken: string,
   apiBase = '',
-): Promise<RestoredConstraints | null> {
+): Promise<SessionValidationResult | null> {
   try {
     const res = await fetch(`${apiBase}/api/sessions/${sessionId}`, {
       headers: { Authorization: `Bearer ${sessionToken}` },
@@ -81,6 +102,10 @@ export async function validateSession(
     const data = await res.json() as {
       session: {
         status: string;
+        created_at: number;
+        closed_at?: number;
+        tokens_used: number;
+        interactions_used: number;
         constraint: {
           max_session_tokens: number;
           max_interactions: number;
@@ -93,14 +118,39 @@ export async function validateSession(
         seconds_remaining: number;
       };
     };
+    const stats: SessionSummaryStats = {
+      tokensUsed: data.session.tokens_used,
+      maxTokens: data.session.constraint.max_session_tokens,
+      interactionsUsed: data.session.interactions_used,
+      maxInteractions: data.session.constraint.max_interactions,
+      startedAt: data.session.created_at,
+      ...(data.session.closed_at ? { submittedAt: data.session.closed_at } : {}),
+      timeSpentSeconds: Math.max(
+        0,
+        Math.floor(((data.session.closed_at ?? Date.now()) - data.session.created_at) / 1000),
+      ),
+    };
+
+    if (data.session.status === 'completed') {
+      return {
+        status: 'submitted',
+        stats,
+      };
+    }
+
     if (data.session.status !== 'active') return null;
+
     return {
+      status: 'active',
+      stats,
+      constraints: {
       tokensRemaining: data.constraints_remaining.tokens_remaining,
       interactionsRemaining: data.constraints_remaining.interactions_remaining,
       secondsRemaining: data.constraints_remaining.seconds_remaining,
       maxTokens: data.session.constraint.max_session_tokens,
       maxInteractions: data.session.constraint.max_interactions,
       timeLimitSeconds: data.session.constraint.time_limit_minutes * 60,
+      },
     };
   } catch {
     return null;

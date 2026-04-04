@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react';
 import { Activity, Link2, CheckCircle2, Clock, ArrowRight } from 'lucide-react';
 import { fetchAdminJson, useAdminKey } from './AdminKeyContext.js';
 import type { AdminAssessmentLinksResponse, AdminAssessmentLinkSummary } from '@lintic/core';
+import {
+  ASSESSMENT_STATUS_DOT,
+  getAssessmentDisplayStatus,
+  getAssessmentStatusLabel,
+} from './assessment-status.js';
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -63,8 +68,8 @@ export function AdminOverview({ onNavigate }: AdminOverviewProps) {
       .finally(() => setLoading(false));
   }, [adminKey]);
 
-  const active = links.filter((l) => l.status === 'active').length;
-  const consumed = links.filter((l) => l.status === 'consumed').length;
+  const notOpened = links.filter((l) => getAssessmentDisplayStatus(l) === 'not_opened').length;
+  const submitted = links.filter((l) => getAssessmentDisplayStatus(l) === 'submitted').length;
   const today = links.filter((l) => {
     const d = new Date(l.created_at);
     const now = new Date();
@@ -97,10 +102,10 @@ export function AdminOverview({ onNavigate }: AdminOverviewProps) {
     <div className="flex flex-col gap-5 p-5">
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Active Links" value={loading ? '—' : active} icon={Link2} accent="var(--color-brand)" />
-        <StatCard label="Consumed" value={loading ? '—' : consumed} icon={CheckCircle2} accent="var(--color-status-success)" />
+        <StatCard label="Not Opened" value={loading ? '—' : notOpened} icon={Link2} accent="var(--color-brand)" />
+        <StatCard label="Submitted" value={loading ? '—' : submitted} icon={CheckCircle2} accent="var(--color-status-success)" />
         <StatCard label="Created Today" value={loading ? '—' : today} icon={Clock} />
-        <StatCard label="Total Links" value={loading ? '—' : links.length} icon={Activity} />
+        <StatCard label="Total Assessments" value={loading ? '—' : links.length} icon={Activity} />
       </div>
 
       {error ? (
@@ -125,7 +130,7 @@ export function AdminOverview({ onNavigate }: AdminOverviewProps) {
             type="button"
             className="flex items-center gap-1 text-[11px] transition-colors"
             style={{ color: 'var(--color-text-dim)' }}
-            onClick={() => onNavigate('links')}
+            onClick={() => onNavigate('assessments')}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-brand)'; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-dim)'; }}
           >
@@ -139,53 +144,52 @@ export function AdminOverview({ onNavigate }: AdminOverviewProps) {
           </div>
         ) : recent.length === 0 ? (
           <div className="px-4 py-6 text-center text-[12px]" style={{ color: 'var(--color-text-dim)' }}>
-            No links generated yet.
+            No assessments created yet.
           </div>
         ) : (
           <div>
             {recent.map((link, i) => (
-              <div
-                key={link.id}
-                className="flex items-center gap-3 px-4 py-2"
-                style={{
-                  borderTop: i > 0 ? '1px solid var(--color-border-muted)' : undefined,
-                }}
-              >
-                <div
-                  className="h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{
-                    background:
-                      link.status === 'consumed'
-                        ? 'var(--color-status-success)'
-                        : link.status === 'expired'
-                          ? 'var(--color-status-warning)'
-                          : link.status === 'invalid'
-                            ? 'var(--color-status-error)'
-                            : 'var(--color-brand)',
-                  }}
-                />
-                <span className="min-w-0 flex-1 truncate text-[12px]" style={{ color: 'var(--color-text-main)' }}>
-                  {link.candidate_email}
-                </span>
-                <span className="shrink-0 font-mono text-[10px]" style={{ color: 'var(--color-text-dim)' }}>
-                  {link.prompt_id}
-                </span>
-                <span className="shrink-0 text-[11px]" style={{ color: 'var(--color-text-dimmest)' }}>
-                  {relativeTime(link.created_at)}
-                </span>
-                {link.consumed_session_id ? (
-                  <button
-                    type="button"
-                    className="shrink-0 text-[11px] underline transition-colors"
-                    style={{ color: 'var(--color-text-dim)' }}
-                    onClick={() => onNavigate('reviews', link.consumed_session_id!)}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-brand)'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-dim)'; }}
+              (() => {
+                const displayStatus = getAssessmentDisplayStatus(link);
+                return (
+                  <div
+                    key={link.id}
+                    className="flex items-center gap-3 px-4 py-2"
+                    style={{
+                      borderTop: i > 0 ? '1px solid var(--color-border-muted)' : undefined,
+                    }}
                   >
-                    Review
-                  </button>
-                ) : null}
-              </div>
+                    <div
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ background: ASSESSMENT_STATUS_DOT[displayStatus] }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-[12px]" style={{ color: 'var(--color-text-main)' }}>
+                      {link.candidate_email}
+                    </span>
+                    <span className="shrink-0 font-mono text-[10px]" style={{ color: 'var(--color-text-dim)' }}>
+                      {link.prompt_id}
+                    </span>
+                    <span className="shrink-0 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                      {getAssessmentStatusLabel(link)}
+                    </span>
+                    <span className="shrink-0 text-[11px]" style={{ color: 'var(--color-text-dimmest)' }}>
+                      {relativeTime(link.created_at)}
+                    </span>
+                    {link.consumed_session_id ? (
+                      <button
+                        type="button"
+                        className="shrink-0 text-[11px] underline transition-colors"
+                        style={{ color: 'var(--color-text-dim)' }}
+                        onClick={() => onNavigate('reviews', link.consumed_session_id!)}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-brand)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-dim)'; }}
+                      >
+                        Review
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })()
             ))}
           </div>
         )}

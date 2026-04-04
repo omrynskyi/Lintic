@@ -10,6 +10,11 @@ import type {
   Constraint,
   PromptSummary,
 } from '@lintic/core';
+import {
+  ASSESSMENT_STATUS_DOT,
+  getAssessmentDisplayStatus,
+  getAssessmentStatusLabel,
+} from './assessment-status.js';
 
 const CONSTRAINT_FIELDS: Array<{ key: keyof Constraint; label: string }> = [
   { key: 'max_session_tokens', label: 'Max session tokens' },
@@ -30,18 +35,11 @@ function relativeTime(ts: number): string {
   return `${d}d ago`;
 }
 
-const STATUS_DOT: Record<string, string> = {
-  active: 'var(--color-brand)',
-  consumed: 'var(--color-status-success)',
-  expired: 'var(--color-status-warning)',
-  invalid: 'var(--color-status-error)',
-};
-
 interface AdminLinksProps {
   onNavigate: (section: string, id?: string) => void;
 }
 
-export function AdminLinks({ onNavigate }: AdminLinksProps) {
+export function AdminAssessments({ onNavigate }: AdminLinksProps) {
   const { adminKey } = useAdminKey();
 
   const [links, setLinks] = useState<AdminAssessmentLinkSummary[]>([]);
@@ -118,10 +116,10 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
       });
       setEmail('');
       setShowForm(false);
-      showToast('Link generated.');
+      showToast('Assessment created.');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create link');
+      setError(err instanceof Error ? err.message : 'Failed to create assessment');
     } finally {
       setCreating(false);
     }
@@ -142,7 +140,7 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
   async function handleCopy(url: string) {
     try {
       await copyText(url);
-      showToast('Link copied.');
+      showToast('Assessment link copied.');
     } catch {
       setError('Copy failed. Please copy manually.');
     }
@@ -158,9 +156,14 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
         className="flex shrink-0 items-center justify-between border-b px-5 py-3"
         style={{ borderColor: 'var(--color-border-main)' }}
       >
-        <div className="flex items-center gap-3">
-          <h2 className="text-[13px] font-semibold" style={{ color: 'var(--color-text-bold)' }}>Links</h2>
-          {loading ? <RefreshCw size={11} className="animate-spin" style={{ color: 'var(--color-text-dim)' }} /> : null}
+        <div>
+          <div className="flex items-center gap-3">
+            <h2 className="text-[13px] font-semibold" style={{ color: 'var(--color-text-bold)' }}>Assessments</h2>
+            {loading ? <RefreshCw size={11} className="animate-spin" style={{ color: 'var(--color-text-dim)' }} /> : null}
+          </div>
+          <p className="mt-0.5 text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
+            Generate assessment links, track session activity, and jump into reviews from one place.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -181,7 +184,7 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
               style={{ background: 'var(--color-brand)', color: 'white' }}
             >
               <Plus size={11} />
-              Generate Link
+              New Assessment
             </button>
           ) : null}
         </div>
@@ -208,7 +211,7 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
         >
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
-              New Assessment Link
+              New Assessment
             </span>
             <button type="button" onClick={() => setShowForm(false)} style={{ color: 'var(--color-text-dim)' }}>
               <X size={13} />
@@ -301,7 +304,7 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
                 className="rounded-sm px-4 py-1.5 text-[12px] font-semibold disabled:opacity-40"
                 style={{ background: 'var(--color-brand)', color: 'white' }}
               >
-                {creating ? 'Generating…' : 'Generate link'}
+                {creating ? 'Generating…' : 'Generate assessment'}
               </button>
               <button
                 type="button"
@@ -322,7 +325,7 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
         <div className={`flex min-h-0 flex-1 flex-col overflow-auto p-5 ${selectedLink ? 'pr-0' : ''}`}>
           {!adminKey ? (
             <div className="rounded-sm border px-4 py-6 text-center text-[12px]" style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-dim)' }}>
-              Enter your admin key in Settings to inspect links.
+              Enter your admin key in Settings to inspect assessments.
             </div>
           ) : (
             <div
@@ -332,7 +335,7 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
               <table className="min-w-full text-left text-[12px]">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--color-border-main)' }}>
-                    {['Prompt', 'Candidate', 'Created', 'Expires', 'Status', 'Session', ''].map((col, i) => (
+                    {['Prompt', 'Candidate', 'Status', 'Created', 'Expires', 'Session', 'Actions'].map((col, i) => (
                       <th
                         key={i}
                         className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider"
@@ -345,87 +348,92 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
                 </thead>
                 <tbody>
                   {links.map((link, i) => (
-                    <tr
-                      key={link.id}
-                      data-testid={`admin-link-row-${link.id}`}
-                      style={{
-                        borderTop: i > 0 ? '1px solid var(--color-border-muted)' : undefined,
-                        background: selectedLink?.id === link.id ? 'rgba(56,135,206,0.04)' : undefined,
-                      }}
-                    >
-                      <td className="px-4 py-2">
-                        <div style={{ color: 'var(--color-text-main)' }}>{link.prompt?.title ?? link.prompt_id}</div>
-                        <div className="font-mono text-[10px]" style={{ color: 'var(--color-text-dimmest)' }}>
-                          {link.prompt_id}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2" style={{ color: 'var(--color-text-muted)' }}>
-                        {link.candidate_email}
-                      </td>
-                      <td className="px-4 py-2" style={{ color: 'var(--color-text-dim)' }}>
-                        {relativeTime(link.created_at)}
-                      </td>
-                      <td className="px-4 py-2" style={{ color: 'var(--color-text-dim)' }}>
-                        {relativeTime(link.expires_at)}
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className="flex items-center gap-1.5">
-                          <span
-                            className="h-1.5 w-1.5 rounded-full"
-                            style={{ background: STATUS_DOT[link.status] ?? 'var(--color-text-dimmest)' }}
-                          />
-                          <span style={{ color: 'var(--color-text-muted)' }}>
-                            {link.status.charAt(0).toUpperCase() + link.status.slice(1)}
-                          </span>
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 font-mono text-[11px]">
-                        {link.consumed_session_id ? (
-                          <button
-                            type="button"
-                            className="underline transition-colors"
-                            style={{ color: 'var(--color-brand)' }}
-                            onClick={() => onNavigate('reviews', link.consumed_session_id!)}
-                          >
-                            {link.consumed_session_id.slice(0, 8)}…
-                          </button>
-                        ) : (
-                          <span style={{ color: 'var(--color-text-dimmest)' }}>—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void handleInspect(link.id)}
-                            className="flex h-6 w-6 items-center justify-center rounded-sm transition-colors"
-                            style={{ color: 'var(--color-text-dim)' }}
-                            title="Inspect"
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-main)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-dim)'; (e.currentTarget as HTMLButtonElement).style.background = ''; }}
-                          >
-                            <Eye size={12} />
-                          </button>
-                          <button
-                            data-testid={`admin-link-copy-${link.id}`}
-                            type="button"
-                            onClick={() => void handleCopy(link.url)}
-                            className="flex h-6 w-6 items-center justify-center rounded-sm transition-colors"
-                            style={{ color: 'var(--color-text-dim)' }}
-                            title="Copy link"
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-main)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-dim)'; (e.currentTarget as HTMLButtonElement).style.background = ''; }}
-                          >
-                            <Copy size={12} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    (() => {
+                      const displayStatus = getAssessmentDisplayStatus(link);
+                      return (
+                        <tr
+                          key={link.id}
+                          data-testid={`admin-link-row-${link.id}`}
+                          style={{
+                            borderTop: i > 0 ? '1px solid var(--color-border-muted)' : undefined,
+                            background: selectedLink?.id === link.id ? 'rgba(56,135,206,0.04)' : undefined,
+                          }}
+                        >
+                          <td className="px-4 py-2">
+                            <div style={{ color: 'var(--color-text-main)' }}>{link.prompt?.title ?? link.prompt_id}</div>
+                            <div className="font-mono text-[10px]" style={{ color: 'var(--color-text-dimmest)' }}>
+                              {link.prompt_id}
+                            </div>
+                          </td>
+                          <td className="px-4 py-2" style={{ color: 'var(--color-text-muted)' }}>
+                            {link.candidate_email}
+                          </td>
+                          <td className="px-4 py-2">
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                className="h-1.5 w-1.5 rounded-full"
+                                style={{ background: ASSESSMENT_STATUS_DOT[displayStatus] }}
+                              />
+                              <span style={{ color: 'var(--color-text-muted)' }}>
+                                {getAssessmentStatusLabel(link)}
+                              </span>
+                            </span>
+                          </td>
+                          <td className="px-4 py-2" style={{ color: 'var(--color-text-dim)' }}>
+                            {relativeTime(link.created_at)}
+                          </td>
+                          <td className="px-4 py-2" style={{ color: 'var(--color-text-dim)' }}>
+                            {relativeTime(link.expires_at)}
+                          </td>
+                          <td className="px-4 py-2 font-mono text-[11px]">
+                            {link.consumed_session_id ? (
+                              <button
+                                type="button"
+                                className="underline transition-colors"
+                                style={{ color: 'var(--color-brand)' }}
+                                onClick={() => onNavigate('reviews', link.consumed_session_id!)}
+                              >
+                                {link.consumed_session_id.slice(0, 8)}…
+                              </button>
+                            ) : (
+                              <span style={{ color: 'var(--color-text-dimmest)' }}>—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleInspect(link.id)}
+                                className="flex h-6 w-6 items-center justify-center rounded-sm transition-colors"
+                                style={{ color: 'var(--color-text-dim)' }}
+                                title="Inspect"
+                                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-main)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'; }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-dim)'; (e.currentTarget as HTMLButtonElement).style.background = ''; }}
+                              >
+                                <Eye size={12} />
+                              </button>
+                              <button
+                                data-testid={`admin-link-copy-${link.id}`}
+                                type="button"
+                                onClick={() => void handleCopy(link.url)}
+                                className="flex h-6 w-6 items-center justify-center rounded-sm transition-colors"
+                                style={{ color: 'var(--color-text-dim)' }}
+                                title="Copy link"
+                                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-main)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'; }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-dim)'; (e.currentTarget as HTMLButtonElement).style.background = ''; }}
+                              >
+                                <Copy size={12} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })()
                   ))}
                   {!loading && links.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-[12px]" style={{ color: 'var(--color-text-dim)' }}>
-                        No links generated yet.
+                        No assessments created yet.
                       </td>
                     </tr>
                   ) : null}
@@ -444,7 +452,7 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
           >
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
-                Link Detail
+                Assessment Detail
               </span>
               <button
                 type="button"
@@ -460,7 +468,7 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
             ) : (
               <div className="flex flex-col gap-3">
                 {[
-                  { label: 'Status', value: selectedLink.status.charAt(0).toUpperCase() + selectedLink.status.slice(1) },
+                  { label: 'Status', value: getAssessmentStatusLabel(selectedLink) },
                   { label: 'Candidate', value: selectedLink.candidate_email },
                   { label: 'Prompt', value: selectedLink.prompt?.title ?? selectedLink.prompt_id },
                   { label: 'Created', value: new Date(selectedLink.created_at).toISOString() },
@@ -476,7 +484,7 @@ export function AdminLinks({ onNavigate }: AdminLinksProps) {
 
                 <div>
                   <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
-                    URL
+                    Assessment Link
                   </div>
                   <div className="break-all text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
                     {selectedLink.url}

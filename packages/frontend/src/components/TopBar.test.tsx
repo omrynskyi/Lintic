@@ -87,4 +87,24 @@ describe('TopBar', () => {
     fireEvent.click(screen.getByTestId('open-review-debug'));
     expect(onOpenReviewDebug).toHaveBeenCalledTimes(1);
   });
+
+  test('calls the submit handler when clicked', () => {
+    const onSubmitTask = vi.fn();
+    render(<TopBar {...DEFAULT_PROPS} onSubmitTask={onSubmitTask} />);
+
+    fireEvent.click(screen.getByTestId('submit-task'));
+    expect(onSubmitTask).toHaveBeenCalledTimes(1);
+  });
+
+  test('disables submit when requested', () => {
+    render(<TopBar {...DEFAULT_PROPS} onSubmitTask={() => undefined} submitDisabled />);
+
+    expect(screen.getByTestId('submit-task')).toBeDisabled();
+  });
+
+  test('shows submitting state label', () => {
+    render(<TopBar {...DEFAULT_PROPS} onSubmitTask={() => undefined} submittingTask />);
+
+    expect(screen.getByTestId('submit-task')).toHaveTextContent('Submitting...');
+  });
 });

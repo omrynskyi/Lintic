@@ -97,6 +97,8 @@ interface ChatPanelProps {
   onStopTools?: () => void;
   /** When provided, forwarded to the backend as `agent_config` for per-request adapter creation. */
   agentConfig?: AgentConfig;
+  /** Notifies the parent when a turn is actively running. */
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 function generateId() {
@@ -236,6 +238,7 @@ export function ChatPanel({
   onExecuteTools,
   onStopTools,
   agentConfig,
+  onLoadingChange,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -247,6 +250,10 @@ export function ChatPanel({
 
   const exhausted =
     constraints.interactionsRemaining <= 0 || constraints.tokensRemaining <= 0;
+
+  useEffect(() => {
+    onLoadingChange?.(loading);
+  }, [loading, onLoadingChange]);
 
   // Auto-scroll to bottom when messages change.
   useEffect(() => {
@@ -280,6 +287,12 @@ export function ChatPanel({
       }
     })();
   }, [sessionId, apiBase, sessionToken]);
+
+  useEffect(() => {
+    if (!sessionId) {
+      onLoadingChange?.(false);
+    }
+  }, [sessionId, onLoadingChange]);
 
   const stopAgent = useCallback(() => {
     onStopTools?.();

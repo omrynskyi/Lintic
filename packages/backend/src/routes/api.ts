@@ -19,6 +19,7 @@ import type {
   Constraint,
   PromptSummary,
   PromptConfig,
+  SessionStatus,
 } from '@lintic/core';
 import {
   buildAssessmentLink,
@@ -146,11 +147,15 @@ async function resolveAssessmentLinkStatus(
 }
 
 async function toAdminAssessmentLinkSummary(
+  db: DatabaseAdapter,
   record: AssessmentLinkRecord,
   prompts: PromptConfig[],
   secretKey?: string,
 ): Promise<AdminAssessmentLinkSummary> {
   const prompt = prompts.find((entry) => entry.id === record.prompt_id) ?? null;
+  const sessionStatus: SessionStatus | undefined = record.consumed_session_id
+    ? (await db.getSession(record.consumed_session_id))?.status
+    : undefined;
   const summary: AdminAssessmentLinkSummary = {
     id: record.id,
     url: record.url,
@@ -159,6 +164,7 @@ async function toAdminAssessmentLinkSummary(
     created_at: record.created_at,
     expires_at: record.expires_at,
     status: await resolveAssessmentLinkStatus(record, prompts, secretKey),
+    ...(sessionStatus ? { session_status: sessionStatus } : {}),
   };
 
   if (prompt) {
@@ -172,12 +178,13 @@ async function toAdminAssessmentLinkSummary(
 }
 
 async function toAdminAssessmentLinkDetail(
+  db: DatabaseAdapter,
   record: AssessmentLinkRecord,
   prompts: PromptConfig[],
   secretKey?: string,
 ): Promise<AdminAssessmentLinkDetail> {
   const detail: AdminAssessmentLinkDetail = {
-    ...(await toAdminAssessmentLinkSummary(record, prompts, secretKey)),
+    ...(await toAdminAssessmentLinkSummary(db, record, prompts, secretKey)),
     token: record.token,
     constraint: record.constraint,
   };
@@ -302,7 +309,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       constraint: constraints,
     });
 
-    const detail = await toAdminAssessmentLinkDetail(link, config.prompts, secretKey);
+      const detail = await toAdminAssessmentLinkDetail(db, link, config.prompts, secretKey);
 
     res.status(201).json({
       ...detail,
@@ -314,7 +321,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
   router.get('/links', requireAdminKey(adminKey), asyncRoute(async (_req, res) => {
     const records = await db.listAssessmentLinks();
     const links = await Promise.all(
-      records.map((record) => toAdminAssessmentLinkSummary(record, config.prompts, secretKey)),
+      records.map((record) => toAdminAssessmentLinkSummary(db, record, config.prompts, secretKey)),
     );
 
     res.json({ links });
@@ -396,7 +403,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     }
 
     res.json({
-      link: await toAdminAssessmentLinkDetail(link, config.prompts, secretKey),
+      link: await toAdminAssessmentLinkDetail(db, link, config.prompts, secretKey),
     });
   }));
 

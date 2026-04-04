@@ -35,10 +35,30 @@ vi.mock('./components/DevSetup.js', () => ({
 }));
 
 vi.mock('./components/TopBar.js', () => ({
-  TopBar: ({ onViewPrompt }: { onViewPrompt?: () => void }) => (
-    <button type="button" data-testid="mock-view-prompt" onClick={onViewPrompt}>
-      View Prompt
-    </button>
+  TopBar: ({
+    onViewPrompt,
+    onSubmitTask,
+    submitDisabled,
+    submittingTask,
+  }: {
+    onViewPrompt?: () => void;
+    onSubmitTask?: () => void;
+    submitDisabled?: boolean;
+    submittingTask?: boolean;
+  }) => (
+    <div>
+      <button type="button" data-testid="mock-view-prompt" onClick={onViewPrompt}>
+        View Prompt
+      </button>
+      <button
+        type="button"
+        data-testid="mock-submit-task"
+        onClick={onSubmitTask}
+        disabled={submitDisabled}
+      >
+        {submittingTask ? 'Submitting...' : 'Submit task'}
+      </button>
+    </div>
   ),
 }));
 
@@ -59,7 +79,16 @@ vi.mock('./components/IdePanel.js', () => ({
 }));
 
 vi.mock('./components/ChatPanel.js', () => ({
-  ChatPanel: () => <div data-testid="chat-panel">Chat</div>,
+  ChatPanel: ({ onLoadingChange }: { onLoadingChange?: (loading: boolean) => void }) => (
+    <div data-testid="chat-panel">
+      <button type="button" data-testid="mock-chat-busy" onClick={() => onLoadingChange?.(true)}>
+        Busy
+      </button>
+      <button type="button" data-testid="mock-chat-idle" onClick={() => onLoadingChange?.(false)}>
+        Idle
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('./components/Toast.js', () => ({
@@ -68,6 +97,51 @@ vi.mock('./components/Toast.js', () => ({
 
 vi.mock('./components/ReviewDashboard.js', () => ({
   ReviewDashboard: () => <div data-testid="review-dashboard">Review</div>,
+}));
+
+vi.mock('./components/AssessmentSubmittedModal.js', () => ({
+  AssessmentSubmittedModal: ({
+    mode,
+    onDone,
+    onCancel,
+    onConfirm,
+    promptTitle,
+    stats,
+    submitting,
+  }: {
+    mode: 'confirm' | 'submitted';
+    onDone: () => void;
+    onCancel?: () => void;
+    onConfirm?: () => void;
+    promptTitle?: string | null;
+    stats: { tokensUsed: number; interactionsUsed: number };
+    submitting?: boolean;
+  }) => (
+    <div data-testid={mode === 'confirm' ? 'submit-confirmation-modal' : 'submitted-modal'}>
+      <div>{promptTitle}</div>
+      {stats ? (
+        <>
+          <div>{stats.tokensUsed}</div>
+          <div>{stats.interactionsUsed}</div>
+        </>
+      ) : null}
+      {mode === 'confirm' ? (
+        <>
+          <div>{submitting ? 'Submitting your assessment...' : 'Ready to submit'}</div>
+          <button type="button" data-testid="submit-confirmation-cancel" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" data-testid="submit-confirmation-submit" onClick={onConfirm}>
+            Submit
+          </button>
+        </>
+      ) : (
+        <button type="button" data-testid="submitted-done" onClick={onDone}>
+          Done
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock('./components/AssessmentLinkLoader.js', () => ({
@@ -114,6 +188,7 @@ describe('App prompt display', () => {
       }),
     });
     window.history.replaceState({}, '', '/');
+    vi.stubGlobal('fetch', vi.fn());
   });
 
   test('opens prompt instructions in the IDE when a session starts and the top bar action is used', async () => {
@@ -140,5 +215,116 @@ describe('App prompt display', () => {
     render(<App />);
 
     expect(screen.getByTestId('admin-dashboard')).toBeInTheDocument();
+  });
+
+  test('shows submitted modal after submit instead of routing to review', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'completed' }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          session: {
+            status: 'completed',
+            created_at: 1000,
+            closed_at: 61000,
+            tokens_used: 1200,
+            interactions_used: 7,
+            constraint: {
+              max_session_tokens: 50000,
+              max_interactions: 30,
+              time_limit_minutes: 60,
+            },
+          },
+          constraints_remaining: {
+            tokens_remaining: 48800,
+            interactions_remaining: 23,
+            seconds_remaining: 3500,
+          },
+        }),
+      } as unknown as Response);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('mock-start-session'));
+    fireEvent.click(screen.getByTestId('mock-submit-task'));
+    expect(screen.getByTestId('submit-confirmation-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('submit-confirmation-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submitted-modal')).toBeInTheDocument();
+      expect(screen.queryByTestId('review-dashboard')).not.toBeInTheDocument();
+      expect(window.location.pathname).toBe('/');
+    });
+  });
+
+  test('opens a custom confirmation modal before submit', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('mock-start-session'));
+    fireEvent.click(screen.getByTestId('mock-submit-task'));
+
+    expect(screen.getByTestId('submit-confirmation-modal')).toBeInTheDocument();
+  });
+
+  test('disables submit while the chat is busy', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('mock-start-session'));
+    expect(screen.getByTestId('mock-submit-task')).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTestId('mock-chat-busy'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-submit-task')).toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByTestId('mock-chat-idle'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-submit-task')).not.toBeDisabled();
+    });
+  });
+
+  test('reopens a completed saved session into the submitted modal', async () => {
+    localStorage.setItem('lintic_session', JSON.stringify({
+      sessionId: 'sess-1',
+      sessionToken: 'tok-1',
+      prompt: {
+        id: 'prompt-1',
+        title: 'Build a task runner',
+      },
+    }));
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        session: {
+          status: 'completed',
+          created_at: 1000,
+          closed_at: 121000,
+          tokens_used: 2000,
+          interactions_used: 9,
+          constraint: {
+            max_session_tokens: 50000,
+            max_interactions: 30,
+            time_limit_minutes: 60,
+          },
+        },
+        constraints_remaining: {
+          tokens_remaining: 48000,
+          interactions_remaining: 21,
+          seconds_remaining: 0,
+        },
+      }),
+    } as unknown as Response);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('submitted-modal')).toBeInTheDocument();
+    });
   });
 });
