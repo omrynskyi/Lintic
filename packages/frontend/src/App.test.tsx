@@ -87,6 +87,7 @@ vi.mock('./components/ChatPanel.js', () => ({
     latestPlanPath,
     onPlanGenerated,
     onApprovePlan,
+    modelLabel,
   }: {
     onLoadingChange?: (loading: boolean) => void;
     mode?: 'build' | 'plan';
@@ -94,9 +95,11 @@ vi.mock('./components/ChatPanel.js', () => ({
     latestPlanPath?: string | null;
     onPlanGenerated?: (path: string) => void;
     onApprovePlan?: (path: string) => Promise<string>;
+    modelLabel?: string;
   }) => (
     <div data-testid="chat-panel">
       <div data-testid="mock-chat-mode">{mode}</div>
+      <div data-testid="mock-chat-model">{modelLabel}</div>
       <button type="button" data-testid="mock-chat-busy" onClick={() => onLoadingChange?.(true)}>
         Busy
       </button>
@@ -268,6 +271,14 @@ describe('App prompt display', () => {
 
     fireEvent.click(screen.getByTestId('mock-switch-plan'));
     expect(screen.getByTestId('mock-chat-mode')).toHaveTextContent('plan');
+  });
+
+  test('passes the configured model label to chat after session start', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('mock-start-session'));
+
+    expect(screen.getByTestId('mock-chat-model')).toHaveTextContent('gpt-4o');
   });
 
   test('renders the admin dashboard on the admin route', () => {

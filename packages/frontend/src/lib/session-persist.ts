@@ -9,6 +9,11 @@ export interface PersistedSession {
   prompt: PromptSummary;
 }
 
+export interface AgentSummary {
+  provider: string;
+  model: string;
+}
+
 export interface RestoredConstraints {
   tokensRemaining: number;
   interactionsRemaining: number;
@@ -33,10 +38,12 @@ export type SessionValidationResult =
       status: 'active';
       constraints: RestoredConstraints;
       stats: SessionSummaryStats;
+      agent?: AgentSummary;
     }
   | {
       status: 'submitted';
       stats: SessionSummaryStats;
+      agent?: AgentSummary;
     };
 
 interface StorageLike {
@@ -117,6 +124,7 @@ export async function validateSession(
         interactions_remaining: number;
         seconds_remaining: number;
       };
+      agent?: AgentSummary;
     };
     const stats: SessionSummaryStats = {
       tokensUsed: data.session.tokens_used,
@@ -135,6 +143,7 @@ export async function validateSession(
       return {
         status: 'submitted',
         stats,
+        ...(data.agent ? { agent: data.agent } : {}),
       };
     }
 
@@ -143,6 +152,7 @@ export async function validateSession(
     return {
       status: 'active',
       stats,
+      ...(data.agent ? { agent: data.agent } : {}),
       constraints: {
       tokensRemaining: data.constraints_remaining.tokens_remaining,
       interactionsRemaining: data.constraints_remaining.interactions_remaining,

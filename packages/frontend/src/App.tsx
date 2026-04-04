@@ -25,6 +25,7 @@ import {
   clearSession,
   validateSession,
   restoreFiles,
+  type AgentSummary,
   type SessionSummaryStats,
 } from './lib/session-persist.js';
 import type { PromptSummary } from '@lintic/core';
@@ -62,6 +63,7 @@ export function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | undefined>(undefined);
   const [agentConfig, setAgentConfig] = useState<AgentConfig | undefined>(undefined);
+  const [agentSummary, setAgentSummary] = useState<AgentSummary | null>(null);
   const [agentMode, setAgentMode] = useState<AgentMode>('build');
   const [activePrompt, setActivePrompt] = useState<PromptSummary | null>(null);
   const [fileToOpen, setFileToOpen] = useState<string | null>(null);
@@ -147,6 +149,7 @@ export function App() {
       setSessionToken(saved.sessionToken);
       setActivePrompt(saved.prompt);
       setAgentConfig(undefined);
+      setAgentSummary(validation.agent ?? null);
       setAgentMode('build');
       setLatestPlanPath(null);
       setSubmitConfirmationOpen(false);
@@ -166,6 +169,7 @@ export function App() {
     setSessionId(session.sessionId);
     setSessionToken(session.sessionToken);
     setAgentConfig(session.agentConfig);
+    setAgentSummary({ provider: session.agentConfig.provider, model: session.agentConfig.model });
     setAgentMode('build');
     setActivePrompt(session.prompt);
     setLatestPlanPath(null);
@@ -301,12 +305,14 @@ export function App() {
             sessionId: nextSessionId,
             sessionToken: nextSessionToken,
             prompt,
-          }: { sessionId: string; sessionToken: string; prompt: PromptSummary },
+            agent,
+          }: { sessionId: string; sessionToken: string; prompt: PromptSummary; agent?: AgentSummary },
         ) => {
           saveSession({ sessionId: nextSessionId, sessionToken: nextSessionToken, prompt });
           setSessionId(nextSessionId);
           setSessionToken(nextSessionToken);
           setAgentConfig(undefined);
+          setAgentSummary(agent ?? null);
           setAgentMode('build');
           setActivePrompt(prompt);
           setLatestPlanPath(null);
@@ -319,14 +325,17 @@ export function App() {
               setSessionId(null);
               setSessionToken(undefined);
               setActivePrompt(null);
+              setAgentSummary(null);
               setAppState('setup');
               return;
             }
             if (validation.status === 'submitted') {
+              setAgentSummary(validation.agent ?? null);
               setSubmittedStats(validation.stats);
               setAppState('submitted');
               return;
             }
+            setAgentSummary(validation.agent ?? null);
             patchConstraints(validation.constraints);
             setSubmittedStats(null);
             setAppState('active');
@@ -399,6 +408,7 @@ export function App() {
                 sessionId={sessionId}
                 sessionToken={sessionToken}
                 agentConfig={agentConfig}
+                modelLabel={agentSummary?.model}
                 mode={agentMode}
                 onModeChange={setAgentMode}
                 latestPlanPath={latestPlanPath}

@@ -107,6 +107,7 @@ interface ChatPanelProps {
   latestPlanPath?: string | null;
   onPlanGenerated?: (path: string) => void;
   onApprovePlan?: (path: string) => Promise<string>;
+  modelLabel?: string;
 }
 
 function generateId() {
@@ -252,6 +253,7 @@ export function ChatPanel({
   latestPlanPath,
   onPlanGenerated,
   onApprovePlan,
+  modelLabel,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -618,7 +620,7 @@ export function ChatPanel({
                 className="flex items-center gap-2 text-[13px] font-medium opacity-60 cursor-pointer hover:opacity-100 transition-opacity"
                 style={{ color: 'var(--color-text-main)' }}
               >
-                <span>{agentConfig?.model || 'Opus 4.6'}</span>
+                <span>{agentConfig?.model || modelLabel || 'Configured model'}</span>
                 <ChevronDown size={14} />
               </div>
               <div className="flex items-center rounded-full bg-white/5 p-1">

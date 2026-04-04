@@ -146,6 +146,18 @@ describe('ToolExecutor', () => {
       expect(outputResult.output).toContain(`Cannot find module 'express'`);
     });
 
+    test('read_terminal_output returns a helpful message when no output has been captured yet', async () => {
+      mockWc.spawn.mockResolvedValue(makeProcess(''));
+      await executor.execute(toolCall({ name: 'run_command', input: { command: 'npm init -y' } }));
+
+      const outputResult = await executor.execute(
+        toolCall({ name: 'read_terminal_output', input: { process_id: 'proc-1' } }),
+      );
+
+      expect(outputResult.output).toContain('"process_id":"proc-1"');
+      expect(outputResult.output).toContain('No terminal output');
+    });
+
     test('kill_process terminates a tracked command', async () => {
       const proc = makeProcess('watching\n');
       mockWc.spawn.mockResolvedValue(proc);

@@ -16,6 +16,7 @@ describe('AssessmentLinkLoader', () => {
         session_id: 'sess-1',
         token: 'tok-1',
         prompt: { id: 'prompt-1', title: 'Sorting challenge', description: 'Build it.' },
+        agent: { provider: 'openai-compatible', model: 'gpt-4o' },
       }),
     } as Response));
 
@@ -26,6 +27,7 @@ describe('AssessmentLinkLoader', () => {
         sessionId: 'sess-1',
         sessionToken: 'tok-1',
         prompt: { id: 'prompt-1', title: 'Sorting challenge', description: 'Build it.' },
+        agent: { provider: 'openai-compatible', model: 'gpt-4o' },
       });
     });
   });

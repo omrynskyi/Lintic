@@ -187,12 +187,12 @@ export class ToolExecutor {
     }
 
     const sliceLength = Math.max(1, Math.floor(max_chars));
-    return tracked.outputReady.then(() => JSON.stringify({
+    return Promise.resolve().then(() => JSON.stringify({
       process_id,
       command: tracked.command,
       status: tracked.status,
       exit_code: tracked.exitCode,
-      output: tracked.output.slice(-sliceLength),
+      output: this.formatTerminalOutput(tracked, sliceLength),
     }));
   }
 
@@ -251,6 +251,19 @@ export class ToolExecutor {
       this.onOutput?.(value);
     }
     streamOwner.output = this.cleanOutput(streamOwner.output);
+  }
+
+  private formatTerminalOutput(tracked: RunningProcess, sliceLength: number): string {
+    const trimmedOutput = tracked.output.slice(-sliceLength);
+    if (trimmedOutput) {
+      return trimmedOutput;
+    }
+
+    if (tracked.status === 'running') {
+      return 'No terminal output captured yet. The command may still be starting or may be running silently.';
+    }
+
+    return 'No terminal output was captured for this command.';
   }
 
   getRunningProcessIds(): string[] {

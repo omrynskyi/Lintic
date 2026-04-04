@@ -375,11 +375,13 @@ describe('POST /api/sessions', () => {
       token: string;
       assessment_link: string;
       prompt: { id: string; title: string };
+      agent: { provider: string; model: string };
     };
     expect(typeof body.session_id).toBe('string');
     expect(typeof body.token).toBe('string');
     expect(body.assessment_link).toContain(body.session_id);
     expect(body.prompt).toEqual({ id: 'test-prompt', title: 'Test Prompt' });
+    expect(body.agent).toEqual({ provider: 'openai-compatible', model: 'gpt-4o' });
   });
 
   test('returns 400 when prompt_id is missing', async () => {
@@ -482,12 +484,14 @@ describe('POST /api/links/consume', () => {
       prompt_id: string;
       email: string;
       prompt: { id: string; title: string };
+      agent: { provider: string; model: string };
     };
     expect(body.session_id).toBeTruthy();
     expect(body.token).toBeTruthy();
     expect(body.prompt_id).toBe('test-prompt');
     expect(body.email).toBe('candidate@example.com');
     expect(body.prompt).toEqual({ id: 'test-prompt', title: 'Test Prompt' });
+    expect(body.agent).toEqual({ provider: 'openai-compatible', model: 'gpt-4o' });
   });
 
   test('rejects an already-used assessment link token', async () => {
@@ -661,11 +665,16 @@ describe('GET /api/sessions/:id', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    const body = res.body as { session: { id: string }; constraints_remaining: { tokens_remaining: number; interactions_remaining: number; seconds_remaining: number } };
+    const body = res.body as {
+      session: { id: string };
+      constraints_remaining: { tokens_remaining: number; interactions_remaining: number; seconds_remaining: number };
+      agent: { provider: string; model: string };
+    };
     expect(body.session.id).toBe(id);
     expect(typeof body.constraints_remaining.tokens_remaining).toBe('number');
     expect(typeof body.constraints_remaining.interactions_remaining).toBe('number');
     expect(typeof body.constraints_remaining.seconds_remaining).toBe('number');
+    expect(body.agent).toEqual({ provider: 'openai-compatible', model: 'gpt-4o' });
   });
 });
 

@@ -118,6 +118,13 @@ function generatePlanFilePath(now = new Date()): string {
   return `plans/${year}-${month}-${day}-${hours}${minutes}${seconds}-plan.md`;
 }
 
+function buildAgentSummary(config: Config): { provider: string; model: string } {
+  return {
+    provider: config.agent.provider,
+    model: config.agent.model,
+  };
+}
+
 function buildBaseUrl(req: Request): string {
   const origin = req.get('origin');
   if (origin) {
@@ -390,6 +397,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
         token: existingToken,
         prompt_id: existingSession.prompt_id,
         prompt: toPromptSummary(prompt),
+        agent: buildAgentSummary(config),
         email: existingSession.candidate_email,
         expires_at: new Date(payload.exp * 1000).toISOString(),
       });
@@ -413,6 +421,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       token,
       prompt_id: payload.prompt_id,
       prompt: toPromptSummary(prompt),
+      agent: buildAgentSummary(config),
       email: payload.email,
       expires_at: new Date(payload.exp * 1000).toISOString(),
     });
@@ -460,6 +469,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       token,
       assessment_link: `/assessment/${id}?token=${token}`,
       prompt: toPromptSummary(prompt),
+      agent: buildAgentSummary(config),
     });
   }));
 
@@ -479,7 +489,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       seconds_remaining: Math.max(0, timeLimitSeconds - elapsed),
     };
 
-    res.json({ session, constraints_remaining });
+    res.json({ session, constraints_remaining, agent: buildAgentSummary(config) });
   }));
 
   // POST /api/sessions/:id/messages — single LLM call; stores tool_calls in DB if stop_reason='tool_use'

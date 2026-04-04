@@ -4,10 +4,21 @@ import type { PromptSummary } from '@lintic/core';
 interface AssessmentLinkLoaderProps {
   token: string;
   apiBase?: string;
-  onConsumed: (session: { sessionId: string; sessionToken: string; prompt: PromptSummary }) => void;
+  onConsumed: (session: {
+    sessionId: string;
+    sessionToken: string;
+    prompt: PromptSummary;
+    agent?: { provider: string; model: string };
+  }) => void;
 }
 
-type ConsumeResponse = { session_id?: string; token?: string; prompt?: PromptSummary; error?: string };
+type ConsumeResponse = {
+  session_id?: string;
+  token?: string;
+  prompt?: PromptSummary;
+  agent?: { provider: string; model: string };
+  error?: string;
+};
 
 const pendingConsumeRequests = new Map<string, Promise<ConsumeResponse>>();
 
@@ -73,7 +84,12 @@ export function AssessmentLinkLoader({
         }
 
         if (!cancelled) {
-          onConsumed({ sessionId: body.session_id, sessionToken: body.token, prompt: body.prompt });
+          onConsumed({
+            sessionId: body.session_id,
+            sessionToken: body.token,
+            prompt: body.prompt,
+            agent: body.agent,
+          });
         }
       } catch (consumeError) {
         if (!cancelled) {
