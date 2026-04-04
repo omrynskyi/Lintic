@@ -1,5 +1,5 @@
 import { Pool, type PoolConfig } from 'pg';
-import type { Session, Constraint, MessageRole, ReplayEventType } from './types.js';
+import type { AssessmentLinkRecord, Session, Constraint, MessageRole, ReplayEventType } from './types.js';
 export interface StoredMessage {
     id: number;
     session_id: string;
@@ -20,11 +20,22 @@ export interface CreateSessionConfig {
     candidate_email: string;
     constraint: Constraint;
 }
+export interface CreateAssessmentLinkConfig {
+    id: string;
+    token: string;
+    url: string;
+    prompt_id: string;
+    candidate_email: string;
+    created_at: number;
+    expires_at: number;
+    constraint: Constraint;
+}
 export interface DatabaseAdapter {
     createSession(config: CreateSessionConfig): Promise<{
         id: string;
         token: string;
     }>;
+    createAssessmentLink(config: CreateAssessmentLinkConfig): Promise<AssessmentLinkRecord>;
     getSession(id: string): Promise<Session | null>;
     getSessionToken(id: string): Promise<string | null>;
     addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
@@ -32,6 +43,8 @@ export interface DatabaseAdapter {
     closeSession(id: string): Promise<void>;
     listSessions(): Promise<Session[]>;
     getSessionsByPrompt(promptId: string): Promise<Session[]>;
+    listAssessmentLinks(): Promise<AssessmentLinkRecord[]>;
+    getAssessmentLink(id: string): Promise<AssessmentLinkRecord | null>;
     validateSessionToken(id: string, token: string): Promise<boolean>;
     updateSessionUsage(id: string, additionalTokens: number, additionalInteractions: number): Promise<void>;
     addReplayEvent(sessionId: string, type: ReplayEventType, timestamp: number, payload: unknown): Promise<void>;
@@ -48,6 +61,7 @@ export declare class SQLiteAdapter implements DatabaseAdapter {
         id: string;
         token: string;
     }>;
+    createAssessmentLink(config: CreateAssessmentLinkConfig): Promise<AssessmentLinkRecord>;
     getSession(id: string): Promise<Session | null>;
     getSessionToken(id: string): Promise<string | null>;
     addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
@@ -55,6 +69,8 @@ export declare class SQLiteAdapter implements DatabaseAdapter {
     closeSession(id: string): Promise<void>;
     listSessions(): Promise<Session[]>;
     getSessionsByPrompt(promptId: string): Promise<Session[]>;
+    listAssessmentLinks(): Promise<AssessmentLinkRecord[]>;
+    getAssessmentLink(id: string): Promise<AssessmentLinkRecord | null>;
     validateSessionToken(id: string, token: string): Promise<boolean>;
     updateSessionUsage(id: string, additionalTokens: number, additionalInteractions: number): Promise<void>;
     addReplayEvent(sessionId: string, type: ReplayEventType, timestamp: number, payload: unknown): Promise<void>;
@@ -77,6 +93,7 @@ export declare class PostgresAdapter implements DatabaseAdapter {
         id: string;
         token: string;
     }>;
+    createAssessmentLink(config: CreateAssessmentLinkConfig): Promise<AssessmentLinkRecord>;
     getSession(id: string): Promise<Session | null>;
     getSessionToken(id: string): Promise<string | null>;
     addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
@@ -84,6 +101,8 @@ export declare class PostgresAdapter implements DatabaseAdapter {
     closeSession(id: string): Promise<void>;
     listSessions(): Promise<Session[]>;
     getSessionsByPrompt(promptId: string): Promise<Session[]>;
+    listAssessmentLinks(): Promise<AssessmentLinkRecord[]>;
+    getAssessmentLink(id: string): Promise<AssessmentLinkRecord | null>;
     validateSessionToken(id: string, token: string): Promise<boolean>;
     updateSessionUsage(id: string, additionalTokens: number, additionalInteractions: number): Promise<void>;
     addReplayEvent(sessionId: string, type: ReplayEventType, timestamp: number, payload: unknown): Promise<void>;
