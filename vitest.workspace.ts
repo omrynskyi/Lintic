@@ -9,6 +9,7 @@ export default defineWorkspace([
         'packages/core/src/**/*.test.ts',
         'packages/adapters/src/**/*.test.ts',
         'packages/backend/src/**/*.test.ts',
+        'packages/mock-pg/src/**/*.test.ts',
       ],
       environment: 'node',
     },

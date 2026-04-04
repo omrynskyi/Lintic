@@ -1,0 +1,194 @@
+import { describe, expect, test, vi } from 'vitest';
+import { Pool, MockPgError } from './index.js';
+import { parseSql } from './parser.js';
+
+describe('parseSql', () => {
+  test('parses CREATE TABLE columns including primary key metadata', () => {
+    expect(parseSql('CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, age INTEGER)')).toEqual({
+      type: 'create_table',
+      table: 'users',
+      columns: [
+        { name: 'id', dataType: 'INTEGER', primaryKey: true },
+        { name: 'email', dataType: 'TEXT', primaryKey: false },
+        { name: 'age', dataType: 'INTEGER', primaryKey: false },
+      ],
+    });
+  });
+
+  test('parses SELECT with WHERE, ORDER BY, and LIMIT', () => {
+    expect(parseSql('SELECT id, email FROM users WHERE email = $1 AND age >= 21 ORDER BY id DESC LIMIT 5')).toEqual({
+      type: 'select',
+      table: 'users',
+      columns: ['id', 'email'],
+      where: [
+        { column: 'email', operator: '=', value: { kind: 'param', index: 1 } },
+        { column: 'age', operator: '>=', value: { kind: 'literal', value: 21 } },
+      ],
+      orderBy: {
+        column: 'id',
+        direction: 'DESC',
+      },
+      limit: 5,
+    });
+  });
+
+  test('rejects unsupported OR predicates', () => {
+    expect(() => parseSql('SELECT * FROM users WHERE email = $1 OR age = 20')).toThrow(/AND-combined/);
+  });
+});
+
+describe('Pool', () => {
+  test('creates tables, inserts rows, and selects with filtering, ordering, and limits', async () => {
+    const pool = new Pool();
+
+    await pool.query('CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, age INTEGER)');
+    await pool.query(
+      "INSERT INTO users (id, email, age) VALUES (1, 'b@example.com', 40), (2, 'a@example.com', 30), (3, 'a@example.com', 25)",
+    );
+
+    const result = await pool.query<{ id: number; email: string }>(
+      'SELECT id, email FROM users WHERE email = $1 ORDER BY id DESC LIMIT 1',
+      ['a@example.com'],
+    );
+
+    expect(result.rowCount).toBe(1);
+    expect(result.rows).toEqual([{ id: 3, email: 'a@example.com' }]);
+  });
+
+  test('updates and deletes matching rows', async () => {
+    const pool = new Pool();
+
+    await pool.query('CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, age INTEGER)');
+    await pool.query("INSERT INTO users (id, email, age) VALUES (1, 'alice@example.com', 30), (2, 'bob@example.com', 40)");
+
+    const updated = await pool.query('UPDATE users SET age = $1 WHERE email = $2', [31, 'alice@example.com']);
+    const afterUpdate = await pool.query<{ id: number; age: number }>('SELECT id, age FROM users WHERE email = $1', ['alice@example.com']);
+    const deleted = await pool.query('DELETE FROM users WHERE id = $1', [2]);
+    const remaining = await pool.query('SELECT * FROM users');
+
+    expect(updated.rowCount).toBe(1);
+    expect(afterUpdate.rows).toEqual([{ id: 1, age: 31 }]);
+    expect(deleted.rowCount).toBe(1);
+    expect(remaining.rowCount).toBe(1);
+  });
+
+  test('records indexed queries without slow-query flags and records non-indexed queries as slow', async () => {
+    const onSlowQuery = vi.fn();
+    const pool = new Pool({ onSlowQuery });
+
+    await pool.query('CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, age INTEGER)');
+    await pool.query('CREATE INDEX users_email_idx ON users (email)');
+    await pool.query("INSERT INTO users (id, email, age) VALUES (1, 'alice@example.com', 30), (2, 'bob@example.com', 40)");
+
+    await pool.query('SELECT * FROM users WHERE email = $1', ['alice@example.com']);
+    await pool.query('SELECT * FROM users WHERE age = $1', [30]);
+
+    const recent = pool.getRecentQueries().filter((query) => query.operation === 'select');
+    expect(recent[0]).toMatchObject({ usedIndex: 'users_email_idx' });
+    expect(recent[0]?.slowQueryReason).toBeUndefined();
+    expect(recent[1]).toMatchObject({ slowQueryReason: 'no_matching_index' });
+    expect(onSlowQuery).toHaveBeenCalledTimes(1);
+    expect(onSlowQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        table: 'users',
+        reason: 'no_matching_index',
+        whereColumns: ['age'],
+      }),
+    );
+  });
+
+  test('supports joins through the underlying pg-mem engine', async () => {
+    const pool = new Pool();
+
+    await pool.query('CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT)');
+    await pool.query('CREATE TABLE books (id INTEGER PRIMARY KEY, author_id INTEGER, title TEXT)');
+    await pool.query("INSERT INTO authors (id, name) VALUES (1, 'Octavia Butler'), (2, 'Ursula Le Guin')");
+    await pool.query(
+      "INSERT INTO books (id, author_id, title) VALUES (1, 1, 'Kindred'), (2, 2, 'A Wizard of Earthsea'), (3, 2, 'The Left Hand of Darkness')",
+    );
+
+    const joined = await pool.query<{ author: string; title: string }>(`
+      SELECT authors.name AS author, books.title
+      FROM authors
+      JOIN books ON books.author_id = authors.id
+      WHERE authors.id = $1
+      ORDER BY books.id ASC
+    `, [2]);
+
+    expect(joined.rows).toEqual([
+      { author: 'Ursula Le Guin', title: 'A Wizard of Earthsea' },
+      { author: 'Ursula Le Guin', title: 'The Left Hand of Darkness' },
+    ]);
+  });
+
+  test('enforces pool limits for connect and allows reuse after release', async () => {
+    const pool = new Pool({ max: 1 });
+    const client = await pool.connect();
+
+    await expect(pool.connect()).rejects.toThrow(/pool exhausted/i);
+
+    client.release();
+
+    const nextClient = await pool.connect();
+    expect(pool.getSnapshot().stats.active).toBe(1);
+    nextClient.release();
+    expect(pool.getSnapshot().stats.idle).toBe(1);
+  });
+
+  test('prevents queries after pool end', async () => {
+    const pool = new Pool();
+    await pool.end();
+    await expect(pool.query('SELECT * FROM users')).rejects.toBeInstanceOf(MockPgError);
+  });
+
+  test('exposes serializable snapshots and emits pool, schema, and query events', async () => {
+    const pool = new Pool({ max: 2 });
+    const events: string[] = [];
+    const unsubscribe = pool.subscribe((event) => {
+      if (event.type === 'pool') {
+        events.push(`pool:${event.action}`);
+      } else if (event.type === 'schema') {
+        events.push(`schema:${event.action}:${event.table}`);
+      } else {
+        events.push(`query:${event.query.operation}`);
+      }
+    });
+
+    await pool.query('CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)');
+    await pool.query('CREATE INDEX users_email_idx ON users (email)');
+    const client = await pool.connect();
+    client.release();
+    unsubscribe();
+
+    const snapshot = pool.getSnapshot();
+    expect(snapshot).toEqual({
+      stats: {
+        max: 2,
+        active: 0,
+        idle: 1,
+        ended: false,
+      },
+      tables: [
+        {
+          name: 'users',
+          columns: [
+            { name: 'id', type: 'INTEGER', primaryKey: true },
+            { name: 'email', type: 'TEXT', primaryKey: false },
+          ],
+          rowCount: 0,
+        },
+      ],
+      indexes: [
+        { name: 'users_email_idx', table: 'users', columns: ['email'], kind: 'index' },
+        { name: 'users_pkey', table: 'users', columns: ['id'], kind: 'primary' },
+      ],
+    });
+
+    expect(events).toContain('schema:table_created:users');
+    expect(events).toContain('schema:index_created:users');
+    expect(events).toContain('query:create_table');
+    expect(events).toContain('query:create_index');
+    expect(events).toContain('pool:client_acquired');
+    expect(events).toContain('pool:client_released');
+  });
+});

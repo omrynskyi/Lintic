@@ -15,7 +15,7 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "startdev": "./startdev.sh",
-    "build": "npm run build --workspace @lintic/core && npm run build --workspace @lintic/adapters && npm run build --workspace @lintic/backend && npm run build --workspace @lintic/frontend",
+    "build": "npm run build --workspace @lintic/core && npm run build --workspace @lintic/adapters && npm run build --workspace lintic-mock-pg && npm run build --workspace @lintic/backend && npm run build --workspace @lintic/frontend",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "test": "vitest run --workspace vitest.workspace.ts"

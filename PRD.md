@@ -363,13 +363,13 @@ For UI stories, also include:
 **Description:** As a candidate, I need a SQL-compatible mock so I can implement database queries in my assessment solution.
 
 **Acceptance Criteria:**
-- [ ] npm package (lintic-mock-pg) installable inside WebContainers
-- [ ] Supports CREATE TABLE, INSERT, SELECT (with WHERE, ORDER BY, LIMIT), UPDATE, DELETE
-- [ ] In-memory storage engine with basic index simulation
-- [ ] Configurable connection pool limit
-- [ ] Slow query logging when no index matches a WHERE clause
-- [ ] Unit tests for SQL parsing and query execution
-- [ ] Typecheck passes
+- [x] npm package (lintic-mock-pg) installable inside WebContainers
+- [x] Supports CREATE TABLE, INSERT, SELECT (with WHERE, ORDER BY, LIMIT), UPDATE, DELETE
+- [x] In-memory storage engine with basic index simulation
+- [x] Configurable connection pool limit
+- [x] Slow query logging when no index matches a WHERE clause
+- [x] Unit tests for SQL parsing and query execution
+- [x] Typecheck passes
 
 ### US-022: Infrastructure difficulty profiles
 
