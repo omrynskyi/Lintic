@@ -31,34 +31,11 @@ function formatDuration(seconds: number): string {
   return `${Math.max(1, minutes)}m`;
 }
 
-function Surface({
-  title,
-  value,
-  detail,
-}: {
-  title: string;
-  value: string;
-  detail?: string;
-}) {
+function StatRow({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      className="rounded-[22px] border px-5 py-4"
-      style={{
-        background: 'rgba(255,255,255,0.045)',
-        borderColor: 'rgba(255,255,255,0.08)',
-      }}
-    >
-      <div className="text-[11px] font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-dim)' }}>
-        {title}
-      </div>
-      <div className="mt-3 text-[26px] font-semibold leading-none" style={{ color: 'var(--color-text-bold)' }}>
-        {value}
-      </div>
-      {detail ? (
-        <div className="mt-2 text-[12px] leading-5" style={{ color: 'var(--color-text-muted)' }}>
-          {detail}
-        </div>
-      ) : null}
+    <div className="flex justify-between items-center py-2.5 border-b border-white/[0.03] last:border-0">
+      <span className="text-[13px] text-zinc-500 font-medium">{label}</span>
+      <span className="text-[14px] text-zinc-200 font-semibold">{value}</span>
     </div>
   );
 }
@@ -78,142 +55,85 @@ export function AssessmentSubmittedModal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-6 py-8"
       style={{
-        background: 'rgba(8, 10, 14, 0.3)',
-        backdropFilter: 'blur(16px)',
+        background: 'rgba(9, 9, 11, 0.85)',
+        backdropFilter: 'blur(12px)',
       }}
     >
       <div
-        className="w-full max-w-3xl overflow-hidden rounded-[34px] border shadow-2xl"
+        className="w-full max-w-sm overflow-hidden rounded-[28px] border shadow-2xl transition-all"
         style={{
-          background: 'linear-gradient(180deg, rgba(20,22,28,0.94) 0%, rgba(12,14,18,0.96) 100%)',
-          borderColor: 'rgba(255,255,255,0.08)',
-          boxShadow: '0 30px 80px rgba(0,0,0,0.45)',
+          background: '#18181b', // Charcoal (Zinc-900)
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
         }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="assessment-modal-title"
       >
-        <div
-          className="px-8 py-8 sm:px-10"
-          style={{
-            background:
-              'radial-gradient(circle at top left, rgba(255,255,255,0.06), transparent 42%)',
-          }}
-        >
-          <div
-            className="inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em]"
-            style={{
-              borderColor: isConfirm ? 'rgba(245,158,11,0.24)' : 'rgba(16,185,129,0.24)',
-              background: isConfirm ? 'rgba(245,158,11,0.09)' : 'rgba(16,185,129,0.09)',
-              color: isConfirm ? '#fbbf24' : '#34d399',
-            }}
-          >
-            {isConfirm ? 'Ready To Submit' : 'Assessment Submitted'}
-          </div>
-
-          <div className="mt-5 max-w-2xl">
+        <div className="px-8 pt-9 pb-6">
+          <div className="mb-8 text-center">
             <h2
               id="assessment-modal-title"
-              className="text-[32px] font-semibold tracking-tight sm:text-[38px]"
-              style={{ color: '#f8fafc' }}
+              className="text-[26px] font-bold tracking-tight text-white"
             >
-              {isConfirm ? 'Are you sure you want to submit?' : 'You did it. Your assessment is complete.'}
+              {isConfirm ? 'Ready to wrap up?' : 'High five! 🙌'}
             </h2>
 
-            <p className="mt-4 text-[15px] leading-7" style={{ color: 'rgba(226,232,240,0.82)' }}>
+            <p className="mt-3 text-[14px] leading-relaxed text-zinc-400 px-2">
               {isConfirm
-                ? `We’re ready to lock in your work${promptTitle ? ` for ${promptTitle}` : ''}. Once you submit, this attempt will be saved and the editor will stay closed if you open the link again.`
-                : `${promptTitle ? `${promptTitle} has been submitted successfully. ` : 'Your submission is safely recorded. '}Nice work getting through it. This is a good moment to stretch, grab some water, and take a proper breather.`}
+                ? `We’ll save your progress${promptTitle ? ` for ${promptTitle}` : ''} and lock it in. No more edits after this!`
+                : `Your assessment is safely tucked away. You did a great job today.`}
             </p>
           </div>
 
-          {isConfirm ? (
-            <div className="mt-8 grid gap-3 sm:grid-cols-2">
-              <Surface
-                title="What Happens Next"
-                value="Submission is final"
-                detail="We save this attempt and replace the editor with your submitted summary."
-              />
-              <Surface
-                title="Before You Confirm"
-                value="Take one last look"
-                detail="Double-check your solution now if you still want to make any edits."
-              />
+          {!isConfirm && stats && (
+            <div className="mb-8 bg-black/20 rounded-2xl px-5 py-2">
+              <StatRow label="Submitted" value={formatTimestamp(stats.submittedAt)} />
+              <StatRow label="Time spent" value={formatDuration(stats.timeSpentSeconds)} />
+              <StatRow label="Turns used" value={`${stats.interactionsUsed} / ${stats.maxInteractions}`} />
+              <StatRow label="Tokens used" value={`${stats.tokensUsed} / ${stats.maxTokens}`} />
             </div>
-          ) : stats ? (
-            <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Surface
-                title="Submitted"
-                value={formatTimestamp(stats.submittedAt)}
-                detail="Final confirmation time"
-              />
-              <Surface
-                title="Time Spent"
-                value={formatDuration(stats.timeSpentSeconds)}
-                detail="Focused work time"
-              />
-              <Surface
-                title="Turns Used"
-                value={`${stats.interactionsUsed}/${stats.maxInteractions}`}
-                detail="Messages sent during the session"
-              />
-              <Surface
-                title="Tokens Used"
-                value={`${stats.tokensUsed}/${stats.maxTokens}`}
-                detail="Total model budget consumed"
-              />
-            </div>
-          ) : null}
+          )}
 
-          <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <div className="flex flex-col gap-2.5">
             {isConfirm ? (
               <>
-                <button
-                  type="button"
-                  data-testid="assessment-confirm-cancel"
-                  onClick={onCancel}
-                  disabled={submitting}
-                  className="rounded-[18px] border px-5 py-3 text-[13px] font-semibold transition-all"
-                  style={{
-                    borderColor: 'rgba(255,255,255,0.1)',
-                    background: 'rgba(255,255,255,0.04)',
-                    color: 'rgba(226,232,240,0.88)',
-                    opacity: submitting ? 0.6 : 1,
-                    cursor: submitting ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  Keep working
-                </button>
                 <button
                   type="button"
                   data-testid="assessment-confirm-submit"
                   onClick={onConfirm}
                   disabled={submitting}
-                  className="rounded-[18px] px-5 py-3 text-[13px] font-semibold transition-all hover:brightness-110"
-                  style={{
-                    background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                    color: '#f8fafc',
-                    opacity: submitting ? 0.85 : 1,
-                    cursor: submitting ? 'progress' : 'pointer',
-                  }}
+                  className="w-full rounded-2xl bg-emerald-500 px-4 py-3.5 text-[15px] font-bold text-white transition-all hover:bg-emerald-400 active:scale-[0.98] disabled:opacity-50"
                 >
-                  {submitting ? 'Submitting your assessment...' : 'Submit assessment'}
+                  {submitting ? 'Submitting...' : 'Yes, I\'m done!'}
+                </button>
+                <button
+                  type="button"
+                  data-testid="assessment-confirm-cancel"
+                  onClick={onCancel}
+                  disabled={submitting}
+                  className="w-full rounded-2xl px-4 py-2 text-[14px] font-medium text-zinc-500 transition-all hover:text-zinc-300"
+                >
+                  Wait, let me check one thing
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                data-testid="assessment-submitted-done"
-                onClick={onDone}
-                className="rounded-[18px] px-5 py-3 text-[13px] font-semibold transition-all hover:brightness-110"
-                style={{
-                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                  color: '#f8fafc',
-                }}
-              >
-                Close
-              </button>
+              <div className="text-center py-4 px-2">
+                <p className="text-[15px] font-medium text-zinc-300">
+                  Please wait for the company to reach out to you.
+                </p>
+                <p className="mt-1 text-[13px] text-zinc-500">
+                  You can now safely close this window.
+                </p>
+              </div>
             )}
+          </div>
+
+          <div className="mt-10 flex flex-col items-center gap-3 opacity-40">
+            <img src="/logo-dark.png" alt="Lintic" className="h-4 w-auto grayscale brightness-200" />
+            <span className="text-[10px] font-bold tracking-wider text-zinc-500">
+              Powered by Lintic
+            </span>
           </div>
         </div>
       </div>
