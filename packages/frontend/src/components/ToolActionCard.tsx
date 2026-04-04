@@ -156,7 +156,7 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
                   </span>
                   <div className="px-1">
                     {(call.name === 'write_file' || call.name === 'replace') && !isError ? (
-                      <DiffPreview content={result.output === 'ok' || result.output.startsWith('Successfully') ? (call.input['content'] || call.input['new_string'] as string | undefined) ?? '' : result.output} />
+                      <DiffPreview content={(result.output === 'ok' || result.output.startsWith('Successfully')) ? ((call.input['content'] as string) || (call.input['new_string'] as string) || '') : result.output} />
                     ) : (
                       <CommandOutput output={result.output} />
                     )}
