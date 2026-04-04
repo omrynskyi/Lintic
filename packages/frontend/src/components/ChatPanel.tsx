@@ -383,7 +383,6 @@ export function ChatPanel({
       if (err instanceof Error && err.name === 'AbortError') {
       } else {
         setError(err instanceof Error ? err.message : 'Unknown error');
-        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
       }
     } finally {
       setLoading(false);

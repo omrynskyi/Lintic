@@ -25,7 +25,7 @@ export function resolveEnvVars(value) {
     return value;
 }
 // ─── Validation ───────────────────────────────────────────────────────────────
-const VALID_PROVIDERS = ['openai-compatible', 'anthropic-native', 'groq'];
+const VALID_PROVIDERS = ['openai-compatible', 'anthropic-native', 'groq', 'cerebras'];
 function err(msg) {
     throw new Error(`Config error: ${msg}`);
 }

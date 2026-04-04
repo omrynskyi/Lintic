@@ -161,6 +161,23 @@ describe('metrics', () => {
     expect(metric.score).toBe(0);
   });
 
+  test('counts agent error replay events against recovery score', () => {
+    const metric = computeRecoveryScore({
+      recording: {
+        events: [
+          replayEvent('agent_response', {
+            content: null,
+            stop_reason: 'error',
+            error: 'Failed to call a function.',
+          }),
+        ],
+      },
+    });
+
+    expect(metric.score).toBe(0);
+    expect(metric.details).toContain('0/1');
+  });
+
   test('returns a normalized metrics bundle for the full session', () => {
     const metrics = computeSessionMetrics({
       session: baseSession,

@@ -219,6 +219,14 @@ function registerPendingTools(requestId: string, resolve: (results: ToolResult[]
   }, 5 * 60 * 1000);
 }
 
+async function recordAgentError(db: DatabaseAdapter, sessionId: string, message: string): Promise<void> {
+  await db.addReplayEvent(sessionId, 'agent_response', Date.now(), {
+    content: null,
+    stop_reason: 'error',
+    error: message,
+  });
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, config: Config): Router {
@@ -487,6 +495,11 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
     const context: SessionContext = { session_id: sessionId, history, constraints_remaining };
 
+    // Persist the user turn before calling the provider so it remains visible if the
+    // adapter fails after the request has already been accepted.
+    await db.addMessage(sessionId, 'user', message, 0);
+    await db.addReplayEvent(sessionId, 'message', Date.now(), { role: 'user', content: message });
+
     const reqAdapter = await resolveAdapter(adapter, body.agent_config);
 
     let agentResponse;
@@ -494,12 +507,10 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       agentResponse = await reqAdapter.sendMessage(message, context);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Unknown adapter error';
+      await recordAgentError(db, sessionId, errMsg);
       res.status(502).json({ error: `Agent adapter error: ${errMsg}` });
       return;
     }
-
-    // Persist user message
-    await db.addMessage(sessionId, 'user', message, 0);
 
     // Persist assistant message — encode tool_calls as JSON when stop_reason='tool_use'
     const assistantContent =
@@ -513,7 +524,6 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
     // Record replay events
     const now = Date.now();
-    await db.addReplayEvent(sessionId, 'message', now, { role: 'user', content: message });
     await db.addReplayEvent(sessionId, 'agent_response', now, {
       content: agentResponse.content,
       stop_reason: agentResponse.stop_reason,
@@ -595,6 +605,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       agentResponse = await reqAdapter.sendMessage(null, context);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Unknown adapter error';
+      await recordAgentError(db, sessionId, errMsg);
       res.status(502).json({ error: `Agent adapter error: ${errMsg}` });
       return;
     }
@@ -680,6 +691,11 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
           seconds_remaining: Math.max(0, timeLimitSeconds - elapsed),
         };
         const context: SessionContext = { session_id: sessionId, history, constraints_remaining };
+
+        // Persist the user turn before entering the loop so it survives provider/tool failures.
+        await db.addMessage(sessionId, 'user', message, 0);
+        await db.addReplayEvent(sessionId, 'message', Date.now(), { role: 'user', content: message });
+
         const reqAdapter = await resolveAdapter(adapter, body.agent_config);
 
         const toolRunner: ToolRunner = (calls) => {
@@ -692,13 +708,12 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
         try {
           loopResult = await runAgentLoop(message, context, reqAdapter, toolRunner);
         } catch (err) {
-          sendEvent('error', { error: err instanceof Error ? err.message : 'Agent loop error' });
+          const errMsg = err instanceof Error ? err.message : 'Agent loop error';
+          await recordAgentError(db, sessionId, errMsg);
+          sendEvent('error', { error: errMsg });
           res.end();
           return;
         }
-
-        // Persist user message
-        await db.addMessage(sessionId, 'user', message, 0);
 
         // Persist each tool round-trip
         for (const action of loopResult.tool_actions) {
@@ -715,7 +730,6 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
         // Record replay events
         const now = Date.now();
-        await db.addReplayEvent(sessionId, 'message', now, { role: 'user', content: message });
         for (const action of loopResult.tool_actions) {
           await db.addReplayEvent(sessionId, 'tool_call', now, { tool_calls: action.tool_calls });
           await db.addReplayEvent(sessionId, 'tool_result', now, { tool_results: action.tool_results });
@@ -741,7 +755,9 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
           constraints_remaining: updatedConstraints,
         });
       } catch (err) {
-        sendEvent('error', { error: err instanceof Error ? err.message : 'Unknown error' });
+        const errMsg = err instanceof Error ? err.message : 'Unknown error';
+        await recordAgentError(db, sessionId, errMsg);
+        sendEvent('error', { error: errMsg });
       } finally {
         res.end();
       }

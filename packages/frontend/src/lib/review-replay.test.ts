@@ -4,6 +4,7 @@ import {
   buildConversationEntries,
   getConversationAnchorIndex,
   getReviewSessionId,
+  synthesizeReplayEventsFromMessages,
 } from './review-replay.js';
 
 describe('review-replay helpers', () => {
@@ -23,6 +24,16 @@ describe('review-replay helpers', () => {
     expect(entries[0]?.title).toBe('You');
     expect(entries[1]?.title).toBe('Tool Call');
     expect(entries[2]?.body).toBe('Done');
+  });
+
+  test('renders agent errors from replay events', () => {
+    const entries = buildConversationEntries([
+      { type: 'agent_response', timestamp: 1, payload: { content: null, stop_reason: 'error', error: 'Failed to call a function.' } },
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.title).toBe('Agent Error');
+    expect(entries[0]?.body).toContain('Failed to call a function.');
   });
 
   test('finds the closest conversation anchor for a selected event', () => {
@@ -59,5 +70,30 @@ describe('review-replay helpers', () => {
     expect(snapshot.files['src/index.ts']).toContain('const x = 1;');
     expect(snapshot.diff).toContain('const z = 3');
   });
-});
 
+  test('synthesizes replay events from stored messages', () => {
+    const events = synthesizeReplayEventsFromMessages([
+      { role: 'system', content: 'ignore me' },
+      { role: 'user', content: 'Hello' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: '1', name: 'write_file', input: { path: 'src/index.ts', content: 'const x = 1;' } }],
+      },
+      {
+        role: 'tool',
+        content: null,
+        tool_results: [{ tool_call_id: '1', name: 'write_file', output: 'ok', is_error: false }],
+      },
+      { role: 'assistant', content: 'Done' },
+    ], 1000);
+
+    expect(events.map((event) => event.type)).toEqual([
+      'message',
+      'tool_call',
+      'tool_result',
+      'agent_response',
+    ]);
+    expect(events[0]?.timestamp).toBeGreaterThanOrEqual(1001);
+  });
+});

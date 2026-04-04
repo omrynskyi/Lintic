@@ -69,5 +69,43 @@ describe('ReviewDashboard', () => {
       expect(screen.getByTestId('code-state-diff').textContent).toContain('+ const app = true;');
     });
   });
-});
 
+  test('falls back to stored messages when replay events are empty', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...reviewPayload,
+        recording: { session_id: 'sess-1', events: [] },
+        messages: [
+          { role: 'user', content: 'Please build it' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: '1',
+              name: 'write_file',
+              input: { path: 'src/index.ts', content: 'const app = true;' },
+            }],
+          },
+          {
+            role: 'tool',
+            content: null,
+            tool_results: [{
+              tool_call_id: '1',
+              name: 'write_file',
+              output: 'ok',
+              is_error: false,
+            }],
+          },
+          { role: 'assistant', content: 'Implemented' },
+        ],
+      }),
+    } as Response));
+
+    render(<ReviewDashboard sessionId="sess-1" isDark={false} onToggleTheme={() => undefined} />);
+
+    await waitFor(() => expect(screen.getByText('Please build it')).toBeInTheDocument());
+    expect(screen.getByTestId('timeline-event-0')).toBeInTheDocument();
+    expect(screen.getByTestId('code-state-content').textContent).toContain('const app = true;');
+  });
+});

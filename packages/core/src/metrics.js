@@ -40,6 +40,12 @@ function getStopReasonFromPayload(payload) {
     }
     return typeof payload['stop_reason'] === 'string' ? payload['stop_reason'] : null;
 }
+function getErrorFromPayload(payload) {
+    if (!isRecord(payload)) {
+        return null;
+    }
+    return typeof payload['error'] === 'string' ? payload['error'] : null;
+}
 function getRoleFromPayload(payload) {
     if (!isRecord(payload)) {
         return null;
@@ -92,7 +98,8 @@ function hasMeaningfulAgentResponse(events) {
         }
         const stopReason = getStopReasonFromPayload(event.payload);
         const content = getContentFromPayload(event.payload);
-        return stopReason !== 'max_tokens' && typeof content === 'string' && content.trim().length > 0;
+        const error = getErrorFromPayload(event.payload);
+        return stopReason !== 'max_tokens' && stopReason !== 'error' && error === null && typeof content === 'string' && content.trim().length > 0;
     });
 }
 function countProductiveInteractions(input) {
@@ -191,10 +198,11 @@ function getAgentResponseEntries(recording) {
         }
         const stopReason = getStopReasonFromPayload(event.payload);
         const content = getContentFromPayload(event.payload);
+        const error = getErrorFromPayload(event.payload);
         entries.push({
             index,
-            isError: stopReason === 'max_tokens',
-            isRecovery: stopReason !== 'max_tokens' && typeof content === 'string' && content.trim().length > 0,
+            isError: stopReason === 'max_tokens' || stopReason === 'error' || error !== null,
+            isRecovery: stopReason !== 'max_tokens' && stopReason !== 'error' && error === null && typeof content === 'string' && content.trim().length > 0,
         });
     }
     return entries;

@@ -10,7 +10,7 @@ export interface ConstraintsRemaining {
     interactions_remaining: number;
     seconds_remaining: number;
 }
-export type AgentProvider = 'openai-compatible' | 'anthropic-native' | 'groq';
+export type AgentProvider = 'openai-compatible' | 'anthropic-native' | 'groq' | 'cerebras';
 export interface AgentConfig {
     provider: AgentProvider;
     base_url?: string;

@@ -780,6 +780,42 @@ describe('POST /api/sessions/:id/messages', () => {
     expect(res.status).toBe(502);
   });
 
+  test('persists the user message even when the adapter throws', async () => {
+    const db = new FakeDb();
+    const adapter = new FakeAdapter();
+    adapter.sendMessage = (): Promise<AgentResponse> => { throw new Error('API down'); };
+    const app = createApp(db, adapter, TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+
+    await request(app)
+      .post(`/api/sessions/${id}/messages`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Hello' });
+
+    const msgs = await db.getMessages(id);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]?.role).toBe('user');
+    expect(msgs[0]?.content).toBe('Hello');
+  });
+
+  test('records adapter failures in replay events', async () => {
+    const db = new FakeDb();
+    const adapter = new FakeAdapter();
+    adapter.sendMessage = (): Promise<AgentResponse> => { throw new Error('API down'); };
+    const app = createApp(db, adapter, TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+
+    await request(app)
+      .post(`/api/sessions/${id}/messages`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Hello' });
+
+    const events = await db.getReplayEvents(id);
+    expect(events.some((event) =>
+      event.type === 'agent_response'
+      && (event.payload as { error?: string }).error === 'API down')).toBe(true);
+  });
+
   test('includes updated constraints_remaining in response', async () => {
     const db = new FakeDb();
     const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
@@ -1163,6 +1199,44 @@ describe('POST /api/sessions/:id/messages/stream', () => {
 
     expect(res.text).toContain('event: error');
     expect(res.text).toContain('exhausted');
+  });
+
+  test('persists the user message even when the streamed loop fails', async () => {
+    const db = new FakeDb();
+    const adapter = new FakeAdapter();
+    adapter.sendMessage = (): Promise<AgentResponse> => { throw new Error('provider blew up'); };
+    const app = createApp(db, adapter, TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+
+    const res = await request(app)
+      .post(`/api/sessions/${id}/messages/stream`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Hello' });
+
+    expect(res.text).toContain('event: error');
+
+    const msgs = await db.getMessages(id);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]?.role).toBe('user');
+    expect(msgs[0]?.content).toBe('Hello');
+  });
+
+  test('records streamed loop failures in replay events', async () => {
+    const db = new FakeDb();
+    const adapter = new FakeAdapter();
+    adapter.sendMessage = (): Promise<AgentResponse> => { throw new Error('provider blew up'); };
+    const app = createApp(db, adapter, TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+
+    await request(app)
+      .post(`/api/sessions/${id}/messages/stream`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Hello' });
+
+    const events = await db.getReplayEvents(id);
+    expect(events.some((event) =>
+      event.type === 'agent_response'
+      && (event.payload as { error?: string }).error === 'provider blew up')).toBe(true);
   });
 });
 

@@ -16,13 +16,13 @@ export interface ConstraintsRemaining {
 
 // ─── Agent Configuration ─────────────────────────────────────────────────────
 
-// 'groq' uses the openai-compatible adapter internally;
-// named explicitly so the backend can auto-set Groq's base_url.
-export type AgentProvider = 'openai-compatible' | 'anthropic-native' | 'groq';
+// 'groq' and 'cerebras' use the openai-compatible adapter internally;
+// named explicitly so the backend can auto-set their default base URLs.
+export type AgentProvider = 'openai-compatible' | 'anthropic-native' | 'groq' | 'cerebras';
 
 export interface AgentConfig {
   provider: AgentProvider;
-  base_url?: string; // optional for anthropic-native and groq (has known default)
+  base_url?: string; // optional for anthropic-native, groq, and cerebras (known defaults)
   api_key: string;
   model: string;
 }

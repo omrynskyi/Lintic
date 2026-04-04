@@ -21,6 +21,7 @@ import {
   describeReviewEvent,
   formatMetricScore,
   getConversationAnchorIndex,
+  synthesizeReplayEventsFromMessages,
   type ReviewDataPayload,
 } from '../lib/review-replay.js';
 import { SpiderChart } from './SpiderChart.js';
@@ -77,8 +78,11 @@ export function ReviewDashboard({
         }
         const payload = await response.json() as ReviewDataPayload;
         if (!cancelled) {
+          const initialEvents = payload.recording.events.length > 0
+            ? payload.recording.events
+            : synthesizeReplayEventsFromMessages(payload.messages, payload.session.created_at);
           setData(payload);
-          setSelectedEventIndex(Math.max(0, payload.recording.events.length - 1));
+          setSelectedEventIndex(Math.max(0, initialEvents.length - 1));
         }
       } catch (fetchError) {
         if (!cancelled) {
@@ -96,7 +100,17 @@ export function ReviewDashboard({
     };
   }, [apiBase, sessionId]);
 
-  const events = data?.recording.events ?? [];
+  const events = useMemo(() => {
+    if (!data) {
+      return [];
+    }
+
+    if (data.recording.events.length > 0) {
+      return data.recording.events;
+    }
+
+    return synthesizeReplayEventsFromMessages(data.messages, data.session.created_at);
+  }, [data]);
   const selectedEvent = events[selectedEventIndex] ?? null;
   const conversationEntries = useMemo(() => buildConversationEntries(events), [events]);
   const anchorIndex = useMemo(

@@ -222,6 +222,25 @@ describe('ChatPanel', () => {
     );
   });
 
+  test('keeps the user message visible when a streamed turn fails', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(historyResponse)
+      .mockResolvedValueOnce(
+        makeSSEResponse([{ event: 'error', data: { error: 'Failed to call a function.' } }]),
+      );
+
+    render(<ChatPanel sessionId="s1" constraints={defaultConstraints} />);
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'please inspect the repo' } });
+    fireEvent.click(screen.getByTestId('chat-send'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('user-message')).toHaveTextContent('please inspect the repo'),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Failed to call a function.')).toBeInTheDocument(),
+    );
+  });
+
   test('calls onConstraintsUpdate when done event arrives', async () => {
     const onUpdate = vi.fn();
     vi.mocked(fetch)

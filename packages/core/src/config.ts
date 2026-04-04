@@ -60,7 +60,7 @@ export function resolveEnvVars(value: unknown): unknown {
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
-const VALID_PROVIDERS: AgentProvider[] = ['openai-compatible', 'anthropic-native', 'groq'];
+const VALID_PROVIDERS: AgentProvider[] = ['openai-compatible', 'anthropic-native', 'groq', 'cerebras'];
 
 function err(msg: string): never {
   throw new Error(`Config error: ${msg}`);

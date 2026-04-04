@@ -20,7 +20,7 @@ Traditional coding assessments test memorization. Lintic tests AI collaboration 
 - Signed single-use assessment links with configurable expiry
 - Session replay for reviewers with synchronized conversation, code diffs, and a timeline scrubber
 - Candidate comparison dashboard with sortable metrics
-- OpenAI-compatible and Anthropic native adapters — plug in any model
+- OpenAI-compatible, Cerebras, Groq, and Anthropic native adapters — plug in any model
 - SQLite (default) or PostgreSQL database backend
 - Single Docker image, `docker compose up` deployment
 
@@ -49,7 +49,7 @@ Lintic ships as a single production image. The Express backend serves the built 
 
 ```yaml
 agent:
-  provider: openai-compatible       # or anthropic-native
+  provider: openai-compatible       # or cerebras, groq, anthropic-native
   base_url: https://api.openai.com/v1
   api_key: ${LINTIC_API_KEY}
   model: gpt-4o

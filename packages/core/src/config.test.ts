@@ -105,6 +105,11 @@ describe('validateConfig', () => {
     expect(() => validateConfig(cfg)).not.toThrow();
   });
 
+  test('accepts cerebras as a valid provider', () => {
+    const cfg = { ...VALID_CONFIG, agent: { ...VALID_CONFIG.agent, provider: 'cerebras' } };
+    expect(() => validateConfig(cfg)).not.toThrow();
+  });
+
   test('throws when agent.provider is invalid', () => {
     const cfg = { ...VALID_CONFIG, agent: { ...VALID_CONFIG.agent, provider: 'unknown-llm' } };
     expect(() => validateConfig(cfg)).toThrow(/agent\.provider/);

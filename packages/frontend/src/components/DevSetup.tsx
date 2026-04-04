@@ -18,6 +18,7 @@ const PROVIDERS: { value: AgentConfig['provider']; label: string; defaultModel: 
   { value: 'openai-compatible', label: 'OpenAI / OpenAI-compatible', defaultModel: 'gpt-4o' },
   { value: 'anthropic-native', label: 'Anthropic', defaultModel: 'claude-opus-4-5' },
   { value: 'groq', label: 'Groq', defaultModel: 'llama-3.3-70b-versatile', defaultBaseUrl: 'https://api.groq.com/openai' },
+  { value: 'cerebras', label: 'Cerebras', defaultModel: 'llama3.1-8b', defaultBaseUrl: 'https://api.cerebras.ai' },
 ];
 
 export function DevSetup({ apiBase = '', onSessionReady }: DevSetupProps) {

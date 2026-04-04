@@ -55,7 +55,9 @@ interface OpenAIErrorBody {
   error?: {
     message?: string;
     code?: string;
+    failed_generation?: unknown;
   };
+  failed_generation?: unknown;
 }
 
 // ─── Error type ───────────────────────────────────────────────────────────────
@@ -136,6 +138,10 @@ export class OpenAIAdapter implements AgentAdapter {
         const body = (await response.json()) as OpenAIErrorBody;
         if (body.error?.message) errMessage = body.error.message;
         if (body.error?.code) errCode = body.error.code;
+        const failedGeneration = body.error?.failed_generation ?? body.failed_generation;
+        if (failedGeneration !== undefined) {
+          errMessage = `${errMessage}\n\nfailed_generation: ${formatFailedGeneration(failedGeneration)}`;
+        }
       } catch {
         // ignore JSON parse failure – keep the HTTP status message
       }
@@ -194,6 +200,10 @@ function resolveDefaultBaseUrl(config: AgentConfig): string {
     return 'https://api.groq.com/openai';
   }
 
+  if (config.provider === 'cerebras') {
+    return 'https://api.cerebras.ai';
+  }
+
   return 'https://api.openai.com';
 }
 
@@ -241,4 +251,16 @@ function mapFinishReason(reason: string): AgentResponse['stop_reason'] {
   if (reason === 'tool_calls') return 'tool_use';
   if (reason === 'length') return 'max_tokens';
   return 'end_turn';
+}
+
+function formatFailedGeneration(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }

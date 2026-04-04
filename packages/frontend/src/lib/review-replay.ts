@@ -42,6 +42,13 @@ export interface ReviewDataPayload {
   prompt?: ReviewPromptSummary | null;
 }
 
+export interface ReviewMessage {
+  role: string;
+  content: string | null;
+  tool_calls?: Array<{ id: string; name: string; input: Record<string, unknown> }>;
+  tool_results?: Array<{ tool_call_id: string; name: string; output: string; is_error: boolean }>;
+}
+
 export interface ConversationEntry {
   id: string;
   eventIndex: number;
@@ -67,6 +74,13 @@ function stringifyValue(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function getErrorFromPayload(payload: unknown): string | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+  return typeof payload['error'] === 'string' ? payload['error'] : null;
+}
+
 export function getReviewSessionId(pathname: string): string | null {
   const match = pathname.match(/^\/review\/([^/]+)$/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
@@ -81,7 +95,7 @@ export function describeReviewEvent(event: ReviewReplayEvent): string {
     case 'message':
       return 'Candidate Message';
     case 'agent_response':
-      return 'Agent Response';
+      return getErrorFromPayload(event.payload) ? 'Agent Error' : 'Agent Response';
     case 'tool_call':
       return 'Tool Call';
     case 'tool_result':
@@ -145,12 +159,13 @@ export function buildConversationEntries(events: ReviewReplayEvent[]): Conversat
         if (!isRecord(event.payload)) return [];
         const content = typeof event.payload['content'] === 'string' ? event.payload['content'] : '';
         const stopReason = typeof event.payload['stop_reason'] === 'string' ? event.payload['stop_reason'] : null;
+        const error = getErrorFromPayload(event.payload);
         return [{
           id: `event-${eventIndex}`,
           eventIndex,
           timestamp: event.timestamp,
-          title: 'Agent',
-          body: content || (stopReason ? `Stopped: ${stopReason}` : ''),
+          title: error ? 'Agent Error' : 'Agent',
+          body: error ? `Error: ${error}` : content || (stopReason ? `Stopped: ${stopReason}` : ''),
         }];
       }
       case 'tool_call':
@@ -173,6 +188,68 @@ export function buildConversationEntries(events: ReviewReplayEvent[]): Conversat
         return [];
     }
   });
+}
+
+export function synthesizeReplayEventsFromMessages(
+  messages: ReviewMessage[],
+  baseTimestamp = 0,
+): ReviewReplayEvent[] {
+  const events: ReviewReplayEvent[] = [];
+  let timestamp = baseTimestamp;
+
+  for (const message of messages) {
+    timestamp += 1;
+
+    if (message.role === 'system') {
+      continue;
+    }
+
+    if (message.role === 'user') {
+      events.push({
+        type: 'message',
+        timestamp,
+        payload: { role: 'user', content: message.content ?? '' },
+      });
+      continue;
+    }
+
+    if (message.role === 'assistant') {
+      const content = typeof message.content === 'string' ? message.content : null;
+      if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+        if (content && content.trim().length > 0) {
+          events.push({
+            type: 'agent_response',
+            timestamp,
+            payload: { content, stop_reason: 'tool_use' },
+          });
+          timestamp += 1;
+        }
+        events.push({
+          type: 'tool_call',
+          timestamp,
+          payload: { tool_calls: message.tool_calls },
+        });
+        continue;
+      }
+
+      events.push({
+        type: 'agent_response',
+        timestamp,
+        payload: { content: content ?? '', stop_reason: 'end_turn' },
+      });
+      continue;
+    }
+
+    if (message.role === 'tool' && Array.isArray(message.tool_results) && message.tool_results.length > 0) {
+      events.push({
+        type: 'tool_result',
+        timestamp,
+        payload: { tool_results: message.tool_results },
+      });
+    }
+  }
+
+  return events;
 }
 
 export function getConversationAnchorIndex(entries: ConversationEntry[], selectedEventIndex: number): number {
@@ -230,4 +307,3 @@ export function buildCodeStateSnapshot(
 
   return { files, activePath, diff };
 }
-

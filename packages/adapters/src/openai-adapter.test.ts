@@ -90,6 +90,17 @@ describe('init', () => {
     );
     vi.unstubAllGlobals();
   });
+
+  test('uses Cerebras OpenAI-compatible base_url for provider cerebras by default', async () => {
+    const adapter = new OpenAIAdapter();
+    await adapter.init({ provider: 'cerebras', api_key: 'csk-test', model: 'llama3.1-8b' });
+    vi.stubGlobal('fetch', mockFetch(makeSuccessResponse()));
+    await adapter.sendMessage('hi', makeContext());
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
+      'https://api.cerebras.ai/v1/chat/completions',
+    );
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('sendMessage', () => {
@@ -216,6 +227,26 @@ describe('sendMessage', () => {
       status: 401,
       code: 'invalid_api_key',
       message: 'Invalid API key',
+    });
+    vi.unstubAllGlobals();
+  });
+
+  test('includes failed_generation details in AdapterError messages', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch({
+        error: {
+          message: 'Failed to call a function. Please adjust your prompt.',
+          code: 'tool_use_failed',
+          failed_generation: '<tool-use>{"name":"read_file"}</tool-use>',
+        },
+      }, 400),
+    );
+
+    await expect(adapter.sendMessage('hi', makeContext())).rejects.toMatchObject({
+      name: 'AdapterError',
+      code: 'tool_use_failed',
+      message: expect.stringContaining("failed_generation: <tool-use>{\"name\":\"read_file\"}</tool-use>"),
     });
     vi.unstubAllGlobals();
   });

@@ -87,6 +87,15 @@ describe('DevSetup', () => {
     expect(modelInput.value).toContain('claude');
   });
 
+  test('changing provider to cerebras updates the default model and base url', () => {
+    render(<DevSetup onSessionReady={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('dev-provider'), { target: { value: 'cerebras' } });
+    const modelInput = screen.getByTestId('dev-model') as HTMLInputElement;
+    const baseUrlInput = screen.getByTestId('dev-base-url') as HTMLInputElement;
+    expect(modelInput.value).toBe('llama3.1-8b');
+    expect(baseUrlInput.value).toBe('https://api.cerebras.ai');
+  });
+
   test('includes base_url in agentConfig when provided', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(makeSessionResponse()));
     const onReady = vi.fn();
