@@ -18,15 +18,42 @@ export interface RestoredConstraints {
   timeLimitSeconds: number;
 }
 
+interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function getStorage(): StorageLike | null {
+  const candidate = (globalThis as { localStorage?: unknown }).localStorage;
+  if (
+    typeof candidate !== 'object' ||
+    candidate === null ||
+    typeof (candidate as StorageLike).getItem !== 'function' ||
+    typeof (candidate as StorageLike).setItem !== 'function' ||
+    typeof (candidate as StorageLike).removeItem !== 'function'
+  ) {
+    return null;
+  }
+
+  return candidate as StorageLike;
+}
+
 export function saveSession(session: PersistedSession): void {
+  const storage = getStorage();
+  if (!storage) return;
+
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    storage.setItem(STORAGE_KEY, JSON.stringify(session));
   } catch { /* ignore storage errors */ }
 }
 
 export function loadSession(): PersistedSession | null {
+  const storage = getStorage();
+  if (!storage) return null;
+
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as PersistedSession;
   } catch {
@@ -35,7 +62,10 @@ export function loadSession(): PersistedSession | null {
 }
 
 export function clearSession(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  const storage = getStorage();
+  if (!storage) return;
+
+  storage.removeItem(STORAGE_KEY);
 }
 
 export async function validateSession(
