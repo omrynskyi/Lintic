@@ -33,6 +33,7 @@ export interface StoredMessage {
   content: string;
   token_count: number;
   created_at: number; // Unix ms
+  rewound_at: number | null; // Unix ms — set when message is soft-hidden by a rewind
 }
 
 // ─── Stored Replay Event ──────────────────────────────────────────────────────
@@ -156,7 +157,18 @@ export interface DatabaseAdapter {
     tokenCount: number,
     conversationId?: string,
   ): Promise<void>;
-  getBranchMessages(sessionId: string, branchId: string, conversationId?: string): Promise<StoredMessage[]>;
+  getBranchMessages(
+    sessionId: string,
+    branchId: string,
+    conversationId?: string,
+    options?: { includeRewound?: boolean },
+  ): Promise<StoredMessage[]>;
+  rewindMessages(
+    sessionId: string,
+    branchId: string,
+    conversationId: string,
+    afterTurnSequence: number,
+  ): Promise<void>;
   addBranchReplayEvent(
     sessionId: string,
     branchId: string,
@@ -213,6 +225,7 @@ interface MessageRow {
   content: string;
   token_count: number;
   created_at: number;
+  rewound_at: number | null;
 }
 
 interface ReplayEventRow {
@@ -571,6 +584,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       'ALTER TABLE replay_events ADD COLUMN branch_id TEXT',
       'ALTER TABLE replay_events ADD COLUMN turn_sequence INTEGER',
       'ALTER TABLE replay_events ADD COLUMN conversation_id TEXT',
+      'ALTER TABLE messages ADD COLUMN rewound_at INTEGER',
     ];
 
     for (const statement of migrations) {
@@ -981,6 +995,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       content: r.content,
       token_count: r.token_count,
       created_at: r.created_at,
+      rewound_at: r.rewound_at === null ? null : Number(r.rewound_at),
     })));
   }
 
@@ -1725,6 +1740,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       content: row.content,
       token_count: Number(row.token_count),
       created_at: Number(row.created_at),
+      rewound_at: row.rewound_at === null ? null : Number(row.rewound_at),
     }));
   }
 
@@ -2118,6 +2134,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       }
       await this.pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_id TEXT');
       await this.pool.query('ALTER TABLE replay_events ADD COLUMN IF NOT EXISTS conversation_id TEXT');
+      await this.pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS rewound_at BIGINT');
       await this.backfillPostgresConversations();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
