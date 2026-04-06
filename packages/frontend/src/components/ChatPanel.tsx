@@ -1435,7 +1435,7 @@ export function ChatPanel({
             >
               <div className="border-b border-white/8 px-4 py-3">
                 <div>
-                  <div className="text-[12px] font-semibold" style={{ color: 'var(--color-text-main)' }}>
+                  <div className="text-[12px] font-medium" style={{ color: 'var(--color-text-main)' }}>
                     Context
                   </div>
                   <div className="text-[11px] opacity-60" style={{ color: 'var(--color-text-dim)' }}>
