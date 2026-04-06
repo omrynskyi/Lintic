@@ -258,6 +258,43 @@ describe('PostgresAdapter', () => {
     await expect(adapter.getAssessmentLink('missing-link')).resolves.toBeNull();
   });
 
+  test('rewindMessages resolves and getBranchMessages filters rewound rows', async () => {
+    const adapter = new PostgresAdapter({ connectionString: 'postgres://lintic:test@localhost/lintic' });
+    await adapter.initialize();
+    const pool = latestPool();
+
+    // rewindMessages issues an UPDATE — no rows returned
+    pool.queue.push({ rows: [], rowCount: 1 });
+
+    // getBranchMessages (default, no includeRewound) — only non-rewound rows
+    pool.queue.push({
+      rows: [
+        { id: '1', session_id: 'session-1', branch_id: 'branch-1', conversation_id: 'conv-1', turn_sequence: '1', role: 'user', content: 'hello', token_count: '5', created_at: '100', rewound_at: null },
+      ],
+      rowCount: 1,
+    });
+
+    // getBranchMessages with includeRewound: true — all rows
+    pool.queue.push({
+      rows: [
+        { id: '1', session_id: 'session-1', branch_id: 'branch-1', conversation_id: 'conv-1', turn_sequence: '1', role: 'user', content: 'hello', token_count: '5', created_at: '100', rewound_at: null },
+        { id: '2', session_id: 'session-1', branch_id: 'branch-1', conversation_id: 'conv-1', turn_sequence: '2', role: 'assistant', content: 'world', token_count: '8', created_at: '200', rewound_at: '300' },
+      ],
+      rowCount: 2,
+    });
+
+    await expect(adapter.rewindMessages('session-1', 'branch-1', 'conv-1', 1)).resolves.toBeUndefined();
+
+    const visible = await adapter.getBranchMessages('session-1', 'branch-1', 'conv-1');
+    expect(visible).toHaveLength(1);
+    expect(visible[0]?.rewound_at).toBeNull();
+    expect(pool.queries.some((q) => q.text.includes('AND rewound_at IS NULL'))).toBe(true);
+
+    const all = await adapter.getBranchMessages('session-1', 'branch-1', 'conv-1', { includeRewound: true });
+    expect(all).toHaveLength(2);
+    expect(all[1]?.rewound_at).toBe(300);
+  });
+
   test('surfaces descriptive bootstrap errors', async () => {
     const adapter = new PostgresAdapter({ connectionString: 'postgres://lintic:test@localhost/lintic' });
     const pool = latestPool();
