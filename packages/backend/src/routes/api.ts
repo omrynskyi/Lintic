@@ -1394,6 +1394,42 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     res.json({ snapshot, branch, branches: await db.listBranches(sessionId) });
   }));
 
+  // POST /api/sessions/:id/rewind — soft-hide messages after a turn sequence
+  router.post('/sessions/:id/rewind', requireToken(db), asyncRoute(async (req, res) => {
+    const sessionId = req.params['id'] as string;
+    const body = req.body as {
+      branch_id?: unknown;
+      conversation_id?: unknown;
+      turn_sequence?: unknown;
+    };
+
+    if (typeof body.turn_sequence !== 'number' || !Number.isInteger(body.turn_sequence)) {
+      res.status(400).json({ error: 'turn_sequence must be an integer' });
+      return;
+    }
+
+    const session = await db.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const branch = await resolveBranchOrRespond(
+      db, res, sessionId,
+      typeof body.branch_id === 'string' ? body.branch_id : undefined,
+    );
+    if (!branch) return;
+
+    const conversation = await resolveConversationOrRespond(
+      db, res, sessionId, branch.id,
+      typeof body.conversation_id === 'string' ? body.conversation_id : undefined,
+    );
+    if (!conversation) return;
+
+    await db.rewindMessages(sessionId, branch.id, conversation.id, body.turn_sequence);
+    res.json({ ok: true });
+  }));
+
   router.post('/sessions/:id/checkpoints', requireToken(db), asyncRoute(async (req, res) => {
     const sessionId = req.params['id'] as string;
     const body = req.body as {
