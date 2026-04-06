@@ -125,7 +125,7 @@ export const Terminal = forwardRef<TerminalHandle, Props>(function Terminal({ wc
     <div
       data-testid="terminal-container"
       ref={containerRef}
-      className="w-full h-full bg-[var(--color-bg-ui)] p-2"
+      className="w-full h-full bg-[var(--color-bg-code)] p-2"
     />
   );
 });

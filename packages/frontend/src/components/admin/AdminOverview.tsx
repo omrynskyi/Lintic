@@ -29,11 +29,11 @@ interface StatCardProps {
 function StatCard({ label, value, icon: Icon, accent }: StatCardProps) {
   return (
     <div
-      className="rounded-sm border px-4 py-3"
-      style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+      className="rounded-xl px-4 py-3"
+      style={{ background: 'var(--color-bg-panel)' }}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+        <span className="text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
           {label}
         </span>
         <Icon size={13} style={{ color: accent ?? 'var(--color-text-dimmest)' }} strokeWidth={1.8} />
@@ -109,21 +109,20 @@ export function AdminOverview({ onNavigate }: AdminOverviewProps) {
       </div>
 
       {error ? (
-        <div className="rounded-sm border px-3 py-2.5 text-[12px]" style={{ borderColor: 'rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.06)', color: 'var(--color-status-error)' }}>
+        <div className="rounded-xl px-3 py-2.5 text-[12px]" style={{ background: 'rgba(239,68,68,0.06)', color: 'var(--color-status-error)' }}>
           {error}
         </div>
       ) : null}
 
       {/* Recent activity */}
       <div
-        className="rounded-sm border"
-        style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+        className="rounded-xl"
+        style={{ background: 'var(--color-bg-panel)' }}
       >
         <div
-          className="flex items-center justify-between border-b px-4 py-2.5"
-          style={{ borderColor: 'var(--color-border-main)' }}
+          className="flex items-center justify-between px-4 py-2.5"
         >
-          <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+          <span className="text-[11px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
             Recent Activity
           </span>
           <button
@@ -147,17 +146,14 @@ export function AdminOverview({ onNavigate }: AdminOverviewProps) {
             No assessments created yet.
           </div>
         ) : (
-          <div>
-            {recent.map((link, i) => (
+          <div className="flex flex-col gap-1 pb-3">
+            {recent.map((link) => (
               (() => {
                 const displayStatus = getAssessmentDisplayStatus(link);
                 return (
                   <div
                     key={link.id}
-                    className="flex items-center gap-3 px-4 py-2"
-                    style={{
-                      borderTop: i > 0 ? '1px solid var(--color-border-muted)' : undefined,
-                    }}
+                    className="flex items-center gap-3 px-4 py-2 hover:bg-[var(--color-bg-app)]/50 transition-colors"
                   >
                     <div
                       className="h-1.5 w-1.5 shrink-0 rounded-full"

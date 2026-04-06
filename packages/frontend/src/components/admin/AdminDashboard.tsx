@@ -54,7 +54,7 @@ export function AdminDashboard({ isDark, onToggleTheme }: AdminDashboardProps) {
 
   return (
     <AdminKeyProvider>
-      <div data-testid="admin-dashboard" className="flex h-screen overflow-hidden" style={{ background: 'var(--color-bg-app)' }}>
+      <div data-testid="admin-dashboard" className="flex h-screen overflow-hidden p-[5px] gap-[5px]" style={{ background: 'var(--color-bg-app)' }}>
         <AdminNav
           section={section}
           onNavigate={(s) => navigate(s)}

@@ -146,15 +146,14 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
     }
   }
 
-  const inputClass = 'w-full rounded-sm border bg-transparent px-3 py-1.5 text-[12px] outline-none focus:border-[var(--color-brand)] transition-colors';
-  const inputStyle = { borderColor: 'var(--color-border-main)', color: 'var(--color-text-main)' };
+  const inputClass = 'w-full rounded-xl bg-[var(--color-bg-app)]/50 px-3 py-1.5 text-[12px] outline-none focus:ring-1 focus:ring-[var(--color-brand)] transition-all';
+  const inputStyle = { color: 'var(--color-text-main)' };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Topbar */}
       <div
-        className="flex shrink-0 items-center justify-between border-b px-5 py-3"
-        style={{ borderColor: 'var(--color-border-main)' }}
+        className="flex shrink-0 items-center justify-between px-5 py-3"
       >
         <div>
           <div className="flex items-center gap-3">
@@ -170,8 +169,8 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
             type="button"
             onClick={() => void load()}
             disabled={!adminKey || loading}
-            className="flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-medium disabled:opacity-40"
-            style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-muted)', background: 'var(--color-bg-panel)' }}
+            className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-medium disabled:opacity-40"
+            style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-panel)' }}
           >
             <RefreshCw size={10} />
             Refresh
@@ -180,7 +179,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
             <button
               type="button"
               onClick={() => { setShowForm((v) => !v); setError(null); }}
-              className="flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-[11px] font-semibold"
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
               style={{ background: 'var(--color-brand)', color: 'white' }}
             >
               <Plus size={11} />
@@ -192,13 +191,13 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
 
       {/* Toast */}
       {toast ? (
-        <div className="mx-5 mt-3 shrink-0 rounded-sm border px-3 py-2 text-[12px]" style={{ borderColor: 'rgba(16,185,129,0.2)', background: 'rgba(16,185,129,0.06)', color: 'var(--color-status-success)' }}>
+        <div className="mx-5 mt-3 shrink-0 rounded-xl px-3 py-2 text-[12px]" style={{ background: 'rgba(16,185,129,0.06)', color: 'var(--color-status-success)' }}>
           {toast}
         </div>
       ) : null}
 
       {error ? (
-        <div data-testid="admin-link-error" className="mx-5 mt-3 shrink-0 rounded-sm border px-3 py-2 text-[12px]" style={{ borderColor: 'rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.06)', color: 'var(--color-status-error)' }}>
+        <div data-testid="admin-link-error" className="mx-5 mt-3 shrink-0 rounded-xl px-3 py-2 text-[12px]" style={{ background: 'rgba(239,68,68,0.06)', color: 'var(--color-status-error)' }}>
           {error}
         </div>
       ) : null}
@@ -206,11 +205,11 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
       {/* Inline create form */}
       {showForm ? (
         <div
-          className="mx-5 mt-3 shrink-0 rounded-sm border p-4"
-          style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+          className="mx-5 mt-3 shrink-0 rounded-xl p-4"
+          style={{ background: 'var(--color-bg-panel)' }}
         >
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+            <span className="text-[11px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
               New Assessment
             </span>
             <button type="button" onClick={() => setShowForm(false)} style={{ color: 'var(--color-text-dim)' }}>
@@ -220,7 +219,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
           <form data-testid="admin-link-form" onSubmit={(e) => void handleCreate(e)}>
             <div className="grid gap-3 sm:grid-cols-3">
               <label>
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+                <span className="mb-1 block text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
                   Prompt
                 </span>
                 <select
@@ -238,7 +237,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
               </label>
 
               <label>
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+                <span className="mb-1 block text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
                   Candidate Email
                 </span>
                 <input
@@ -251,7 +250,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
               </label>
 
               <label>
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+                <span className="mb-1 block text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
                   Expiry (hours)
                 </span>
                 <input
@@ -301,7 +300,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
                 data-testid="admin-link-create"
                 type="submit"
                 disabled={creating || !promptId || !email.trim()}
-                className="rounded-sm px-4 py-1.5 text-[12px] font-semibold disabled:opacity-40"
+                className="rounded-xl px-4 py-1.5 text-[12px] font-semibold disabled:opacity-40"
                 style={{ background: 'var(--color-brand)', color: 'white' }}
               >
                 {creating ? 'Generating…' : 'Generate assessment'}
@@ -309,8 +308,8 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="rounded-sm border px-4 py-1.5 text-[12px]"
-                style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-muted)' }}
+                className="rounded-xl px-4 py-1.5 text-[12px]"
+                style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-muted)' }}
               >
                 Cancel
               </button>
@@ -324,21 +323,21 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
         {/* Table */}
         <div className={`flex min-h-0 flex-1 flex-col overflow-auto p-5 ${selectedLink ? 'pr-0' : ''}`}>
           {!adminKey ? (
-            <div className="rounded-sm border px-4 py-6 text-center text-[12px]" style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-dim)' }}>
+            <div className="rounded-xl px-4 py-6 text-center text-[12px]" style={{ background: 'var(--color-bg-panel)', color: 'var(--color-text-dim)' }}>
               Enter your admin key in Settings to inspect assessments.
             </div>
           ) : (
             <div
-              className="rounded-sm border overflow-hidden"
-              style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+              className="rounded-xl overflow-hidden"
+              style={{ background: 'var(--color-bg-panel)' }}
             >
               <table className="min-w-full text-left text-[12px]">
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--color-border-main)' }}>
+                  <tr>
                     {['Prompt', 'Candidate', 'Status', 'Created', 'Expires', 'Session', 'Actions'].map((col, i) => (
                       <th
                         key={i}
-                        className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider"
+                        className="px-4 py-3 text-[10px] font-semibold tracking-wider"
                         style={{ color: 'var(--color-text-dim)' }}
                       >
                         {col}
@@ -346,17 +345,17 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
                     ))}
                   </tr>
                 </thead>
-                <tbody>
-                  {links.map((link, i) => (
+                <tbody className="divide-y divide-transparent">
+                  {links.map((link) => (
                     (() => {
                       const displayStatus = getAssessmentDisplayStatus(link);
                       return (
                         <tr
                           key={link.id}
                           data-testid={`admin-link-row-${link.id}`}
+                          className="hover:bg-[var(--color-bg-app)]/50 transition-colors even:bg-[var(--color-bg-app)]/20"
                           style={{
-                            borderTop: i > 0 ? '1px solid var(--color-border-muted)' : undefined,
-                            background: selectedLink?.id === link.id ? 'rgba(56,135,206,0.04)' : undefined,
+                            background: selectedLink?.id === link.id ? 'rgba(56,135,206,0.08)' : undefined,
                           }}
                         >
                           <td className="px-4 py-2">
@@ -404,7 +403,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
                               <button
                                 type="button"
                                 onClick={() => void handleInspect(link.id)}
-                                className="flex h-6 w-6 items-center justify-center rounded-sm transition-colors"
+                                className="flex h-6 w-6 items-center justify-center rounded-xl transition-colors"
                                 style={{ color: 'var(--color-text-dim)' }}
                                 title="Inspect"
                                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-main)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'; }}
@@ -416,7 +415,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
                                 data-testid={`admin-link-copy-${link.id}`}
                                 type="button"
                                 onClick={() => void handleCopy(link.url)}
-                                className="flex h-6 w-6 items-center justify-center rounded-sm transition-colors"
+                                className="flex h-6 w-6 items-center justify-center rounded-xl transition-colors"
                                 style={{ color: 'var(--color-text-dim)' }}
                                 title="Copy link"
                                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-main)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'; }}
@@ -447,11 +446,11 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
         {selectedLink ? (
           <div
             data-testid="admin-link-detail"
-            className="w-72 shrink-0 overflow-auto border-l p-4"
-            style={{ borderColor: 'var(--color-border-main)', background: 'var(--color-bg-panel)' }}
+            className="w-72 shrink-0 overflow-auto p-4"
+            style={{ background: 'var(--color-bg-panel)' }}
           >
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+              <span className="text-[11px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
                 Assessment Detail
               </span>
               <button
@@ -475,7 +474,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
                   { label: 'Expires', value: new Date(selectedLink.expires_at).toISOString() },
                 ].map(({ label, value }) => (
                   <div key={label}>
-                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+                    <div className="mb-0.5 text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
                       {label}
                     </div>
                     <div className="text-[12px]" style={{ color: 'var(--color-text-main)' }}>{value}</div>
@@ -483,7 +482,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
                 ))}
 
                 <div>
-                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+                  <div className="mb-1 text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
                     Assessment Link
                   </div>
                   <div className="break-all text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
@@ -492,7 +491,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
                   <button
                     type="button"
                     onClick={() => void handleCopy(selectedLink.url)}
-                    className="mt-2 flex items-center gap-1 rounded-sm px-2.5 py-1 text-[11px] font-medium"
+                    className="mt-2 flex items-center gap-1 rounded-xl px-2.5 py-1 text-[11px] font-medium"
                     style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-muted)' }}
                   >
                     <Copy size={10} /> Copy link
@@ -501,7 +500,7 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
 
                 {selectedLink.consumed_session_id ? (
                   <div>
-                    <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+                    <div className="mb-0.5 text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
                       Session
                     </div>
                     <div className="font-mono text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
@@ -511,11 +510,11 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
                 ) : null}
 
                 <div>
-                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+                  <div className="mb-1 text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
                     Constraints
                   </div>
                   <pre
-                    className="overflow-x-auto rounded-sm p-2 text-[10px] leading-relaxed"
+                    className="overflow-x-auto rounded-xl p-2 text-[10px] leading-relaxed"
                     style={{ background: '#0d1117', color: '#d1d5db' }}
                   >
                     {JSON.stringify(selectedLink.constraint, null, 2)}

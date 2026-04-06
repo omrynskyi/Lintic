@@ -311,6 +311,7 @@ class FakeDb implements DatabaseAdapter {
       content,
       token_count: tokenCount,
       created_at: Date.now(),
+      rewound_at: null,
     });
     this.messageStore.set(key, msgs);
     const conversations = this.conversations.get(sessionId) ?? [];
@@ -326,9 +327,18 @@ class FakeDb implements DatabaseAdapter {
     return this.addBranchMessage(sessionId, 'main', null, role, content, tokenCount);
   }
 
-  getBranchMessages(sessionId: string, branchId: string, conversationId?: string): Promise<StoredMessage[]> {
+  getBranchMessages(sessionId: string, branchId: string, conversationId?: string, _options?: { includeRewound?: boolean }): Promise<StoredMessage[]> {
     const messages = this.messageStore.get(this.branchKey(sessionId, branchId)) ?? [];
     return Promise.resolve(conversationId ? messages.filter((message) => message.conversation_id === conversationId) : messages);
+  }
+
+  rewindMessages(
+    _sessionId: string,
+    _branchId: string,
+    _conversationId: string,
+    _afterTurnSequence: number,
+  ): Promise<void> {
+    return Promise.resolve();
   }
 
   getMessages(sessionId: string): Promise<StoredMessage[]> {

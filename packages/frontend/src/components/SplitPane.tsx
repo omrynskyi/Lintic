@@ -1,31 +1,46 @@
 import { useCallback, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 interface SplitPaneProps {
-  left: React.ReactNode;
-  right: React.ReactNode;
+  left: ReactNode;
+  right: ReactNode;
+  initialPct?: number;
+  minPct?: number;
+  maxPct?: number;
+  orientation?: 'horizontal' | 'vertical';
 }
 
-const MIN_PCT = 20;
-const MAX_PCT = 80;
-
-export function SplitPane({ left, right }: SplitPaneProps) {
-  const [leftPct, setLeftPct] = useState(50);
+export function SplitPane({ 
+  left, 
+  right, 
+  initialPct = 50, 
+  minPct = 20, 
+  maxPct = 80,
+  orientation = 'horizontal' 
+}: SplitPaneProps) {
+  const [leftPct, setLeftPct] = useState(initialPct);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
   const onMouseDown = useCallback(() => {
     isDragging.current = true;
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = orientation === 'horizontal' ? 'col-resize' : 'row-resize';
     document.body.style.userSelect = 'none';
-  }, []);
+  }, [orientation]);
 
-  const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
     if (!isDragging.current || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const newPct = ((e.clientX - rect.left) / rect.width) * 100;
-    setLeftPct(Math.min(MAX_PCT, Math.max(MIN_PCT, newPct)));
-  }, []);
+    
+    let newPct: number;
+    if (orientation === 'horizontal') {
+      newPct = ((e.clientX - rect.left) / rect.width) * 100;
+    } else {
+      newPct = ((e.clientY - rect.top) / rect.height) * 100;
+    }
+    
+    setLeftPct(Math.min(maxPct, Math.max(minPct, newPct)));
+  }, [orientation, minPct, maxPct]);
 
   const onMouseUp = useCallback(() => {
     if (!isDragging.current) return;
@@ -34,35 +49,51 @@ export function SplitPane({ left, right }: SplitPaneProps) {
     document.body.style.userSelect = '';
   }, []);
 
+  // Use window events for dragging to handle mouse leaving the container
+  const onMouseDownHandler = () => {
+    onMouseDown();
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  // Cleanup window events on unmount if needed (though onMouseUp usually handles it)
+  // For simplicity here, we'll just use the standard React event approach but with a transparent overlay or similar if needed.
+  // Actually, let's stick to a robust approach:
+
   return (
     <div
       ref={containerRef}
-      className="flex h-full w-full flex-col overflow-hidden gap-[5px] min-[920px]:flex-row"
+      className={`flex h-full w-full overflow-hidden gap-[5px] ${orientation === 'horizontal' ? 'flex-row' : 'flex-col'}`}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
     >
-      {/* Left pane (IDE) */}
+      {/* First pane */}
       <div
-        className="min-w-0 basis-full overflow-hidden rounded-[var(--assessment-radius-shell)] bg-[var(--color-bg-code)] shadow-lg h-1/2 min-[920px]:h-full min-[920px]:basis-[var(--split-left-pct)]"
-        style={{ '--split-left-pct': `${leftPct}%` } as CSSProperties}
-        data-testid="pane-left"
+        className="min-w-0 min-h-0 overflow-hidden rounded-[var(--assessment-radius-shell)] shadow-lg bg-[var(--color-bg-code)]"
+        style={{
+          flexBasis: `${leftPct}%`,
+          flexShrink: 0,
+          flexGrow: 0
+        }}
       >
         {left}
       </div>
 
-      {/* Right pane (Chat) with resize handle on its left edge */}
+      {/* Second pane with resize handle */}
       <div
-        className="relative min-w-0 basis-full overflow-hidden rounded-[var(--assessment-radius-shell)] bg-[var(--color-bg-panel)] shadow-lg h-1/2 min-[920px]:h-full min-[920px]:flex-1"
-        data-testid="pane-right"
+        className="relative min-w-0 min-h-0 flex-1 overflow-hidden rounded-[var(--assessment-radius-shell)] shadow-lg bg-[var(--color-bg-panel)]"
       >
         <div
-          className="absolute -left-2 top-0 bottom-0 z-50 hidden w-3 cursor-col-resize transition-colors hover:bg-white/5 min-[920px]:block"
+          className={`absolute z-50 transition-colors hover:bg-white/10 ${
+            orientation === 'horizontal' 
+              ? '-left-[3px] top-0 bottom-0 w-[6px] cursor-col-resize' 
+              : '-top-[3px] left-0 right-0 h-[6px] cursor-row-resize'
+          }`}
           onMouseDown={onMouseDown}
           role="separator"
-          aria-orientation="vertical"
+          aria-orientation={orientation}
           aria-label="Resize panels"
-          data-testid="split-divider"
         />
         {right}
       </div>

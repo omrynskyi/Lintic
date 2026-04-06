@@ -35,8 +35,8 @@ export function AdminTasks({}: AdminTasksProps) {
     setShowAdd(false);
   }
 
-  const inputClass = 'w-full rounded-sm border bg-transparent px-3 py-1.5 text-[12px] outline-none focus:border-[var(--color-brand)] transition-colors';
-  const inputStyle = { borderColor: 'var(--color-border-main)', color: 'var(--color-text-main)' };
+  const inputClass = 'w-full rounded-xl bg-[var(--color-bg-app)]/50 px-3 py-1.5 text-[12px] outline-none focus:ring-1 focus:ring-[var(--color-brand)] transition-all';
+  const inputStyle = { color: 'var(--color-text-main)' };
 
   return (
     <div className="flex flex-col gap-0 p-5">
@@ -52,8 +52,8 @@ export function AdminTasks({}: AdminTasksProps) {
           <button
             type="button"
             disabled
-            className="flex cursor-not-allowed items-center gap-1.5 rounded-sm border px-3 py-1.5 text-[11px] font-medium opacity-40"
-            style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-muted)', background: 'var(--color-bg-panel)' }}
+            className="flex cursor-not-allowed items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-medium opacity-40"
+            style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-panel)' }}
             title="Coming soon"
           >
             <Download size={11} />
@@ -63,7 +63,7 @@ export function AdminTasks({}: AdminTasksProps) {
             <button
               type="button"
               onClick={() => { setShowAdd((v) => !v); setError(null); }}
-              className="flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-[11px] font-semibold"
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
               style={{ background: 'var(--color-brand)', color: 'white' }}
             >
               <Plus size={11} />
@@ -74,7 +74,7 @@ export function AdminTasks({}: AdminTasksProps) {
       </div>
 
       {error ? (
-        <div className="mb-4 rounded-sm border px-3 py-2.5 text-[12px]" style={{ borderColor: 'rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.06)', color: 'var(--color-status-error)' }}>
+        <div className="mb-4 rounded-xl px-3 py-2.5 text-[12px]" style={{ background: 'rgba(239,68,68,0.06)', color: 'var(--color-status-error)' }}>
           {error}
         </div>
       ) : null}
@@ -82,11 +82,11 @@ export function AdminTasks({}: AdminTasksProps) {
       {/* Add task form */}
       {showAdd ? (
         <div
-          className="mb-4 rounded-sm border p-4"
-          style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+          className="mb-4 rounded-xl p-4"
+          style={{ background: 'var(--color-bg-panel)' }}
         >
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+            <span className="text-[11px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
               New Task
             </span>
             <button type="button" onClick={() => setShowAdd(false)} style={{ color: 'var(--color-text-dim)' }}>
@@ -96,19 +96,19 @@ export function AdminTasks({}: AdminTasksProps) {
           <form onSubmit={handleAdd}>
             <div className="grid gap-3 sm:grid-cols-2">
               <label>
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>ID</span>
+                <span className="mb-1 block text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>ID</span>
                 <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="library-api" className={inputClass} style={inputStyle} />
               </label>
               <label>
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>Title</span>
+                <span className="mb-1 block text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>Title</span>
                 <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Library Catalog API" className={inputClass} style={inputStyle} />
               </label>
               <label>
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>Tags (comma separated)</span>
+                <span className="mb-1 block text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>Tags (comma separated)</span>
                 <input value={newTags} onChange={(e) => setNewTags(e.target.value)} placeholder="backend, api-design" className={inputClass} style={inputStyle} />
               </label>
               <label className="sm:col-span-2">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>Description (Markdown)</span>
+                <span className="mb-1 block text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>Description (Markdown)</span>
                 <textarea
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
@@ -122,7 +122,7 @@ export function AdminTasks({}: AdminTasksProps) {
             <div className="mt-4 flex items-center gap-2">
               <button
                 type="submit"
-                className="rounded-sm px-4 py-1.5 text-[12px] font-semibold"
+                className="rounded-xl px-4 py-1.5 text-[12px] font-semibold"
                 style={{ background: 'var(--color-brand)', color: 'white' }}
               >
                 Add task
@@ -130,8 +130,8 @@ export function AdminTasks({}: AdminTasksProps) {
               <button
                 type="button"
                 onClick={() => setShowAdd(false)}
-                className="rounded-sm border px-4 py-1.5 text-[12px]"
-                style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-muted)' }}
+                className="rounded-xl px-4 py-1.5 text-[12px]"
+                style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-muted)' }}
               >
                 Cancel
               </button>
@@ -141,24 +141,24 @@ export function AdminTasks({}: AdminTasksProps) {
       ) : null}
 
       {!adminKey ? (
-        <div className="rounded-sm border px-4 py-6 text-center text-[12px]" style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-dim)' }}>
+        <div className="rounded-xl px-4 py-6 text-center text-[12px]" style={{ background: 'var(--color-bg-panel)', color: 'var(--color-text-dim)' }}>
           Enter your admin key in Settings to view tasks.
         </div>
       ) : loading ? (
         <div className="text-center text-[12px]" style={{ color: 'var(--color-text-dim)' }}>Loading…</div>
       ) : prompts.length === 0 ? (
-        <div className="rounded-sm border px-4 py-8 text-center text-[12px]" style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-dim)' }}>
+        <div className="rounded-xl px-4 py-8 text-center text-[12px]" style={{ background: 'var(--color-bg-panel)', color: 'var(--color-text-dim)' }}>
           No tasks configured. Add prompts to lintic.yml.
         </div>
       ) : (
         <div
-          className="rounded-sm border overflow-hidden"
-          style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+          className="rounded-xl overflow-hidden"
+          style={{ background: 'var(--color-bg-panel)' }}
         >
-          {prompts.map((prompt, i) => (
+          {prompts.map((prompt) => (
             <div
               key={prompt.id}
-              style={{ borderTop: i > 0 ? '1px solid var(--color-border-muted)' : undefined }}
+              className="even:bg-[var(--color-bg-app)]/20"
             >
               <button
                 type="button"
@@ -180,7 +180,7 @@ export function AdminTasks({}: AdminTasksProps) {
                 {prompt.tags?.map((tag) => (
                   <span
                     key={tag}
-                    className="flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px]"
+                    className="flex shrink-0 items-center gap-1 rounded-xl px-1.5 py-0.5 text-[10px]"
                     style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--color-text-dim)' }}
                   >
                     <Tag size={9} />
@@ -197,8 +197,8 @@ export function AdminTasks({}: AdminTasksProps) {
 
               {expandedId === prompt.id && prompt.description ? (
                 <div
-                  className="border-t px-4 py-3"
-                  style={{ borderColor: 'var(--color-border-muted)', background: 'rgba(255,255,255,0.01)' }}
+                  className="px-4 py-3"
+                  style={{ background: 'rgba(255,255,255,0.01)' }}
                 >
                   <pre className="whitespace-pre-wrap text-[12px] leading-relaxed" style={{ color: 'var(--color-text-muted)', fontFamily: 'inherit' }}>
                     {prompt.description}

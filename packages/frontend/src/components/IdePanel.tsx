@@ -252,7 +252,7 @@ export function IdePanel({ terminalRef, requestOpenFile, onActiveFileChange }: I
         </div>
         
         {/* Terminal Section */}
-        <div className="flex flex-col shrink-0 overflow-hidden bg-[var(--color-bg-ui)] border-t border-[var(--color-border-main)]">
+        <div className="flex flex-col shrink-0 overflow-hidden bg-[var(--color-bg-tab)] border-t border-[var(--color-border-main)]">
           <button 
             type="button"
             onClick={() => setIsTerminalCollapsed(!isTerminalCollapsed)}

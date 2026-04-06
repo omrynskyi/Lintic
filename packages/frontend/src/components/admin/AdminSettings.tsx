@@ -20,8 +20,8 @@ export function AdminSettings({ isDark, onToggleTheme }: AdminSettingsProps) {
     window.setTimeout(() => setSaved(false), 2000);
   }
 
-  const inputClass = 'w-full rounded-sm border bg-transparent px-3 py-1.5 text-[12px] outline-none focus:border-[var(--color-brand)] transition-colors';
-  const inputStyle = { borderColor: 'var(--color-border-main)', color: 'var(--color-text-main)' };
+  const inputClass = 'w-full rounded-xl bg-[var(--color-bg-app)]/50 px-3 py-1.5 text-[12px] outline-none focus:ring-1 focus:ring-[var(--color-brand)] transition-all';
+  const inputStyle = { color: 'var(--color-text-main)' };
 
   return (
     <div className="flex flex-col gap-6 p-5 max-w-lg">
@@ -34,15 +34,15 @@ export function AdminSettings({ isDark, onToggleTheme }: AdminSettingsProps) {
 
       {/* Admin Key */}
       <section
-        className="rounded-sm border p-4"
-        style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+        className="rounded-xl p-4"
+        style={{ background: 'var(--color-bg-panel)' }}
       >
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+        <h3 className="mb-3 text-[11px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
           Admin Key
         </h3>
         <form onSubmit={handleSave} className="flex flex-col gap-3">
           <label>
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+            <span className="mb-1 block text-[10px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
               X-Lintic-Api-Key
             </span>
             <div className="relative">
@@ -74,7 +74,7 @@ export function AdminSettings({ isDark, onToggleTheme }: AdminSettingsProps) {
               data-testid="admin-key-submit"
               type="submit"
               disabled={!draft.trim()}
-              className="flex items-center gap-1.5 rounded-sm px-4 py-1.5 text-[12px] font-semibold disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-[12px] font-semibold disabled:opacity-40 transition-colors"
               style={{ background: 'var(--color-brand)', color: 'white' }}
             >
               {saved ? <><Check size={11} /> Saved</> : 'Save key'}
@@ -82,8 +82,8 @@ export function AdminSettings({ isDark, onToggleTheme }: AdminSettingsProps) {
             {adminKey ? (
               <button
                 type="button"
-                className="rounded-sm border px-4 py-1.5 text-[12px]"
-                style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-status-error)' }}
+                className="rounded-xl px-4 py-1.5 text-[12px]"
+                style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--color-status-error)' }}
                 onClick={() => { setAdminKey(''); setDraft(''); }}
               >
                 Clear
@@ -105,10 +105,10 @@ export function AdminSettings({ isDark, onToggleTheme }: AdminSettingsProps) {
 
       {/* Appearance */}
       <section
-        className="rounded-sm border p-4"
-        style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+        className="rounded-xl p-4"
+        style={{ background: 'var(--color-bg-panel)' }}
       >
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+        <h3 className="mb-3 text-[11px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
           Appearance
         </h3>
         <div className="flex items-center justify-between">
@@ -121,8 +121,8 @@ export function AdminSettings({ isDark, onToggleTheme }: AdminSettingsProps) {
           <button
             type="button"
             onClick={onToggleTheme}
-            className="rounded-sm border px-3 py-1.5 text-[12px] font-medium transition-colors"
-            style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-muted)', background: 'var(--color-bg-app)' }}
+            className="rounded-xl px-3 py-1.5 text-[12px] font-medium transition-colors"
+            style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-app)' }}
           >
             Switch to {isDark ? 'light' : 'dark'}
           </button>
@@ -131,10 +131,10 @@ export function AdminSettings({ isDark, onToggleTheme }: AdminSettingsProps) {
 
       {/* About */}
       <section
-        className="rounded-sm border p-4"
-        style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+        className="rounded-xl p-4"
+        style={{ background: 'var(--color-bg-panel)' }}
       >
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
+        <h3 className="mb-3 text-[11px] font-semibold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
           About
         </h3>
         <div className="flex flex-col gap-1.5 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>

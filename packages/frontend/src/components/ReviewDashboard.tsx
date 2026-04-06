@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Download, Moon, Sun, MessageSquare, Code, Activity, User, Terminal } from 'lucide-react';
+import { ChevronRight, Download, Moon, Sun, MessageSquare, Code, Activity, User, Terminal, ChevronDown, ChevronUp, Info, Zap, Cpu, LifeBuoy } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   buildCodeStateSnapshot,
@@ -13,6 +13,8 @@ import {
   type ReviewMetric,
 } from '../lib/review-replay.js';
 import { Timeline } from './Timeline.js';
+import { DropdownMenu, DropdownTriggerLabel } from './DropdownMenu.js';
+import { SplitPane } from './SplitPane.js';
 
 interface ReviewDashboardProps {
   sessionId: string;
@@ -122,63 +124,95 @@ function getAbbrev(label: string): string {
     .slice(0, 2);
 }
 
-function MetricsStrip({ metrics }: { metrics: ReviewMetric[] }) {
+const METRIC_DESCRIPTIONS: Record<string, string> = {
+  'Iteration Efficiency': 'Measures the ratio of productive steps to total steps. Higher means more focused work.',
+  'Token Efficiency': 'Measures result quality relative to LLM token consumption. Higher means better use of AI resources.',
+  'Independence Ratio': 'Percentage of code and logic driven by the candidate rather than automated agent suggestions.',
+  'Recovery Score': 'Capability to identify, debug, and fix errors encountered during the development process.',
+};
+
+const METRIC_ICONS: Record<string, React.ElementType> = {
+  'Iteration Efficiency': Zap,
+  'Token Efficiency': Cpu,
+  'Independence Ratio': User,
+  'Recovery Score': LifeBuoy,
+};
+
+function MetricsStrip({ metrics, expanded }: { metrics: ReviewMetric[]; expanded: boolean }) {
   if (metrics.length === 0) return null;
   return (
     <div
-      className="flex shrink-0 border-b"
-      style={{ borderColor: 'var(--color-border-main)', background: 'var(--color-bg-panel)' }}
+      className="flex shrink-0 gap-[5px] p-[5px]"
+      style={{ background: 'var(--color-bg-app)' }}
     >
       {metrics.map((metric, i) => {
         const color = METRIC_COLORS[i % METRIC_COLORS.length] ?? '#3887ce';
-        const abbrev = getAbbrev(metric.label);
+        const Icon = METRIC_ICONS[metric.label] || Activity;
         const pct = Math.round(metric.score * 100);
+        const description = METRIC_DESCRIPTIONS[metric.label];
+
         return (
           <div
             key={metric.name}
-            className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2.5"
-            style={{
-              borderRight: i < metrics.length - 1 ? '1px solid var(--color-border-muted)' : undefined,
-            }}
+            className="flex min-w-0 flex-1 items-start gap-2.5 px-4 py-3 rounded-xl transition-all duration-300"
+            style={{ background: 'var(--color-bg-panel)' }}
           >
-            {/* Abbreviation badge */}
+            {/* Icon badge */}
             <div
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold"
+              className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
               style={{ background: `${color}1a`, color }}
             >
-              {abbrev}
+              <Icon size={14} strokeWidth={2.5} />
             </div>
-            {/* Label + description + bar */}
+            {/* Label + details + bar */}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-1">
                 <span
-                  className="truncate text-[11px] font-semibold"
+                  className="truncate text-[12px] font-semibold"
                   style={{ color: 'var(--color-text-main)' }}
                 >
                   {metric.label}
                 </span>
                 <span
-                  className="shrink-0 text-[12px] font-bold tabular-nums"
+                  className="shrink-0 text-[13px] font-bold tabular-nums"
                   style={{ color }}
                 >
                   {pct}%
                 </span>
               </div>
-              {metric.details && (
-                <div
-                  className="truncate text-[10px] leading-none mt-0.5"
-                  style={{ color: 'var(--color-text-dimmest)' }}
-                >
-                  {metric.details}
-                </div>
-              )}
+
+              <AnimatePresence initial={false}>
+                {expanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                    animate={{ height: 'auto', opacity: 1, marginTop: 4 }}
+                    exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                    transition={{ duration: 0.25, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex flex-col gap-1.5 pb-1">
+                      {description && (
+                        <p className="text-[11px] leading-snug opacity-40">
+                          {description}
+                        </p>
+                      )}
+                      {metric.details && (
+                        <p className="text-[11px] font-medium leading-tight opacity-80" style={{ color: 'var(--color-text-dim)' }}>
+                          {metric.details}
+                        </p>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Progress bar */}
               <div
-                className="mt-1.5 h-[2px] w-full overflow-hidden rounded-full"
+                className="mt-2 h-[3px] w-full overflow-hidden rounded-full"
                 style={{ background: 'rgba(255,255,255,0.06)' }}
               >
                 <div
-                  className="h-full rounded-full"
+                  className="h-full rounded-full transition-all duration-500"
                   style={{ width: `${pct}%`, background: color }}
                 />
               </div>
@@ -250,20 +284,19 @@ function ToolGroup({
 
   return (
     <div
-      className="rounded-sm"
+      className="rounded-xl overflow-hidden"
       style={{
         opacity: isPast ? 1 : 0.2,
-        border: isAnchor ? '1px solid rgba(56,135,206,0.25)' : '1px solid var(--color-border-muted)',
         background: isAnchor ? 'rgba(56,135,206,0.05)' : 'rgba(255,255,255,0.02)',
       }}
     >
       {/* Collapsed header */}
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
         onClick={() => setExpanded((v) => !v)}
       >
-        <Terminal size={10} style={{ color: 'var(--color-text-dimmest)', flexShrink: 0 }} />
+        <Terminal size={12} style={{ color: 'var(--color-text-dimmest)', flexShrink: 0 }} />
         <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
           {callCount} tool call{callCount !== 1 ? 's' : ''}
           {calls[0] ? (
@@ -273,12 +306,12 @@ function ToolGroup({
           ) : null}
         </span>
         {hasErrors && (
-          <span className="shrink-0 text-[9px] font-semibold uppercase" style={{ color: 'var(--color-status-error)' }}>
-            err
+          <span className="shrink-0 text-[10px] font-semibold" style={{ color: 'var(--color-status-error)' }}>
+            Error
           </span>
         )}
         <ChevronRight
-          size={10}
+          size={12}
           style={{
             color: 'var(--color-text-dimmest)',
             flexShrink: 0,
@@ -291,18 +324,16 @@ function ToolGroup({
       {/* Expanded detail — one line per tool call */}
       {expanded && (
         <div
-          className="flex flex-col overflow-hidden border-t"
-          style={{ borderColor: 'var(--color-border-muted)' }}
+          className="flex flex-col overflow-hidden px-3 pb-2"
         >
           {calls.map((call, i) => {
             const result = results[i];
             return (
               <div
                 key={i}
-                className="grid min-w-0 items-center gap-x-1.5 px-2.5 py-1"
+                className="grid min-w-0 items-center gap-x-2 py-1"
                 style={{
-                  gridTemplateColumns: '6px auto 1fr auto',
-                  borderTop: i > 0 ? '1px solid var(--color-border-muted)' : undefined,
+                  gridTemplateColumns: '8px auto 1fr auto',
                 }}
               >
                 {/* Status dot */}
@@ -316,21 +347,21 @@ function ToolGroup({
                 />
                 {/* Tool name */}
                 <span
-                  className="font-mono text-[10px] font-semibold"
+                  className="font-mono text-[11px] font-semibold"
                   style={{ color: 'var(--color-brand)' }}
                 >
                   {call.name}
                 </span>
                 {/* Params — fills remaining space, truncates */}
                 <span
-                  className="min-w-0 truncate font-mono text-[10px]"
+                  className="min-w-0 truncate font-mono text-[11px]"
                   style={{ color: 'var(--color-text-dimmest)' }}
                 >
                   {call.params}
                 </span>
                 {/* Result summary — pinned right */}
                 <span
-                  className="font-mono text-[10px] text-right"
+                  className="font-mono text-[11px] text-right"
                   style={{ color: result?.isError ? 'var(--color-status-error)' : 'var(--color-text-dimmest)' }}
                 >
                   {result?.summary ?? ''}
@@ -338,6 +369,64 @@ function ToolGroup({
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Agent Message Component (Minimizeable) ──────────────────────────────────
+
+function AgentMessage({
+  entry,
+  isPast,
+  isAnchor,
+}: {
+  entry: ConversationEntry;
+  isPast: boolean;
+  isAnchor: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      className="rounded-xl p-3 text-[13px] leading-relaxed transition-all"
+      style={{
+        opacity: isPast ? 1 : 0.2,
+        background: isAnchor
+          ? 'rgba(56,135,206,0.08)'
+          : 'var(--color-bg-agent-msg)',
+        color: 'var(--color-text-main)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2">
+          <Activity size={12} style={{ color: 'var(--color-status-success)' }} />
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--color-status-success)' }}>
+            Agent
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[10px]" style={{ color: 'var(--color-text-dimmest)' }}>
+            {formatTimestamp(entry.timestamp)}
+          </span>
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="flex h-5 w-5 items-center justify-center rounded-xl hover:bg-white/5 transition-colors"
+            style={{ color: 'var(--color-text-dim)' }}
+          >
+            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
+        </div>
+      </div>
+      {expanded ? (
+        <div className="whitespace-pre-wrap break-words opacity-90">
+          {entry.body || <span className="italic opacity-40">No text content</span>}
+        </div>
+      ) : (
+        <div className="truncate text-[11px] opacity-60 italic">
+          {entry.body ? entry.body.slice(0, 80) + (entry.body.length > 80 ? '...' : '') : 'Empty response'}
         </div>
       )}
     </div>
@@ -357,6 +446,7 @@ export function ReviewDashboard({
   const [loading, setLoading] = useState(true);
   const [selectedEventIndex, setSelectedEventIndex] = useState(0);
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+  const [showMetricDetails, setShowMetricDetails] = useState(false);
   const conversationRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   useEffect(() => {
@@ -448,20 +538,21 @@ export function ReviewDashboard({
 
   if (loading) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3"
+      <div className="flex h-full flex-col items-center justify-center gap-3"
         style={{ background: 'var(--color-bg-app)', color: 'var(--color-text-dim)' }}>
-        <Activity size={20} className="animate-pulse text-[var(--color-brand)]" />
-        <span className="text-[12px]">Loading session…</span>
+        <Activity size={24} className="animate-pulse text-[var(--color-brand)]" />
+        <span className="text-[13px] font-medium">Loading session review…</span>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="flex h-screen items-center justify-center px-6"
+      <div className="flex h-full items-center justify-center px-6"
         style={{ background: 'var(--color-bg-app)' }}>
-        <div className="rounded-sm border px-5 py-4 text-[12px]"
-          style={{ background: 'var(--color-bg-panel)', borderColor: 'rgba(239,68,68,0.2)', color: 'var(--color-status-error)' }}>
+        <div className="rounded-xl px-6 py-5 text-[14px] text-center max-w-md"
+          style={{ background: 'var(--color-bg-panel)', color: 'var(--color-status-error)' }}>
+          <div className="font-bold mb-2">Error</div>
           {error ?? 'Review data unavailable'}
         </div>
       </div>
@@ -470,230 +561,270 @@ export function ReviewDashboard({
 
   const overallScore = data.session.score != null ? formatMetricScore(data.session.score) : '—';
 
+  const branchItems = (data.branches ?? []).map((branch) => ({
+    value: branch.id,
+    label: branch.name,
+    selected: branch.id === (activeBranchId ?? data.branch?.id),
+    onSelect: () => setActiveBranchId(branch.id),
+  }));
+
   return (
-    <div className="flex h-screen flex-col overflow-hidden" style={{ background: 'var(--color-bg-app)' }}>
+    <div className="flex h-full flex-col overflow-hidden" style={{ background: 'var(--color-bg-app)' }}>
 
       {/* ── Topbar ── */}
       <header
-        className="flex shrink-0 items-center justify-between border-b px-4"
-        style={{ height: '44px', background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+        className="flex shrink-0 items-center justify-between px-5"
+        style={{ height: '52px', background: 'var(--color-bg-app)' }}
       >
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="truncate text-[13px] font-semibold tracking-tight" style={{ color: 'var(--color-text-bold)' }}>
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="truncate text-[15px] font-bold tracking-tight" style={{ color: 'var(--color-text-bold)' }}>
             {data.prompt?.title ?? data.session.prompt_id}
           </span>
-          <span style={{ color: 'var(--color-border-main)' }}>·</span>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <User size={11} style={{ color: 'var(--color-text-dim)' }} />
-            <span className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+          <div className="flex shrink-0 items-center gap-1.5 opacity-60">
+            <User size={12} style={{ color: 'var(--color-text-dim)' }} />
+            <span className="text-[13px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
               {data.session.candidate_email}
             </span>
           </div>
-          <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+          <span className="shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-bold"
             style={{
               background: data.session.status === 'completed' ? 'rgba(16,185,129,0.1)' : 'rgba(56,135,206,0.1)',
               color: data.session.status === 'completed' ? 'var(--color-status-success)' : 'var(--color-brand)',
             }}>
             {data.session.status}
           </span>
-          <span className="shrink-0 text-[13px] font-bold tabular-nums" style={{ color: 'var(--color-brand)' }}>
-            {overallScore}
-          </span>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {data.branches && data.branches.length > 0 ? (
-            <select
-              value={activeBranchId ?? data.branch?.id ?? data.branches[0]?.id ?? ''}
-              onChange={(event) => setActiveBranchId(event.target.value)}
-              className="rounded-sm border-none px-2 py-1 text-[11px]"
-              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--color-text-main)' }}
-            >
-              {data.branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
+        <div className="flex shrink-0 items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setShowMetricDetails(!showMetricDetails)}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-white/5"
+            style={{ color: showMetricDetails ? 'var(--color-brand)' : 'var(--color-text-muted)' }}
+            title="Show metric details"
+          >
+            <Info size={14} />
+            Details
+          </button>
+          {branchItems.length > 0 ? (
+            <DropdownMenu
+              label="Branch selector"
+              role="listbox"
+              widthClassName="w-auto"
+              triggerClassName="flex h-8 items-center justify-center px-2 py-1 text-left rounded-xl hover:bg-white/5 transition-colors"
+              items={branchItems}
+              trigger={(open) => (
+                <DropdownTriggerLabel
+                  primary={branchItems.find(i => i.selected)?.label ?? 'main'}
+                  open={open}
+                  compact
+                />
+              )}
+            />
           ) : null}
-          <div className="text-[11px] tabular-nums" style={{ color: 'var(--color-text-dim)' }}>
+          <div className="text-[12px] tabular-nums font-medium opacity-60" style={{ color: 'var(--color-text-dim)' }}>
             {events.length === 0 ? '0/0' : `${selectedEventIndex + 1}/${events.length}`}
           </div>
           <button
             type="button"
             onClick={() => triggerJsonDownload(`review-${sessionId}.json`, data)}
-            className="flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-medium"
-            style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-muted)', background: 'var(--color-bg-app)' }}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-white/5"
+            style={{ color: 'var(--color-text-muted)' }}
           >
-            <Download size={11} />
+            <Download size={13} />
             Export
           </button>
           <button
             type="button"
             onClick={onToggleTheme}
-            className="flex h-7 w-7 items-center justify-center rounded-sm border"
-            style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-dim)', background: 'var(--color-bg-app)' }}
+            className="flex h-8 w-8 items-center justify-center rounded-xl transition-colors hover:bg-white/5"
+            style={{ color: 'var(--color-text-dim)' }}
           >
-            {isDark ? <Sun size={12} /> : <Moon size={12} />}
+            {isDark ? <Sun size={14} /> : <Moon size={14} />}
           </button>
         </div>
       </header>
 
+      {/* ── Metrics strip (Top) ── */}
+      <MetricsStrip metrics={data.metrics} expanded={showMetricDetails} />
+
       {/* ── Timeline strip ── */}
-      <div className="shrink-0 border-b px-4 py-2"
-        style={{ borderColor: 'var(--color-border-main)', background: 'var(--color-bg-panel)' }}>
-        <div className="flex items-center gap-3">
+      <div className="shrink-0 px-5 py-3 mb-2"
+        style={{ background: 'var(--color-bg-app)' }}>
+        <div className="flex items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <Timeline 
+              events={events} 
+              selectedEventIndex={selectedEventIndex} 
+              onSelectEvent={setSelectedEventIndex} 
+              markerIndices={conversationEntries.filter(e => e.title === 'You').map(e => e.eventIndex)}
+            />
+          </div>
           {selectedEvent ? (
-            <span className="shrink-0 text-[10px]" style={{ color: 'var(--color-text-dim)' }}>
-              {describeReviewEvent(selectedEvent)} · {formatTimestamp(selectedEvent.timestamp)}
+            <span className="shrink-0 text-[11px] font-medium opacity-60" style={{ color: 'var(--color-text-dim)' }}>
+              {formatTimestamp(selectedEvent.timestamp)}
             </span>
           ) : null}
-          <div className="min-w-0 flex-1">
-            <Timeline events={events} selectedEventIndex={selectedEventIndex} onSelectEvent={setSelectedEventIndex} />
-          </div>
         </div>
       </div>
 
-      {/* ── Metrics strip ── */}
-      <MetricsStrip metrics={data.metrics} />
-
       {/* ── Main content ── */}
-      <div className="flex min-h-0 flex-1">
-
-        {/* Conversation */}
-        <div className="flex min-h-0 w-[280px] shrink-0 flex-col border-r" style={{ borderColor: 'var(--color-border-main)' }}>
-          <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2"
-            style={{ borderColor: 'var(--color-border-main)' }}>
-            <MessageSquare size={12} style={{ color: 'var(--color-brand)' }} />
-            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
-              Conversation
-            </span>
-          </div>
-
-          <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2.5 no-scrollbar">
-            {conversationItems.map((item, itemIndex) => {
-              const itemEventIndex = item.kind === 'toolGroup' ? item.eventIndex : item.entry.eventIndex;
-              const isPast = itemEventIndex <= selectedEventIndex;
-              const isAnchor = itemIndex === anchorItemIndex;
-
-              if (item.kind === 'toolGroup') {
-                return (
-                  <div key={item.id} ref={(node) => { conversationRefs.current[itemIndex] = node; }}>
-                    <ToolGroup group={item} isPast={isPast} isAnchor={isAnchor} />
-                  </div>
-                );
-              }
-
-              const { entry } = item;
-              const isUser = entry.title === 'You';
-
-              return (
-                <motion.div
-                  key={entry.id}
-                  ref={(node) => { conversationRefs.current[itemIndex] = node; }}
-                  initial={false}
-                  animate={{ opacity: isPast ? 1 : 0.2 }}
-                  className="rounded-sm p-2.5 text-[12px] leading-relaxed"
-                  style={{
-                    background: isAnchor
-                      ? 'rgba(56,135,206,0.08)'
-                      : isUser ? 'var(--color-bg-user-msg)' : 'var(--color-bg-agent-msg)',
-                    border: isAnchor
-                      ? '1px solid rgba(56,135,206,0.25)'
-                      : '1px solid var(--color-border-muted)',
-                    color: 'var(--color-text-main)',
-                  }}
-                >
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider"
-                      style={{ color: isUser ? 'var(--color-brand)' : 'var(--color-status-success)' }}>
-                      {isUser ? 'Candidate' : 'Agent'}
-                    </span>
-                    <span className="font-mono text-[9px]" style={{ color: 'var(--color-text-dimmest)' }}>
-                      {formatTimestamp(entry.timestamp)}
-                    </span>
-                  </div>
-                  <div className="whitespace-pre-wrap break-words opacity-90">
-                    {entry.body || <span className="italic opacity-40">No text content</span>}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Code context */}
-        <div className="flex min-h-0 flex-1 flex-col" style={{ borderRight: '1px solid var(--color-border-main)' }}>
-          <div className="flex min-h-0 flex-1 flex-col border-b" style={{ borderColor: 'var(--color-border-main)' }}>
-            <div className="flex shrink-0 items-center justify-between border-b px-3 py-2"
-              style={{ borderColor: 'var(--color-border-main)' }}>
-              <div className="flex items-center gap-2">
-                <Code size={12} style={{ color: 'var(--color-text-dim)' }} />
-                <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
-                  Snapshot
+      <div className="flex min-h-0 flex-1 p-[5px] pt-0">
+        <SplitPane
+          orientation="horizontal"
+          initialPct={25}
+          minPct={15}
+          maxPct={45}
+          left={
+            /* Conversation */
+            <div className="flex h-full flex-col rounded-xl overflow-hidden" style={{ background: 'var(--color-bg-panel)' }}>
+              <div className="flex shrink-0 items-center gap-2 px-4 py-3">
+                <MessageSquare size={14} style={{ color: 'var(--color-brand)' }} />
+                <span className="text-[12px] font-bold" style={{ color: 'var(--color-text-dim)' }}>
+                  Conversation
                 </span>
               </div>
-              {effectiveCodeState.activePath && (
-                <span className="font-mono text-[10px]" style={{ color: 'var(--color-text-dimmest)' }}>
-                  {effectiveCodeState.activePath}
-                </span>
-              )}
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-3" style={{ background: 'var(--color-bg-code)' }}>
-              <AnimatePresence mode="wait">
-                <motion.pre
-                  key={(effectiveCodeState.activePath ?? 'null') + selectedEventIndex}
-                  data-testid="code-state-content"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed"
-                  style={{ color: 'var(--color-text-main)' }}
-                >
-                  {activeCode || 'No code snapshot for this event.'}
-                </motion.pre>
-              </AnimatePresence>
-            </div>
-          </div>
 
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2"
-              style={{ borderColor: 'var(--color-border-main)' }}>
-              <Activity size={12} style={{ color: 'var(--color-text-dim)' }} />
-              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
-                Diff
-              </span>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-3" style={{ background: 'var(--color-bg-code)' }}>
-              <AnimatePresence mode="wait">
-                <motion.pre
-                  key={(effectiveCodeState.activePath ?? 'null') + '-diff-' + selectedEventIndex}
-                  data-testid="code-state-diff"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed"
-                >
-                  {codeState.diff ? (
-                    codeState.diff.split('\n').map((line, i) => (
-                      <div key={i} style={{
-                        color: line.startsWith('+') ? 'var(--color-status-success)'
-                          : line.startsWith('-') ? 'var(--color-status-error)'
-                          : 'var(--color-text-dimmest)',
-                      }}>
-                        {line}
+              <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3 no-scrollbar">
+                {conversationItems.map((item, itemIndex) => {
+                  const itemEventIndex = item.kind === 'toolGroup' ? item.eventIndex : item.entry.eventIndex;
+                  const isPast = itemEventIndex <= selectedEventIndex;
+                  const isAnchor = itemIndex === anchorItemIndex;
+
+                  if (item.kind === 'toolGroup') {
+                    return (
+                      <div key={item.id} ref={(node) => { conversationRefs.current[itemIndex] = node; }}>
+                        <ToolGroup group={item} isPast={isPast} isAnchor={isAnchor} />
                       </div>
-                    ))
-                  ) : (
-                    <span className="italic" style={{ color: 'var(--color-text-dimmest)' }}>
-                      No diff for this event.
-                    </span>
-                  )}
-                </motion.pre>
-              </AnimatePresence>
-            </div>
-          </div>
-        </div>
+                    );
+                  }
 
+                  const { entry } = item;
+                  const isUser = entry.title === 'You';
+
+                  if (!isUser) {
+                    return (
+                      <div key={entry.id} ref={(node) => { conversationRefs.current[itemIndex] = node; }}>
+                        <AgentMessage entry={entry} isPast={isPast} isAnchor={isAnchor} />
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <motion.div
+                      key={entry.id}
+                      ref={(node) => { conversationRefs.current[itemIndex] = node; }}
+                      initial={false}
+                      animate={{ opacity: isPast ? 1 : 0.2 }}
+                      className="rounded-xl p-4 text-[14px] leading-relaxed transition-all"
+                      style={{
+                        background: isAnchor
+                          ? 'rgba(56,135,206,0.12)'
+                          : 'var(--color-bg-user-msg)',
+                        color: 'var(--color-text-main)',
+                      }}
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <User size={13} style={{ color: 'var(--color-brand)' }} />
+                          <span className="text-[12px] font-bold" style={{ color: 'var(--color-brand)' }}>
+                            Candidate
+                          </span>
+                        </div>
+                        <span className="font-mono text-[10px]" style={{ color: 'var(--color-text-dimmest)' }}>
+                          {formatTimestamp(entry.timestamp)}
+                        </span>
+                      </div>
+                      <div className="whitespace-pre-wrap break-words opacity-95">
+                        {entry.body || <span className="italic opacity-40">No text content</span>}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+          }
+          right={
+            /* Code context */
+            <SplitPane
+              orientation="vertical"
+              initialPct={65}
+              minPct={30}
+              maxPct={85}
+              left={
+                /* Snapshot */
+                <div className="flex h-full flex-col rounded-xl overflow-hidden" style={{ background: 'var(--color-bg-panel)' }}>
+                  <div className="flex shrink-0 items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Code size={14} style={{ color: 'var(--color-text-dim)' }} />
+                      <span className="text-[12px] font-bold" style={{ color: 'var(--color-text-dim)' }}>
+                        Snapshot
+                      </span>
+                    </div>
+                    {effectiveCodeState.activePath && (
+                      <span className="font-mono text-[11px] opacity-50" style={{ color: 'var(--color-text-dim)' }}>
+                        {effectiveCodeState.activePath}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-auto p-4" style={{ background: 'var(--color-bg-code)' }}>
+                    <AnimatePresence mode="wait">
+                      <motion.pre
+                        key={(effectiveCodeState.activePath ?? 'null') + selectedEventIndex}
+                        data-testid="code-state-content"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed"
+                        style={{ color: 'var(--color-text-main)' }}
+                      >
+                        {activeCode || 'No code snapshot for this event.'}
+                      </motion.pre>
+                    </AnimatePresence>
+                  </div>
+                </div>
+              }
+              right={
+                /* Diff */
+                <div className="flex h-full flex-col rounded-xl overflow-hidden" style={{ background: 'var(--color-bg-panel)' }}>
+                  <div className="flex shrink-0 items-center gap-2 px-4 py-3">
+                    <Activity size={14} style={{ color: 'var(--color-text-dim)' }} />
+                    <span className="text-[12px] font-bold" style={{ color: 'var(--color-text-dim)' }}>
+                      Diff
+                    </span>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-auto p-4" style={{ background: 'var(--color-bg-code)' }}>
+                    <AnimatePresence mode="wait">
+                      <motion.pre
+                        key={(effectiveCodeState.activePath ?? 'null') + '-diff-' + selectedEventIndex}
+                        data-testid="code-state-diff"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed"
+                      >
+                        {codeState.diff ? (
+                          codeState.diff.split('\n').map((line, i) => (
+                            <div key={i} style={{
+                              color: line.startsWith('+') ? 'var(--color-status-success)'
+                                : line.startsWith('-') ? 'var(--color-status-error)'
+                                : 'var(--color-text-dimmest)',
+                            }}>
+                              {line}
+                            </div>
+                          ))
+                        ) : (
+                          <span className="italic opacity-30" style={{ color: 'var(--color-text-dim)' }}>
+                            No diff for this event.
+                          </span>
+                        )}
+                      </motion.pre>
+                    </AnimatePresence>
+                  </div>
+                </div>
+              }
+            />
+          }
+        />
       </div>
     </div>
   );

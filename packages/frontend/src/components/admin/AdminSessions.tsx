@@ -59,8 +59,8 @@ export function AdminSessions({ onNavigate }: AdminSessionsProps) {
           type="button"
           onClick={load}
           disabled={!adminKey || loading}
-          className="flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-[12px] font-medium disabled:opacity-40"
-          style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-muted)', background: 'var(--color-bg-panel)' }}
+          className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-medium disabled:opacity-40"
+          style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-panel)' }}
         >
           <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -68,27 +68,27 @@ export function AdminSessions({ onNavigate }: AdminSessionsProps) {
       </div>
 
       {error ? (
-        <div className="mb-4 rounded-sm border px-3 py-2.5 text-[12px]" style={{ borderColor: 'rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.06)', color: 'var(--color-status-error)' }}>
+        <div className="mb-4 rounded-xl px-3 py-2.5 text-[12px]" style={{ background: 'rgba(239,68,68,0.06)', color: 'var(--color-status-error)' }}>
           {error}
         </div>
       ) : null}
 
       {!adminKey ? (
-        <div className="rounded-sm border px-4 py-6 text-center text-[12px]" style={{ borderColor: 'var(--color-border-main)', color: 'var(--color-text-dim)' }}>
+        <div className="rounded-xl px-4 py-6 text-center text-[12px]" style={{ background: 'var(--color-bg-panel)', color: 'var(--color-text-dim)' }}>
           Enter your admin key in Settings to view sessions.
         </div>
       ) : (
         <div
-          className="rounded-sm border overflow-hidden"
-          style={{ background: 'var(--color-bg-panel)', borderColor: 'var(--color-border-main)' }}
+          className="rounded-xl overflow-hidden"
+          style={{ background: 'var(--color-bg-panel)' }}
         >
           <table className="min-w-full text-left text-[12px]">
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--color-border-main)' }}>
+              <tr>
                 {['Candidate', 'Task', 'Status', 'Created', 'Session', 'Actions'].map((col) => (
                   <th
                     key={col}
-                    className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider"
+                    className="px-4 py-3 text-[10px] font-semibold tracking-wider"
                     style={{ color: 'var(--color-text-dim)' }}
                   >
                     {col}
@@ -96,7 +96,7 @@ export function AdminSessions({ onNavigate }: AdminSessionsProps) {
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-transparent">
               {activeSessions.length === 0 && !loading ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-[12px]" style={{ color: 'var(--color-text-dim)' }}>
@@ -104,10 +104,10 @@ export function AdminSessions({ onNavigate }: AdminSessionsProps) {
                   </td>
                 </tr>
               ) : null}
-              {activeSessions.map((link, i) => (
+              {activeSessions.map((link) => (
                 <tr
                   key={link.id}
-                  style={{ borderTop: i > 0 ? '1px solid var(--color-border-muted)' : undefined }}
+                  className="hover:bg-[var(--color-bg-app)]/50 transition-colors even:bg-[var(--color-bg-app)]/20"
                 >
                   <td className="px-4 py-2" style={{ color: 'var(--color-text-main)' }}>
                     {link.candidate_email}
@@ -136,7 +136,7 @@ export function AdminSessions({ onNavigate }: AdminSessionsProps) {
                     {link.consumed_session_id ? (
                       <button
                         type="button"
-                        className="rounded-sm px-2 py-1 text-[11px] font-medium transition-colors"
+                        className="rounded-xl px-2 py-1 text-[11px] font-medium transition-colors"
                         style={{ background: 'rgba(56,135,206,0.1)', color: 'var(--color-brand)' }}
                         onClick={() => onNavigate('reviews', link.consumed_session_id!)}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(56,135,206,0.18)'; }}

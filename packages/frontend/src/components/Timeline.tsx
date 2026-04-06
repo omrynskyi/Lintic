@@ -11,9 +11,10 @@ interface TimelineProps {
   events: ReviewReplayEvent[];
   selectedEventIndex: number;
   onSelectEvent: (index: number) => void;
+  markerIndices?: number[];
 }
 
-export function Timeline({ events, selectedEventIndex, onSelectEvent }: TimelineProps) {
+export function Timeline({ events, selectedEventIndex, onSelectEvent, markerIndices = [] }: TimelineProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   if (events.length === 0) return null;
@@ -23,6 +24,7 @@ export function Timeline({ events, selectedEventIndex, onSelectEvent }: Timeline
       {events.map((event, index) => {
         const isSelected = index === selectedEventIndex;
         const isHovered = hoveredIndex === index;
+        const isMarker = markerIndices.includes(index);
         const accentColor = EVENT_COLOR[event.type];
 
         let barHeight: string;
@@ -34,6 +36,9 @@ export function Timeline({ events, selectedEventIndex, onSelectEvent }: Timeline
         } else if (isHovered) {
           barHeight = '75%';
           barBg = accentColor ? accentColor : 'rgba(255,255,255,0.4)';
+        } else if (isMarker) {
+          barHeight = '40%';
+          barBg = 'var(--color-brand)';
         } else {
           barHeight = '20%';
           barBg = 'rgba(255,255,255,0.12)';
@@ -49,6 +54,12 @@ export function Timeline({ events, selectedEventIndex, onSelectEvent }: Timeline
             onMouseEnter={() => setHoveredIndex(index)}
             onMouseLeave={() => setHoveredIndex(null)}
           >
+            {isMarker && !isSelected && !isHovered && (
+              <div 
+                className="absolute top-0 left-1/2 w-1 h-1 -translate-x-1/2 rounded-full"
+                style={{ background: 'var(--color-brand)' }}
+              />
+            )}
             {/* Tooltip */}
             {isHovered && (
               <div
@@ -56,8 +67,8 @@ export function Timeline({ events, selectedEventIndex, onSelectEvent }: Timeline
                 style={{ fontSize: '10px' }}
               >
                 <div
-                  className="rounded-sm border px-2 py-1 text-white shadow-lg"
-                  style={{ background: '#111', borderColor: 'rgba(255,255,255,0.1)' }}
+                  className="rounded-xl px-2 py-1 text-white shadow-xl"
+                  style={{ background: '#111' }}
                 >
                   {describeReviewEvent(event)}
                 </div>
