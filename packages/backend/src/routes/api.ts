@@ -1401,6 +1401,42 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     res.json({ snapshot, branch, branches: await db.listBranches(sessionId) });
   }));
 
+  // POST /api/sessions/:id/rewind — soft-hide messages after a turn sequence
+  router.post('/sessions/:id/rewind', requireToken(db), asyncRoute(async (req, res) => {
+    const sessionId = req.params['id'] as string;
+    const body = req.body as {
+      branch_id?: unknown;
+      conversation_id?: unknown;
+      turn_sequence?: unknown;
+    };
+
+    if (typeof body.turn_sequence !== 'number' || !Number.isInteger(body.turn_sequence)) {
+      res.status(400).json({ error: 'turn_sequence must be an integer' });
+      return;
+    }
+
+    const session = await db.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const branch = await resolveBranchOrRespond(
+      db, res, sessionId,
+      typeof body.branch_id === 'string' ? body.branch_id : undefined,
+    );
+    if (!branch) return;
+
+    const conversation = await resolveConversationOrRespond(
+      db, res, sessionId, branch.id,
+      typeof body.conversation_id === 'string' ? body.conversation_id : undefined,
+    );
+    if (!conversation) return;
+
+    await db.rewindMessages(sessionId, branch.id, conversation.id, body.turn_sequence);
+    res.json({ ok: true });
+  }));
+
   router.post('/sessions/:id/checkpoints', requireToken(db), asyncRoute(async (req, res) => {
     const sessionId = req.params['id'] as string;
     const body = req.body as {
@@ -2134,8 +2170,17 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const storedMessages = await db.getBranchMessages(sessionId, branch.id, conversation.id);
+    const allStoredMessages = await db.getBranchMessages(sessionId, branch.id, conversation.id, { includeRewound: true });
+    const storedMessages = allStoredMessages.filter((m) => m.rewound_at === null);
     const messages = buildHistory(storedMessages);
+    const rawMessages = allStoredMessages.map((m) => ({
+      id: m.id,
+      turn_sequence: m.turn_sequence,
+      role: m.role,
+      content: m.content,
+      created_at: m.created_at,
+      rewound_at: m.rewound_at,
+    }));
     const storedEvents = await db.getBranchReplayEvents(sessionId, branch.id, conversation.id);
     const workspaceSnapshot = await db.getWorkspaceSnapshot(sessionId, branch.id);
     const recording = {
@@ -2153,6 +2198,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     res.json({
       session,
       messages,
+      raw_messages: rawMessages,
       metrics,
       recording,
       prompt,

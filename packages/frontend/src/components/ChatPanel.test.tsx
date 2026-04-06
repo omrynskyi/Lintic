@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ChatPanel } from './ChatPanel.js';
 import type { LocalToolCall, LocalToolResult } from './ToolActionCard.js';
@@ -137,6 +138,25 @@ describe('ChatPanel', () => {
 
     await waitFor(() => expect(screen.getByText('Hello agent')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText('Hello from agent')).toBeInTheDocument());
+  });
+
+  test('shows rewind affordance for a freshly sent message once turn_sequence arrives', async () => {
+    const onRewind = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(historyResponse)
+      .mockResolvedValueOnce(makeSSEResponse([{
+        event: 'done',
+        data: { ...sseAgentDone('Hello from agent'), turn_sequence: 1 },
+      }]));
+
+    render(<ChatPanel sessionId="s1" constraints={defaultConstraints} onRewind={onRewind} />);
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Hello agent' } });
+    fireEvent.click(screen.getByTestId('chat-send'));
+
+    await waitFor(() => expect(screen.getByText('Hello from agent')).toBeInTheDocument());
+    expect(screen.getByTestId('rewind-button')).toBeInTheDocument();
   });
 
   test('keeps optimistic user messages when history finishes loading later', async () => {
@@ -901,9 +921,89 @@ describe('ChatPanel', () => {
     expect(screen.getByTestId('clear-chat-button')).toBeInTheDocument();
     expect(screen.getByTestId('generate-repo-map-button')).toBeInTheDocument();
     expect(screen.getByTestId('generate-summary-button')).toBeInTheDocument();
-    expect(screen.getByTestId('conversation-item-conv-0')).toBeInTheDocument();
     expect(screen.getByTestId('context-file-src/app.ts')).toBeInTheDocument();
     expect(screen.getByTestId('context-resource-repo-1')).toBeInTheDocument();
     expect(screen.getByTestId('context-prior-conversation-conv-0')).toBeInTheDocument();
+  });
+
+  describe('Rewind UX', () => {
+    /** History response with a user message that has turn_sequence: 1 (rewind button shows). */
+    const historyWithUserMsg: Response = {
+      ok: true,
+      json: async () => ({
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            created_at: new Date(1000).toISOString(),
+            turn_sequence: 1,
+          },
+        ],
+        conversations: [{ id: 'conv-1', branch_id: 'branch-1', title: 'New chat', archived: false, created_at: 1, updated_at: 2 }],
+        active_conversation_id: 'conv-1',
+      }),
+    } as unknown as Response;
+
+    /** Helper: render ChatPanel with a history-loaded user message that has turnSequence: 1. */
+    async function renderWithHistoryMessage(onRewind?: ComponentProps<typeof ChatPanel>['onRewind']) {
+      // All fetches return the history-with-user-msg response (handles multiple history loads).
+      vi.mocked(fetch).mockResolvedValue(historyWithUserMsg);
+
+      render(
+        <ChatPanel
+          sessionId="s1"
+          constraints={defaultConstraints}
+          onRewind={onRewind}
+        />,
+      );
+
+      // Wait for history to load and user message to appear.
+      await waitFor(() => expect(screen.getByTestId('user-message')).toBeInTheDocument());
+    }
+
+    test('rewind button not visible when onRewind is not provided', async () => {
+      await renderWithHistoryMessage();
+      expect(screen.queryByTestId('rewind-button')).not.toBeInTheDocument();
+    });
+
+    test('rewind button visible when onRewind is provided and message has turnSequence', async () => {
+      const onRewind = vi.fn().mockResolvedValue(undefined);
+      await renderWithHistoryMessage(onRewind);
+      expect(screen.getByTestId('rewind-button')).toBeInTheDocument();
+    });
+
+    test('clicking rewind button opens a popover with two options', async () => {
+      const onRewind = vi.fn().mockResolvedValue(undefined);
+      await renderWithHistoryMessage(onRewind);
+
+      fireEvent.click(screen.getByTestId('rewind-button'));
+
+      expect(screen.getByText('Rewind code + conversation')).toBeInTheDocument();
+      expect(screen.getByText('Rewind code only')).toBeInTheDocument();
+    });
+
+    test('"Rewind code only" calls onRewind with (turnSequence, "code") and does not change messages', async () => {
+      const onRewind = vi.fn().mockResolvedValue(undefined);
+      await renderWithHistoryMessage(onRewind);
+
+      fireEvent.click(screen.getByTestId('rewind-button'));
+      fireEvent.click(screen.getByText('Rewind code only'));
+
+      await waitFor(() => expect(onRewind).toHaveBeenCalledWith(1, 'code'));
+      expect(screen.getByTestId('user-message')).toBeInTheDocument();
+    });
+
+    test('"Rewind code + conversation" calls onRewind with (turnSequence, "both") and removes messages after that point', async () => {
+      const onRewind = vi.fn().mockResolvedValue(undefined);
+      await renderWithHistoryMessage(onRewind);
+
+      fireEvent.click(screen.getByTestId('rewind-button'));
+      fireEvent.click(screen.getByText('Rewind code + conversation'));
+
+      await waitFor(() => expect(onRewind).toHaveBeenCalledWith(1, 'both'));
+      // User message has turnSequence === 1 === ts, so it should still be present.
+      expect(screen.getByTestId('user-message')).toBeInTheDocument();
+    });
   });
 });

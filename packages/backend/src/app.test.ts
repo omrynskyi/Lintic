@@ -1914,6 +1914,56 @@ describe('conversation context APIs', () => {
   });
 });
 
+describe('POST /api/sessions/:id/rewind', () => {
+  test('returns 200 with { ok: true } when turn_sequence is valid', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+
+    const res = await request(app)
+      .post(`/api/sessions/${id}/rewind`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ turn_sequence: 1 });
+
+    expect(res.status).toBe(200);
+    expect((res.body as { ok: boolean }).ok).toBe(true);
+  });
+
+  test('returns 400 when turn_sequence is missing', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+
+    const res = await request(app)
+      .post(`/api/sessions/${id}/rewind`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+
+  test('returns 400 when turn_sequence is a non-integer', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+
+    const res = await request(app)
+      .post(`/api/sessions/${id}/rewind`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ turn_sequence: 1.5 });
+
+    expect(res.status).toBe(400);
+  });
+
+  test('returns 401 without auth', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const { id } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+    const res = await request(app).post(`/api/sessions/${id}/rewind`).send({ turn_sequence: 1 });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('auth middleware', () => {
   test('rejects requests with no Authorization header', async () => {
     const db = new FakeDb();
