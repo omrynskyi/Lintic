@@ -47,6 +47,14 @@ export interface ReviewDataPayload {
     tool_calls?: Array<{ id: string; name: string; input: Record<string, unknown> }>;
     tool_results?: Array<{ tool_call_id: string; name: string; output: string; is_error: boolean }>;
   }>;
+  raw_messages?: Array<{
+    id: number;
+    turn_sequence: number | null;
+    role: string;
+    content: string;
+    created_at: number;
+    rewound_at: number | null;
+  }>;
   prompt?: ReviewPromptSummary | null;
   workspace_snapshot?: {
     active_path?: string;

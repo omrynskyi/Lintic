@@ -2163,8 +2163,17 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const storedMessages = await db.getBranchMessages(sessionId, branch.id, conversation.id);
+    const allStoredMessages = await db.getBranchMessages(sessionId, branch.id, conversation.id, { includeRewound: true });
+    const storedMessages = allStoredMessages.filter((m) => m.rewound_at === null);
     const messages = buildHistory(storedMessages);
+    const rawMessages = allStoredMessages.map((m) => ({
+      id: m.id,
+      turn_sequence: m.turn_sequence,
+      role: m.role,
+      content: m.content,
+      created_at: m.created_at,
+      rewound_at: m.rewound_at,
+    }));
     const storedEvents = await db.getBranchReplayEvents(sessionId, branch.id, conversation.id);
     const workspaceSnapshot = await db.getWorkspaceSnapshot(sessionId, branch.id);
     const recording = {
@@ -2182,6 +2191,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     res.json({
       session,
       messages,
+      raw_messages: rawMessages,
       metrics,
       recording,
       prompt,
