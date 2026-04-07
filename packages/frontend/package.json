@@ -1,0 +1,38 @@
+{
+  "name": "@lintic/frontend",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p ../core/tsconfig.json && tsc -p tsconfig.build.json --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@webcontainer/api": "^1.6.1",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "framer-motion": "^12.38.0",
+    "highlight.js": "^11.11.1",
+    "lucide-react": "^1.7.0",
+    "marked": "^14.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^29.0.1",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0",
+    "vitest": "^4.1.2"
+  }
+}

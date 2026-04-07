@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@lintic/core": ["../core/dist/index"],
+      "@lintic/adapters": ["../adapters/dist/index"]
+    }
+  }
+}

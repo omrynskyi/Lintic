@@ -1,0 +1,15 @@
+services:
+  lintic:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3300:3300"
+    environment:
+      PORT: 3300
+      LINTIC_API_KEY: ${LINTIC_API_KEY}
+      LINTIC_ADMIN_KEY: ${LINTIC_ADMIN_KEY}
+      LINTIC_SECRET_KEY: ${LINTIC_SECRET_KEY}
+      LINTIC_DATABASE_PATH: /app/data/lintic.db
+    volumes:
+      - ./lintic.yml:/app/lintic.yml:ro
+      - ./data:/app/data

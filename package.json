@@ -1,0 +1,30 @@
+{
+  "name": "lintic",
+  "version": "0.0.1",
+  "private": true,
+  "bin": {
+    "lintic": "./bin/lintic.js"
+  },
+  "description": "Open-source agentic AI coding assessment platform",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "startdev": "./startdev.sh",
+    "build": "npm run build --workspace @lintic/core && npm run build --workspace @lintic/adapters && npm run build --workspace lintic-mock-pg && npm run build --workspace @lintic/backend && npm run build --workspace @lintic/frontend",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "test": "vitest run --workspace vitest.workspace.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "eslint": "^9.0.0",
+    "vitest": "^2.0.0",
+    "esbuild": "^0.25.11"
+  }
+}

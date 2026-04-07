@@ -1,0 +1,54 @@
+agent:
+  provider: cerebras
+  api_key: ${LINTIC_API_KEY}
+  model: qwen-3-235b-a22b-instruct-2507
+  # For local OpenAI-compatible models, use:
+  #provider: local-openai
+  #model: mlx-community/gemma-4-26b-a4b-it-4bit
+  #base_url: http://localhost:8080/v1
+  #api_key: local-dev
+
+constraints:
+  max_session_tokens: 50000
+  max_message_tokens: 4000
+  context_window: 32000
+  max_interactions: 30
+  time_limit_minutes: 60
+
+prompts:
+  - id: dev
+    title: Dev Testing Session
+    description: "Welcome to your development testing session. Use this environment to verify tool execution, UI interactions, and agent performance."
+
+  - id: library-api
+    title: Library Catalog API
+    difficulty: medium
+    tags: [backend, api-design, nodejs]
+    description: |
+      # Goal
+      Build a RESTful API for a small library catalog system.
+
+      ## Requirements
+      1. **Books Management**:
+         - List all books
+         - Search books by title or author
+         - Add a new book (title, author, ISBN, published year)
+      
+      2. **Borrowing System**:
+         - Track which books are currently borrowed
+         - Endpoint to 'borrow' a book (marks it as unavailable)
+         - Endpoint to 'return' a book (marks it as available)
+
+      ## Constraints
+      - Use **Node.js** with any minimal framework (Express, Fastify, etc.)
+      - Store data in-memory or using a simple file-based SQLite database
+      - Implement basic error handling for missing books or double-borrowing
+
+      ## Deliverables
+      - A working server on port 3000
+      - A README.md explaining how to test the endpoints
+
+
+api:
+  admin_key: ${LINTIC_ADMIN_KEY}
+  secret_key: ${LINTIC_SECRET_KEY}
