@@ -362,10 +362,10 @@ class FakeDb implements DatabaseAdapter {
     return this.getBranchMessages(sessionId, 'main');
   }
 
-  closeSession(id: string): Promise<void> {
+  closeSession(id: string, status: 'completed' | 'expired' = 'completed'): Promise<void> {
     const session = this.sessions.get(id);
     if (session) {
-      this.sessions.set(id, { ...session, status: 'completed', closed_at: Date.now() });
+      this.sessions.set(id, { ...session, status, closed_at: Date.now() });
     }
     return Promise.resolve();
   }
@@ -1137,6 +1137,25 @@ describe('GET /api/sessions/:id', () => {
     expect(typeof body.constraints_remaining.seconds_remaining).toBe('number');
     expect(body.agent).toEqual({ provider: 'openai-compatible', model: 'gpt-4o' });
   });
+
+  test('marks a timed-out session as expired when fetched', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+    const session = db.sessions.get(id)!;
+    db.sessions.set(id, {
+      ...session,
+      created_at: Date.now() - (BASE_CONSTRAINT.time_limit_minutes * 60 * 1000) - 1000,
+    });
+
+    const res = await request(app)
+      .get(`/api/sessions/${id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect((res.body as { session: { status: string } }).session.status).toBe('expired');
+    expect((res.body as { constraints_remaining: { seconds_remaining: number } }).constraints_remaining.seconds_remaining).toBe(0);
+  });
 });
 
 describe('POST /api/sessions/:id/messages', () => {
@@ -1239,6 +1258,25 @@ describe('POST /api/sessions/:id/messages', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ message: 'Hello' });
     expect(res.status).toBe(409);
+  });
+
+  test('returns 409 once the session has expired', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const { id, token } = await db.createSession({ prompt_id: 'p', candidate_email: 'e@e.com', constraint: BASE_CONSTRAINT });
+    const session = db.sessions.get(id)!;
+    db.sessions.set(id, {
+      ...session,
+      created_at: Date.now() - (BASE_CONSTRAINT.time_limit_minutes * 60 * 1000) - 1000,
+    });
+
+    const res = await request(app)
+      .post(`/api/sessions/${id}/messages`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Hello' });
+
+    expect(res.status).toBe(409);
+    expect((res.body as { error: string }).error).toBe('Session has expired');
   });
 
   test('returns 502 when adapter throws', async () => {

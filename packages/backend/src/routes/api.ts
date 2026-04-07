@@ -132,6 +132,37 @@ function buildAgentSummary(config: Config): { provider: string; model: string } 
   };
 }
 
+function hasSessionExpired(session: { status: SessionStatus; created_at: number; constraint: Constraint }): boolean {
+  if (session.status !== 'active') {
+    return false;
+  }
+
+  const expiresAt = session.created_at + (session.constraint.time_limit_minutes * 60 * 1000);
+  return Date.now() >= expiresAt;
+}
+
+async function resolveSessionWithExpiry(
+  db: DatabaseAdapter,
+  sessionId: string,
+): Promise<import('@lintic/core').Session | null> {
+  const session = await db.getSession(sessionId);
+  if (!session) {
+    return null;
+  }
+
+  if (!hasSessionExpired(session)) {
+    return session;
+  }
+
+  const closedAt = Date.now();
+  await db.closeSession(session.id, 'expired');
+  return {
+    ...session,
+    status: 'expired',
+    closed_at: closedAt,
+  };
+}
+
 function buildBaseUrl(req: Request): string {
   const origin = req.get('origin');
   if (origin) {
@@ -191,7 +222,7 @@ async function toAdminAssessmentLinkSummary(
 ): Promise<AdminAssessmentLinkSummary> {
   const prompt = prompts.find((entry) => entry.id === record.prompt_id) ?? null;
   const sessionStatus: SessionStatus | undefined = record.consumed_session_id
-    ? (await db.getSession(record.consumed_session_id))?.status
+    ? (await resolveSessionWithExpiry(db, record.consumed_session_id))?.status
     : undefined;
   const summary: AdminAssessmentLinkSummary = {
     id: record.id,
@@ -729,7 +760,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
     const existingSessionId = await db.getAssessmentLinkSessionId(payload.jti);
     if (existingSessionId) {
-      const existingSession = await db.getSession(existingSessionId);
+      const existingSession = await resolveSessionWithExpiry(db, existingSessionId);
       const existingToken = await db.getSessionToken(existingSessionId);
       if (!existingSession || !existingToken) {
         res.status(409).json({ error: 'Link is no longer valid' });
@@ -821,7 +852,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
   // GET /api/sessions/:id — get session state with remaining constraints
   router.get('/sessions/:id', requireToken(db), asyncRoute(async (req, res) => {
-    const session = await db.getSession(req.params['id'] as string);
+    const session = await resolveSessionWithExpiry(db, req.params['id'] as string);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
@@ -1507,13 +1538,13 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     }
     const message = body.message;
 
-    const session = await db.getSession(sessionId);
+    const session = await resolveSessionWithExpiry(db, sessionId);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
     }
     if (session.status !== 'active') {
-      res.status(409).json({ error: 'Session is not active' });
+      res.status(409).json({ error: session.status === 'expired' ? 'Session has expired' : 'Session is not active' });
       return;
     }
 
@@ -1675,13 +1706,13 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const session = await db.getSession(sessionId);
+    const session = await resolveSessionWithExpiry(db, sessionId);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
     }
     if (session.status !== 'active') {
-      res.status(409).json({ error: 'Session is not active' });
+      res.status(409).json({ error: session.status === 'expired' ? 'Session has expired' : 'Session is not active' });
       return;
     }
 
@@ -1866,9 +1897,13 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
     void (async () => {
       try {
-        const session = await db.getSession(sessionId);
+        const session = await resolveSessionWithExpiry(db, sessionId);
         if (!session) { sendEvent('error', { error: 'Session not found' }); res.end(); return; }
-        if (session.status !== 'active') { sendEvent('error', { error: 'Session is not active' }); res.end(); return; }
+        if (session.status !== 'active') {
+          sendEvent('error', { error: session.status === 'expired' ? 'Session has expired' : 'Session is not active' });
+          res.end();
+          return;
+        }
 
         const branch = await resolveBranchOrRespond(
           db,
@@ -2202,13 +2237,18 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
   // POST /api/sessions/:id/close — mark session as completed
   router.post('/sessions/:id/close', requireToken(db), asyncRoute(async (req, res) => {
-    const session = await db.getSession(req.params['id'] as string);
+    const session = await resolveSessionWithExpiry(db, req.params['id'] as string);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
     }
 
-    await db.closeSession(req.params['id'] as string);
+    if (session.status === 'expired') {
+      res.json({ status: 'expired' });
+      return;
+    }
+
+    await db.closeSession(req.params['id'] as string, 'completed');
     res.json({ status: 'completed' });
   }));
 

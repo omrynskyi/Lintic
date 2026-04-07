@@ -40,7 +40,7 @@ export interface DatabaseAdapter {
     getSessionToken(id: string): Promise<string | null>;
     addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
     getMessages(sessionId: string): Promise<StoredMessage[]>;
-    closeSession(id: string): Promise<void>;
+    closeSession(id: string, status?: 'completed' | 'expired'): Promise<void>;
     listSessions(): Promise<Session[]>;
     getSessionsByPrompt(promptId: string): Promise<Session[]>;
     listAssessmentLinks(): Promise<AssessmentLinkRecord[]>;
@@ -66,7 +66,7 @@ export declare class SQLiteAdapter implements DatabaseAdapter {
     getSessionToken(id: string): Promise<string | null>;
     addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
     getMessages(sessionId: string): Promise<StoredMessage[]>;
-    closeSession(id: string): Promise<void>;
+    closeSession(id: string, status?: 'completed' | 'expired'): Promise<void>;
     listSessions(): Promise<Session[]>;
     getSessionsByPrompt(promptId: string): Promise<Session[]>;
     listAssessmentLinks(): Promise<AssessmentLinkRecord[]>;
@@ -98,7 +98,7 @@ export declare class PostgresAdapter implements DatabaseAdapter {
     getSessionToken(id: string): Promise<string | null>;
     addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
     getMessages(sessionId: string): Promise<StoredMessage[]>;
-    closeSession(id: string): Promise<void>;
+    closeSession(id: string, status?: 'completed' | 'expired'): Promise<void>;
     listSessions(): Promise<Session[]>;
     getSessionsByPrompt(promptId: string): Promise<Session[]>;
     listAssessmentLinks(): Promise<AssessmentLinkRecord[]>;

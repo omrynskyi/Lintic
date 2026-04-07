@@ -547,10 +547,10 @@ export class SQLiteAdapter {
             return this.getBranchMessages(sessionId, branch.id);
         });
     }
-    closeSession(id) {
+    closeSession(id, status = 'completed') {
         this.db.prepare(`
-      UPDATE sessions SET status = 'completed', closed_at = ? WHERE id = ?
-    `).run(Date.now(), id);
+      UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?
+    `).run(status, Date.now(), id);
         return Promise.resolve();
     }
     listSessions() {
@@ -1048,9 +1048,9 @@ export class PostgresAdapter {
         }
         return this.getBranchMessages(sessionId, branch.id);
     }
-    async closeSession(id) {
+    async closeSession(id, status = 'completed') {
         await this.initialize();
-        await this.pool.query(`UPDATE sessions SET status = 'completed', closed_at = $1 WHERE id = $2`, [Date.now(), id]);
+        await this.pool.query(`UPDATE sessions SET status = $1, closed_at = $2 WHERE id = $3`, [status, Date.now(), id]);
     }
     async listSessions() {
         await this.initialize();

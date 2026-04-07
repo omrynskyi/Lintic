@@ -129,7 +129,7 @@ export interface DatabaseAdapter {
   getSessionToken(id: string): Promise<string | null>;
   addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
   getMessages(sessionId: string): Promise<StoredMessage[]>;
-  closeSession(id: string): Promise<void>;
+  closeSession(id: string, status?: Exclude<SessionStatus, 'active'>): Promise<void>;
   listSessions(): Promise<Session[]>;
   getSessionsByPrompt(promptId: string): Promise<Session[]>;
   listAssessmentLinks(): Promise<AssessmentLinkRecord[]>;
@@ -1039,10 +1039,10 @@ export class SQLiteAdapter implements DatabaseAdapter {
     });
   }
 
-  closeSession(id: string): Promise<void> {
+  closeSession(id: string, status: Exclude<SessionStatus, 'active'> = 'completed'): Promise<void> {
     this.db.prepare(`
-      UPDATE sessions SET status = 'completed', closed_at = ? WHERE id = ?
-    `).run(Date.now(), id);
+      UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?
+    `).run(status, Date.now(), id);
     return Promise.resolve();
   }
 
@@ -1809,11 +1809,11 @@ export class PostgresAdapter implements DatabaseAdapter {
     return this.getBranchMessages(sessionId, branch.id);
   }
 
-  async closeSession(id: string): Promise<void> {
+  async closeSession(id: string, status: Exclude<SessionStatus, 'active'> = 'completed'): Promise<void> {
     await this.initialize();
     await this.pool.query(
-      `UPDATE sessions SET status = 'completed', closed_at = $1 WHERE id = $2`,
-      [Date.now(), id],
+      `UPDATE sessions SET status = $1, closed_at = $2 WHERE id = $3`,
+      [status, Date.now(), id],
     );
   }
 

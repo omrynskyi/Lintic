@@ -208,6 +208,14 @@ describe('closeSession', () => {
     expect(session!.closed_at).toBeGreaterThanOrEqual(before);
     expect(session!.closed_at).toBeLessThanOrEqual(after);
   });
+
+  test('can set status to expired', async () => {
+    const db = makeAdapter();
+    const { id } = await db.createSession(BASE_CONFIG);
+    await db.closeSession(id, 'expired');
+    const session = await db.getSession(id);
+    expect(session!.status).toBe('expired');
+  });
 });
 
 describe('listSessions', () => {
