@@ -239,13 +239,14 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
     isDraggingRef.current = false;
     dragStartIndexRef.current = index;
     dragBaseSelectionRef.current = new Set(selected);
-    dragModeRef.current = selected.has(links[index].id) ? 'remove' : 'add';
+    dragModeRef.current = (links[index] && selected.has(links[index].id)) ? 'remove' : 'add';
   }
 
   // Called on click (after mouseup without drag) on a row's checkbox
   function handleCheckboxClick(index: number, e: React.MouseEvent) {
     if (isDraggingRef.current) return; // drag already committed the selection
-    const id = links[index].id;
+    const id = links[index]?.id;
+    if (!id) return;
     if (e.shiftKey && lastClickIndexRef.current !== null) {
       const start = Math.min(lastClickIndexRef.current, index);
       const end = Math.max(lastClickIndexRef.current, index);
@@ -254,7 +255,8 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
       setSelected((prev) => {
         const next = new Set(prev);
         for (let i = start; i <= end; i++) {
-          if (adding) next.add(links[i].id); else next.delete(links[i].id);
+          const lid = links[i]?.id;
+          if (lid) { if (adding) next.add(lid); else next.delete(lid); }
         }
         return next;
       });
@@ -277,8 +279,8 @@ export function AdminAssessments({ onNavigate }: AdminLinksProps) {
     setSelected(() => {
       const next = new Set(dragBaseSelectionRef.current);
       for (let i = start; i <= end; i++) {
-        if (dragModeRef.current === 'remove') next.delete(links[i].id);
-        else next.add(links[i].id);
+        const lid = links[i]?.id;
+        if (lid) { if (dragModeRef.current === 'remove') next.delete(lid); else next.add(lid); }
       }
       return next;
     });
