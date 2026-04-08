@@ -52,6 +52,8 @@ export interface DatabaseAdapter {
     markAssessmentLinkUsed(linkId: string, sessionId: string): Promise<boolean>;
     isAssessmentLinkUsed(linkId: string): Promise<boolean>;
     getAssessmentLinkSessionId(linkId: string): Promise<string | null>;
+    deleteAssessmentLink(id: string): Promise<boolean>;
+    deleteAssessmentLinks(ids: string[]): Promise<number>;
 }
 export declare class SQLiteAdapter implements DatabaseAdapter {
     private readonly db;
@@ -78,6 +80,8 @@ export declare class SQLiteAdapter implements DatabaseAdapter {
     markAssessmentLinkUsed(linkId: string, sessionId: string): Promise<boolean>;
     isAssessmentLinkUsed(linkId: string): Promise<boolean>;
     getAssessmentLinkSessionId(linkId: string): Promise<string | null>;
+    deleteAssessmentLink(id: string): Promise<boolean>;
+    deleteAssessmentLinks(ids: string[]): Promise<number>;
 }
 export interface PostgresAdapterConfig {
     connectionString: string;
@@ -110,6 +114,8 @@ export declare class PostgresAdapter implements DatabaseAdapter {
     markAssessmentLinkUsed(linkId: string, sessionId: string): Promise<boolean>;
     isAssessmentLinkUsed(linkId: string): Promise<boolean>;
     getAssessmentLinkSessionId(linkId: string): Promise<string | null>;
+    deleteAssessmentLink(id: string): Promise<boolean>;
+    deleteAssessmentLinks(ids: string[]): Promise<number>;
     private bootstrapSchema;
 }
 //# sourceMappingURL=database.d.ts.map

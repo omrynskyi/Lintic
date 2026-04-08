@@ -48,6 +48,9 @@ if port_in_use "$frontend_port"; then
   exit 1
 fi
 
+echo "Building @lintic/core..."
+npm run build --workspace @lintic/core
+
 echo "Starting backend on http://localhost:${backend_port}"
 PORT="$backend_port" npm run dev --workspace @lintic/backend &
 backend_pid=$!

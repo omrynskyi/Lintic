@@ -193,6 +193,8 @@ export interface DatabaseAdapter {
   markAssessmentLinkUsed(linkId: string, sessionId: string): Promise<boolean>;
   isAssessmentLinkUsed(linkId: string): Promise<boolean>;
   getAssessmentLinkSessionId(linkId: string): Promise<string | null>;
+  deleteAssessmentLink(id: string): Promise<boolean>;
+  deleteAssessmentLinks(ids: string[]): Promise<number>;
 }
 
 // ─── Internal DB Row Types ────────────────────────────────────────────────────
@@ -1407,6 +1409,18 @@ export class SQLiteAdapter implements DatabaseAdapter {
     ).get(linkId) as { session_id: string } | undefined;
     return Promise.resolve(row?.session_id ?? null);
   }
+
+  deleteAssessmentLink(id: string): Promise<boolean> {
+    const result = this.db.prepare('DELETE FROM assessment_links WHERE id = ?').run(id);
+    return Promise.resolve(result.changes > 0);
+  }
+
+  deleteAssessmentLinks(ids: string[]): Promise<number> {
+    if (ids.length === 0) return Promise.resolve(0);
+    const placeholders = ids.map(() => '?').join(', ');
+    const result = this.db.prepare(`DELETE FROM assessment_links WHERE id IN (${placeholders})`).run(...ids);
+    return Promise.resolve(result.changes);
+  }
 }
 
 export interface PostgresAdapterConfig {
@@ -2182,6 +2196,23 @@ export class PostgresAdapter implements DatabaseAdapter {
       [linkId],
     );
     return result.rows[0]?.session_id ?? null;
+  }
+
+  async deleteAssessmentLink(id: string): Promise<boolean> {
+    await this.initialize();
+    const result = await this.pool.query('DELETE FROM assessment_links WHERE id = $1', [id]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async deleteAssessmentLinks(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    await this.initialize();
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+    const result = await this.pool.query(
+      `DELETE FROM assessment_links WHERE id IN (${placeholders})`,
+      ids,
+    );
+    return result.rowCount ?? 0;
   }
 
   private async bootstrapSchema(): Promise<void> {

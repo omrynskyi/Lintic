@@ -814,6 +814,25 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     });
   }));
 
+  router.delete('/links/:id', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const deleted = await db.deleteAssessmentLink(req.params['id'] as string);
+    if (!deleted) {
+      res.status(404).json({ error: 'Assessment link not found' });
+      return;
+    }
+    res.json({ deleted: 1 });
+  }));
+
+  router.delete('/links', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const body = req.body as { ids?: unknown };
+    if (!Array.isArray(body.ids) || body.ids.length === 0 || !body.ids.every((id) => typeof id === 'string')) {
+      res.status(400).json({ error: 'ids must be a non-empty array of strings' });
+      return;
+    }
+    const count = await db.deleteAssessmentLinks(body.ids as string[]);
+    res.json({ deleted: count });
+  }));
+
   // POST /api/sessions — create a new session
   router.post('/sessions', asyncRoute(async (req, res) => {
     const body = req.body as { prompt_id?: unknown; candidate_email?: unknown };
