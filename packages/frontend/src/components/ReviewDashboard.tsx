@@ -707,8 +707,12 @@ export function ReviewDashboard({
         headers: { 'Content-Type': 'application/json' },
       });
       if (!response.ok) {
-        const body = await response.json() as { error?: string };
-        throw new Error(body.error ?? `HTTP ${response.status}`);
+        let message = `HTTP ${response.status}`;
+        try {
+          const body = await response.json() as { error?: string };
+          if (body.error) message = body.error;
+        } catch { /* response body was not JSON */ }
+        throw new Error(message);
       }
       const result = await response.json() as EvaluationResult;
       setEvaluationResult(result);

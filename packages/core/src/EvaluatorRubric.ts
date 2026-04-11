@@ -104,5 +104,9 @@ ${dimensionLines}
 
 ## Output Format
 
-Respond ONLY with valid JSON matching this schema. Do not include markdown fences or commentary outside the JSON object.`;
+Return a single JSON object with two keys:
+- "scores": an array of exactly 7 objects, one per dimension. Each object must have: "dimension" (the key string), "label" (human-readable name), "score" (integer 0-10), "rationale" (1-2 sentences explaining the score).
+- "overall_summary": a string with a 2-4 sentence summary.
+
+Do not wrap in markdown fences. Output only the JSON object, nothing else.`;
 }

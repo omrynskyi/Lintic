@@ -7,7 +7,7 @@ import type {
   RubricDimension,
   Session,
 } from '@lintic/core';
-import { buildEvaluatorContext, buildEvaluatorSystemPrompt } from '@lintic/core';
+import { buildEvaluatorContext, buildEvaluatorSystemPrompt, RUBRIC_DIMENSIONS } from '@lintic/core';
 
 // ─── LLM Wire Types ───────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ const MAX_OUTPUT_TOKENS = 2048;
 function resolveBaseUrl(config: EvaluationConfig): string {
   if (config.base_url) return config.base_url.replace(/\/$/, '');
   if (config.provider === 'groq') return 'https://api.groq.com/openai';
-  if (config.provider === 'cerebras') return 'https://api.cerebras.ai/v1';
+  if (config.provider === 'cerebras') return 'https://api.cerebras.ai';
   if (config.provider === 'local-openai') return 'http://localhost:8080/v1';
   return 'https://api.openai.com';
 }
@@ -150,7 +150,35 @@ function parseEvaluatorResponse(raw: string): EvaluatorResponse {
     throw new Error(`Evaluator returned non-JSON response: ${raw.slice(0, 100)}`);
   }
 
-  if (!isRecord(parsed) || !Array.isArray(parsed['scores']) || typeof parsed['overall_summary'] !== 'string') {
+  if (!isRecord(parsed)) {
+    throw new Error('Evaluator response missing required fields');
+  }
+
+  // Normalise flat format: { context_management: 3, ..., overall_summary: "..." }
+  if (!Array.isArray(parsed['scores'])) {
+    const flatScores: EvaluatorDimensionScore[] = [];
+    for (const dim of RUBRIC_DIMENSIONS) {
+      const val = parsed[dim.dimension];
+      if (typeof val === 'number') {
+        flatScores.push({
+          dimension: dim.dimension,
+          label: dim.label,
+          score: Math.min(10, Math.max(0, val)),
+          rationale: typeof parsed[`${dim.dimension}_rationale`] === 'string'
+            ? (parsed[`${dim.dimension}_rationale`] as string)
+            : '',
+        });
+      }
+    }
+    if (flatScores.length === 0 || typeof parsed['overall_summary'] !== 'string') {
+      console.error('[evaluator] unexpected response shape:', JSON.stringify(parsed, null, 2).slice(0, 500));
+      throw new Error('Evaluator response missing required fields');
+    }
+    return { scores: flatScores, overall_summary: parsed['overall_summary'] as string };
+  }
+
+  if (typeof parsed['overall_summary'] !== 'string') {
+    console.error('[evaluator] unexpected response shape:', JSON.stringify(parsed, null, 2).slice(0, 500));
     throw new Error('Evaluator response missing required fields');
   }
 

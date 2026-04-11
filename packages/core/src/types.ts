@@ -383,3 +383,24 @@ export interface EvaluationResult {
   llm_evaluation: EvaluatorResponse;
   iterations: Iteration[];
 }
+
+// ─── Candidate Comparison Dashboard ──────────────────────────────────────────
+
+export interface ComparisonSessionRow {
+  session_id: string;
+  candidate_email: string;
+  prompt_id: string;
+  prompt_title: string;
+  date: number;              // Unix ms (closed_at ?? created_at)
+  composite_score: number | null;
+  ie: number | null;         // iteration_efficiency 0–1
+  te: number | null;         // token_efficiency 0–1
+  rs: number | null;         // recovery_score 0–1
+  ir: number | null;         // independence_ratio 0–1
+  pq: number | null;         // problem_decomposition (LLM eval) — null until persisted
+  cc: number | null;         // context_management (LLM eval) — null until persisted
+}
+
+export interface ComparisonResponse {
+  sessions: ComparisonSessionRow[];
+}

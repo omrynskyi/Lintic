@@ -33,7 +33,7 @@ prompts:
          - List all books
          - Search books by title or author
          - Add a new book (title, author, ISBN, published year)
-      
+
       2. **Borrowing System**:
          - Track which books are currently borrowed
          - Endpoint to 'borrow' a book (marks it as unavailable)
@@ -48,7 +48,18 @@ prompts:
       - A working server on port 3000
       - A README.md explaining how to test the endpoints
 
+evaluation:
+  provider: cerebras
+  api_key: ${LINTIC_API_KEY}
+  model: qwen-3-235b-a22b-instruct-2507
 
 api:
   admin_key: ${LINTIC_ADMIN_KEY}
   secret_key: ${LINTIC_SECRET_KEY}
+
+scoring:
+  weights:
+    ie: 0.25  # Iteration Efficiency
+    te: 0.25  # Token Efficiency
+    rs: 0.25  # Recovery Score
+    ir: 0.25  # Independence Ratio
