@@ -584,3 +584,22 @@ The stories below extend the platform beyond basic assessment into richer AI-col
 - [ ] Unit tests for git event recording, metric computation, and starter repo cloning logic (mocked WebContainer FS)
 - [ ] npm run typecheck passes
 - [ ] Verify in browser using dev-browser skill
+
+### US-033: Multiple Terminal Panes
+
+**Description:** As a developer using a Lintic assessment, I want to open multiple terminal panes so that I can run a localhost server in one terminal and interact with it from another without leaving the browser.
+
+**Acceptance Criteria:**
+
+- [ ] A "+" button in the terminal header opens a new terminal pane (maximum 4)
+- [ ] Terminals are shown as tabs labeled "Terminal 1", "Terminal 2", etc., with a monotonically increasing counter (closing Terminal 2 and adding a new one yields "Terminal 3")
+- [ ] Each terminal tab has its own independent xterm.js instance and its own `wc.spawn('jsh')` shell process
+- [ ] Switching tabs does NOT unmount terminal components — inactive panes are hidden via CSS (`display: none`), preserving scroll history and any running processes
+- [ ] An "×" close button appears on each tab when more than one terminal is open; the button is absent when only one terminal remains
+- [ ] Running `node server.js` in Terminal 1 and `curl http://localhost:3000` in Terminal 2 returns the server response (standard WebContainer loopback networking)
+- [ ] The terminal panel expand/collapse toggle continues to work across all tabs
+- [ ] Opening a new terminal automatically makes it the active tab
+- [ ] Agent tool output continues to route to Terminal 1 (no change to `ToolExecutor` or `App.tsx` wiring)
+- [ ] `npm run typecheck` passes
+- [ ] `npm run test` passes (new and existing tests)
+- [ ] Verify in browser using dev-browser skill
