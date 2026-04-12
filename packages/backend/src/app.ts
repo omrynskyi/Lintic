@@ -45,7 +45,6 @@ export function createApp(
   }
 
   // JSON error handler — must have 4 params so Express treats it as an error handler
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[server error]', err);

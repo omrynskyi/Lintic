@@ -7,7 +7,7 @@ import type {
   RubricDimension,
   Session,
 } from '@lintic/core';
-import { buildEvaluatorContext, buildEvaluatorSystemPrompt, RUBRIC_DIMENSIONS } from '@lintic/core';
+import { buildEvaluatorSystemPrompt, RUBRIC_DIMENSIONS } from '@lintic/core';
 
 // ─── LLM Wire Types ───────────────────────────────────────────────────────────
 
@@ -174,7 +174,7 @@ function parseEvaluatorResponse(raw: string): EvaluatorResponse {
       console.error('[evaluator] unexpected response shape:', JSON.stringify(parsed, null, 2).slice(0, 500));
       throw new Error('Evaluator response missing required fields');
     }
-    return { scores: flatScores, overall_summary: parsed['overall_summary'] as string };
+    return { scores: flatScores, overall_summary: parsed['overall_summary'] };
   }
 
   if (typeof parsed['overall_summary'] !== 'string') {
@@ -214,7 +214,7 @@ function parseEvaluatorResponse(raw: string): EvaluatorResponse {
 
   return {
     scores,
-    overall_summary: parsed['overall_summary'] as string,
+    overall_summary: parsed['overall_summary'],
   };
 }
 

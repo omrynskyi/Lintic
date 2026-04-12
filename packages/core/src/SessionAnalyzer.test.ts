@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { MockPgPoolExport } from './types.js';
+import type { InfrastructureMetricScore, MockPgPoolExport } from './types.js';
 import type { StoredMessage, StoredReplayEvent } from './database.js';
 import {
   aggregatePostgresStats,
@@ -271,7 +271,7 @@ describe('computeInfrastructureMetrics', () => {
     const pg = { total_queries: 10, slow_queries: 10, indexed_data_queries: 0, total_data_queries: 10 };
 
     const metrics = computeInfrastructureMetrics(redis, pg);
-    for (const m of Object.values(metrics)) {
+    for (const m of Object.values(metrics) as InfrastructureMetricScore[]) {
       expect(m.score).toBeGreaterThanOrEqual(0);
       expect(m.score).toBeLessThanOrEqual(1);
     }
