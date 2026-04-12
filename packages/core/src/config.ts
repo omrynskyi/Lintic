@@ -32,6 +32,17 @@ export interface EvaluationConfig {
   max_history_messages?: number;
 }
 
+export interface ScoringWeightsConfig {
+  ie?: number;
+  te?: number;
+  rs?: number;
+  ir?: number;
+}
+
+export interface ScoringConfig {
+  weights?: ScoringWeightsConfig;
+}
+
 export interface Config {
   agent: AgentConfig;
   constraints: Constraint;
@@ -39,6 +50,7 @@ export interface Config {
   database?: DatabaseConfig;
   api?: ApiConfig;
   evaluation?: EvaluationConfig;
+  scoring?: ScoringConfig;
 }
 
 // ─── Env Var Resolution ───────────────────────────────────────────────────────
@@ -210,6 +222,31 @@ export function validateConfig(raw: unknown): Config {
     };
   }
 
+  // ── scoring (optional) ──
+  let scoring: ScoringConfig | undefined;
+  if (root.scoring !== undefined) {
+    const rawScoring = assertObj(root.scoring, 'scoring');
+    const rawWeights = rawScoring.weights !== undefined ? assertObj(rawScoring.weights, 'scoring.weights') : undefined;
+    if (rawWeights !== undefined) {
+      const parseWeight = (val: unknown): number | undefined => {
+        if (typeof val !== 'number' || !Number.isFinite(val) || val < 0 || val > 1) return undefined;
+        return val;
+      };
+      const weights: ScoringWeightsConfig = {};
+      const ieVal = parseWeight(rawWeights['ie']);
+      if (ieVal !== undefined) weights.ie = ieVal;
+      const teVal = parseWeight(rawWeights['te']);
+      if (teVal !== undefined) weights.te = teVal;
+      const rsVal = parseWeight(rawWeights['rs']);
+      if (rsVal !== undefined) weights.rs = rsVal;
+      const irVal = parseWeight(rawWeights['ir']);
+      if (irVal !== undefined) weights.ir = irVal;
+      scoring = { weights };
+    } else {
+      scoring = {};
+    }
+  }
+
   return {
     agent,
     constraints,
@@ -217,6 +254,7 @@ export function validateConfig(raw: unknown): Config {
     ...(database ? { database } : {}),
     ...(api ? { api } : {}),
     ...(evaluation ? { evaluation } : {}),
+    ...(scoring ? { scoring } : {}),
   };
 }
 

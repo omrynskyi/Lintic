@@ -4,6 +4,7 @@ import {
   buildConversationEntries,
   getConversationAnchorIndex,
   getReviewSessionId,
+  isComparisonDashboardRoute,
   synthesizeReplayEventsFromMessages,
 } from './review-replay.js';
 
@@ -69,6 +70,24 @@ describe('review-replay helpers', () => {
     expect(snapshot.activePath).toBe('src/index.ts');
     expect(snapshot.files['src/index.ts']).toContain('const x = 1;');
     expect(snapshot.diff).toContain('const z = 3');
+  });
+
+  test('isComparisonDashboardRoute returns true for /review', () => {
+    expect(isComparisonDashboardRoute('/review')).toBe(true);
+  });
+
+  test('isComparisonDashboardRoute returns false for /review/:id', () => {
+    expect(isComparisonDashboardRoute('/review/sess-abc')).toBe(false);
+  });
+
+  test('isComparisonDashboardRoute returns false for /review/ with trailing slash', () => {
+    expect(isComparisonDashboardRoute('/review/')).toBe(false);
+  });
+
+  test('isComparisonDashboardRoute returns false for other routes', () => {
+    expect(isComparisonDashboardRoute('/')).toBe(false);
+    expect(isComparisonDashboardRoute('/admin')).toBe(false);
+    expect(isComparisonDashboardRoute('')).toBe(false);
   });
 
   test('synthesizes replay events from stored messages', () => {

@@ -462,15 +462,15 @@ For UI stories, also include:
 
 **Acceptance Criteria:**
 
-- [ ] GET /review route renders a dashboard listing all completed sessions
-- [ ] Table columns: candidate email, prompt title, date, overall score, and each individual metric (PQ, IE, CC, TE, RS, IR)
-- [ ] Clicking any column header sorts the table by that metric (ascending/descending toggle)
-- [ ] Filter dropdown to show only sessions for a specific prompt
-- [ ] Filter by date range (last 7 days, 30 days, all time)
-- [ ] Clicking a row navigates to the individual session replay at /review/:sessionId
-- [ ] Composite score is a weighted average of all metrics (weights configurable in lintic.yml)
-- [ ] Table supports pagination (25 candidates per page)
-- [ ] npm run typecheck passes
+- [x] GET /review route renders a dashboard listing all completed sessions
+- [x] Table columns: candidate email, prompt title, date, overall score, and each individual metric (PQ, IE, CC, TE, RS, IR)
+- [x] Clicking any column header sorts the table by that metric (ascending/descending toggle)
+- [x] Filter dropdown to show only sessions for a specific prompt
+- [x] Filter by date range (last 7 days, 30 days, all time)
+- [x] Clicking a row navigates to the individual session replay at /review/:sessionId
+- [x] Composite score is a weighted average of all metrics (weights configurable in lintic.yml)
+- [x] Table supports pagination (25 candidates per page)
+- [x] npm run typecheck passes
 - [ ] Verify in browser using dev-browser skill
 
 ### US-027: Webhook and API for external integrations
@@ -583,4 +583,23 @@ The stories below extend the platform beyond basic assessment into richer AI-col
 - [ ] If a prompt specifies a starter repository URL in lintic.yml under prompts[].starter_repo, it is cloned into the WebContainer at session start instead of an empty git init
 - [ ] Unit tests for git event recording, metric computation, and starter repo cloning logic (mocked WebContainer FS)
 - [ ] npm run typecheck passes
+- [ ] Verify in browser using dev-browser skill
+
+### US-033: Multiple Terminal Panes
+
+**Description:** As a developer using a Lintic assessment, I want to open multiple terminal panes so that I can run a localhost server in one terminal and interact with it from another without leaving the browser.
+
+**Acceptance Criteria:**
+
+- [ ] A "+" button in the terminal header opens a new terminal pane (maximum 4)
+- [ ] Terminals are shown as tabs labeled "Terminal 1", "Terminal 2", etc., with a monotonically increasing counter (closing Terminal 2 and adding a new one yields "Terminal 3")
+- [ ] Each terminal tab has its own independent xterm.js instance and its own `wc.spawn('jsh')` shell process
+- [ ] Switching tabs does NOT unmount terminal components — inactive panes are hidden via CSS (`display: none`), preserving scroll history and any running processes
+- [ ] An "×" close button appears on each tab when more than one terminal is open; the button is absent when only one terminal remains
+- [ ] Running `node server.js` in Terminal 1 and `curl http://localhost:3000` in Terminal 2 returns the server response (standard WebContainer loopback networking)
+- [ ] The terminal panel expand/collapse toggle continues to work across all tabs
+- [ ] Opening a new terminal automatically makes it the active tab
+- [ ] Agent tool output continues to route to Terminal 1 (no change to `ToolExecutor` or `App.tsx` wiring)
+- [ ] `npm run typecheck` passes
+- [ ] `npm run test` passes (new and existing tests)
 - [ ] Verify in browser using dev-browser skill

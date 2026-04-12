@@ -28,10 +28,13 @@ import type {
   WorkspaceSnapshotKind,
   MockPgPoolExport,
   EvaluationResult,
+  ComparisonSessionRow,
+  ComparisonResponse,
 } from '@lintic/core';
 import {
   buildAssessmentLink,
   computeSessionMetrics,
+  computeCompositeScore,
   createAssessmentLinkToken,
   resolveAdminKey,
   resolveSecretKey,
@@ -874,6 +877,75 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       agent: buildAgentSummary(config),
       branch,
     });
+  }));
+
+  // GET /api/sessions/comparison — admin-only list of all completed sessions with computed metrics
+  router.get('/sessions/comparison', requireAdminKey(adminKey), asyncRoute(async (_req, res) => {
+    const allSessions = await db.listSessions();
+    const completedSessions = allSessions.filter((s) => s.status !== 'active');
+
+    const rows: ComparisonSessionRow[] = await Promise.all(
+      completedSessions.map(async (session): Promise<ComparisonSessionRow> => {
+        const branch = await db.getMainBranch(session.id);
+        const conversation = branch ? await db.getMainConversation(session.id, branch.id) : null;
+
+        let ie: number | null = null;
+        let te: number | null = null;
+        let rs: number | null = null;
+        let ir: number | null = null;
+
+        if (branch && conversation) {
+          const storedMessages = await db.getBranchMessages(session.id, branch.id, conversation.id, {});
+          const messages = buildHistory(storedMessages);
+          const storedEvents = await db.getBranchReplayEvents(session.id, branch.id, conversation.id);
+          const recording = {
+            session_id: session.id,
+            branch_id: branch.id,
+            events: storedEvents.map((e) => ({
+              type: e.type,
+              timestamp: e.timestamp,
+              payload: e.payload,
+            })),
+          };
+          const metrics = computeSessionMetrics({ session, messages, recording });
+          ie = metrics.find((m) => m.name === 'iteration_efficiency')?.score ?? null;
+          te = metrics.find((m) => m.name === 'token_efficiency')?.score ?? null;
+          rs = metrics.find((m) => m.name === 'recovery_score')?.score ?? null;
+          ir = metrics.find((m) => m.name === 'independence_ratio')?.score ?? null;
+        }
+
+        const availableMetrics = [
+          ...(ie !== null ? [{ name: 'iteration_efficiency', label: 'IE', score: ie }] : []),
+          ...(te !== null ? [{ name: 'token_efficiency', label: 'TE', score: te }] : []),
+          ...(rs !== null ? [{ name: 'recovery_score', label: 'RS', score: rs }] : []),
+          ...(ir !== null ? [{ name: 'independence_ratio', label: 'IR', score: ir }] : []),
+        ];
+
+        const composite_score =
+          availableMetrics.length > 0
+            ? computeCompositeScore(availableMetrics, config.scoring?.weights)
+            : null;
+
+        const promptConfig = config.prompts.find((p) => p.id === session.prompt_id);
+
+        return {
+          session_id: session.id,
+          candidate_email: session.candidate_email,
+          prompt_id: session.prompt_id,
+          prompt_title: promptConfig?.title ?? session.prompt_id,
+          date: session.closed_at ?? session.created_at,
+          composite_score,
+          ie,
+          te,
+          rs,
+          ir,
+          pq: null,
+          cc: null,
+        } satisfies ComparisonSessionRow;
+      }),
+    );
+
+    res.json({ sessions: rows } satisfies ComparisonResponse);
   }));
 
   // GET /api/sessions/:id — get session state with remaining constraints

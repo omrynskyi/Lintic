@@ -248,6 +248,7 @@ vi.mock('./lib/webcontainer.js', () => ({
 
 vi.mock('./lib/review-replay.js', () => ({
   getReviewSessionId: () => null,
+  isComparisonDashboardRoute: () => false,
 }));
 
 vi.mock('./lib/session-persist.js', () => ({

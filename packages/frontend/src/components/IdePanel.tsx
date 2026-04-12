@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronUp, Terminal as TerminalIcon } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Terminal as TerminalIcon, X } from 'lucide-react';
+import { useTerminalTabs } from '../hooks/useTerminalTabs.js';
 import { Sidebar } from './Sidebar.js';
 import { FileTree } from './FileTree.js';
 import { TabBar } from './TabBar.js';
@@ -20,6 +21,15 @@ interface IdePanelProps {
 export function IdePanel({ terminalRef, requestOpenFile, onActiveFileChange }: IdePanelProps) {
   const internalRef = useRef<TerminalHandle>(null);
   const resolvedRef = terminalRef ?? internalRef;
+  const { tabs, activeId, setActiveId, addTab, closeTab, canAdd, canClose } = useTerminalTabs();
+  const extraTerminalRefs = useRef<Map<number, React.RefObject<TerminalHandle>>>(new Map());
+
+  // Pre-populate refs for non-first terminals during render (stable — created once per tab id).
+  tabs.slice(1).forEach((tab) => {
+    if (!extraTerminalRefs.current.has(tab.id)) {
+      extraTerminalRefs.current.set(tab.id, React.createRef<TerminalHandle>());
+    }
+  });
   const [files, setFiles] = useState<Record<string, string>>({});
   const [directories, setDirectories] = useState<Set<string>>(new Set());
   const [openTabs, setOpenTabs] = useState<string[]>([]);
@@ -253,27 +263,72 @@ export function IdePanel({ terminalRef, requestOpenFile, onActiveFileChange }: I
         
         {/* Terminal Section */}
         <div className="flex flex-col shrink-0 overflow-hidden bg-[var(--color-bg-tab)] border-t border-[var(--color-border-main)]">
-          <button 
-            type="button"
-            onClick={() => setIsTerminalCollapsed(!isTerminalCollapsed)}
-            className="flex items-center justify-between px-4 py-2 hover:bg-white/5 transition-colors group"
-          >
-
-            <div className="flex items-center gap-2 text-[var(--color-text-dim)] group-hover:text-[var(--color-text-main)] transition-colors">
-              <TerminalIcon size={14} />
-              <span className="text-[11px] font-bold tracking-tight">Terminal</span>
+          {/* Header: icon + terminal tabs + add button + collapse toggle */}
+          <div className="flex items-center justify-between px-2">
+            <div className="flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0">
+              <TerminalIcon size={14} className="text-[var(--color-text-dim)] ml-2 mr-1 shrink-0" />
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab.id === activeId}
+                  onClick={() => setActiveId(tab.id)}
+                  className={`flex items-center gap-1 px-3 py-2 text-[11px] shrink-0 transition-colors ${
+                    tab.id === activeId
+                      ? 'text-[var(--color-text-bold)] font-bold'
+                      : 'text-[var(--color-text-dim)] hover:text-[var(--color-text-main)]'
+                  }`}
+                >
+                  {tab.label}
+                  {canClose && (
+                    <span
+                      role="button"
+                      aria-label={`Close ${tab.label}`}
+                      onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+                      className="opacity-50 hover:opacity-100 transition-opacity leading-none"
+                    >
+                      <X size={10} />
+                    </span>
+                  )}
+                </button>
+              ))}
+              {canAdd && (
+                <button
+                  type="button"
+                  aria-label="New terminal"
+                  onClick={addTab}
+                  className="p-1.5 text-[var(--color-text-dim)] hover:text-[var(--color-text-main)] transition-colors"
+                >
+                  <Plus size={13} />
+                </button>
+              )}
             </div>
-            <div className="text-[var(--color-text-dim)] group-hover:text-[var(--color-text-main)] transition-colors">
+            <button
+              type="button"
+              onClick={() => setIsTerminalCollapsed(!isTerminalCollapsed)}
+              className="px-2 py-2 text-[var(--color-text-dim)] hover:text-[var(--color-text-main)] transition-colors shrink-0"
+              aria-label={isTerminalCollapsed ? 'Expand terminal' : 'Collapse terminal'}
+            >
               {isTerminalCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </div>
-          </button>
+            </button>
+          </div>
+
+          {/* Terminal panes — all mounted, only active one visible */}
           <motion.div
             initial={false}
             animate={{ height: isTerminalCollapsed ? 0 : 200 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
             className="overflow-hidden"
           >
-            <Terminal wc={wc} ref={resolvedRef} />
+            {tabs.map((tab, index) => (
+              <Terminal
+                key={tab.id}
+                wc={wc}
+                ref={index === 0 ? resolvedRef : extraTerminalRefs.current.get(tab.id)!}
+                isActive={tab.id === activeId && !isTerminalCollapsed}
+              />
+            ))}
           </motion.div>
         </div>
       </div>

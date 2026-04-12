@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import express, { type Express } from 'express';
+import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import type { DatabaseAdapter, AgentAdapter, Config } from '@lintic/core';
 import { createApiRouter } from './routes/api.js';
 
@@ -43,6 +43,14 @@ export function createApp(
       });
     }
   }
+
+  // JSON error handler — must have 4 params so Express treats it as an error handler
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[server error]', err);
+    res.status(500).json({ error: message });
+  });
 
   return app;
 }

@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { WebContainer } from '@webcontainer/api';
 
@@ -6,6 +6,8 @@ import type { WebContainer } from '@webcontainer/api';
 globalThis.ResizeObserver = vi.fn().mockImplementation(function () {
   return { observe: vi.fn(), unobserve: vi.fn(), disconnect: vi.fn() };
 }) as unknown as typeof ResizeObserver;
+
+const mockFit = vi.fn();
 
 const mockTermInstance = {
   loadAddon: vi.fn(),
@@ -23,7 +25,7 @@ vi.mock('@xterm/xterm', () => ({
 }));
 vi.mock('@xterm/addon-fit', () => ({
   FitAddon: vi.fn().mockImplementation(function () {
-    return { fit: vi.fn() };
+    return { fit: mockFit };
   }),
 }));
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
@@ -62,5 +64,14 @@ describe('Terminal', () => {
     await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledWith('jsh', {
       terminal: { cols: 80, rows: 24 },
     }));
+  });
+
+  it('calls fitAddon.fit when isActive transitions from false to true', async () => {
+    vi.clearAllMocks();
+    const { rerender } = render(<Terminal wc={null} isActive={false} />);
+    // fit is called once on init but not again for isActive=false
+    const callsAfterInit = mockFit.mock.calls.length;
+    rerender(<Terminal wc={null} isActive={true} />);
+    await waitFor(() => expect(mockFit.mock.calls.length).toBeGreaterThan(callsAfterInit));
   });
 });

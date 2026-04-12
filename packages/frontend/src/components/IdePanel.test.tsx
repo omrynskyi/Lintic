@@ -121,7 +121,7 @@ describe('IdePanel', () => {
     await createFile('only.ts');
     fireEvent.click(screen.getByRole('button', { name: /close only\.ts/i }));
     expect(screen.queryByTestId('monaco-editor')).toBeNull();
-    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('tab', { name: /only\.ts/ })).toBeNull();
   });
 
   test('deleting a file removes it from the tree and closes its tab', async () => {
@@ -190,5 +190,46 @@ describe('IdePanel — terminal panel', () => {
   it('renders the Terminal component', () => {
     render(<IdePanel />);
     expect(screen.getByTestId('terminal')).toBeInTheDocument();
+  });
+});
+
+describe('IdePanel — multiple terminals', () => {
+  it('renders one terminal by default', () => {
+    render(<IdePanel />);
+    expect(screen.getAllByTestId('terminal')).toHaveLength(1);
+  });
+
+  it('"New terminal" button adds a second terminal pane without unmounting the first', () => {
+    render(<IdePanel />);
+    fireEvent.click(screen.getByRole('button', { name: /new terminal/i }));
+    expect(screen.getAllByTestId('terminal')).toHaveLength(2);
+  });
+
+  it('switching terminal tabs keeps both panes in the DOM', () => {
+    render(<IdePanel />);
+    fireEvent.click(screen.getByRole('button', { name: /new terminal/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /terminal 1/i }));
+    expect(screen.getAllByTestId('terminal')).toHaveLength(2);
+  });
+
+  it('closing a terminal tab removes it from the DOM', () => {
+    render(<IdePanel />);
+    fireEvent.click(screen.getByRole('button', { name: /new terminal/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close terminal 2/i }));
+    expect(screen.getAllByTestId('terminal')).toHaveLength(1);
+  });
+
+  it('does not show a close button when only one terminal is open', () => {
+    render(<IdePanel />);
+    expect(screen.queryByRole('button', { name: /close terminal 1/i })).toBeNull();
+  });
+
+  it('hides the "New terminal" button when 4 terminals are open', () => {
+    render(<IdePanel />);
+    fireEvent.click(screen.getByRole('button', { name: /new terminal/i }));
+    fireEvent.click(screen.getByRole('button', { name: /new terminal/i }));
+    fireEvent.click(screen.getByRole('button', { name: /new terminal/i }));
+    expect(screen.queryByRole('button', { name: /new terminal/i })).toBeNull();
+    expect(screen.getAllByTestId('terminal')).toHaveLength(4);
   });
 });
