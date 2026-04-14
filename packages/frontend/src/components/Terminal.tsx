@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import type { FitAddon as FitAddonType } from '@xterm/addon-fit';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import type { WebContainer } from '@webcontainer/api';
@@ -11,6 +12,8 @@ export interface TerminalHandle {
 
 interface Props {
   wc: WebContainer | null;
+  /** When false the pane is hidden via display:none but not unmounted. Defaults to true. */
+  isActive?: boolean;
 }
 
 const LIGHT_THEME = { 
@@ -43,9 +46,10 @@ const DARK_THEME = {
   white: '#ffffff',
 };
 
-export const Terminal = forwardRef<TerminalHandle, Props>(function Terminal({ wc }, ref) {
+export const Terminal = forwardRef<TerminalHandle, Props>(function Terminal({ wc, isActive = true }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
+  const fitAddonRef = useRef<FitAddonType | null>(null);
 
   useImperativeHandle(ref, () => ({
     write: (text: string) => {
@@ -64,6 +68,7 @@ export const Terminal = forwardRef<TerminalHandle, Props>(function Terminal({ wc
       cursorBlink: true,
     });
     const fitAddon = new FitAddon();
+    fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
     fitAddon.fit();
@@ -121,11 +126,20 @@ export const Terminal = forwardRef<TerminalHandle, Props>(function Terminal({ wc
     return () => cleanup?.();
   }, [wc]);
 
+  // Re-fit xterm when this pane becomes visible — must use rAF so the
+  // browser has finished laying out the now-visible div before measuring.
+  useEffect(() => {
+    if (isActive && fitAddonRef.current) {
+      requestAnimationFrame(() => { fitAddonRef.current?.fit(); });
+    }
+  }, [isActive]);
+
   return (
     <div
       data-testid="terminal-container"
       ref={containerRef}
       className="w-full h-full bg-[var(--color-bg-code)] p-2"
+      style={isActive ? undefined : { display: 'none' }}
     />
   );
 });

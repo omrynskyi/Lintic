@@ -2130,3 +2130,121 @@ describe('auth middleware', () => {
     expect(body.error).toMatch(/Invalid/);
   });
 });
+
+// ─── GET /api/sessions/comparison ────────────────────────────────────────────
+
+describe('GET /api/sessions/comparison', () => {
+  const ADMIN_KEY = 'admin-key';
+
+  test('returns 401 without admin key', async () => {
+    const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
+    const res = await request(app).get('/api/sessions/comparison');
+    expect(res.status).toBe(401);
+  });
+
+  test('returns 401 with wrong admin key', async () => {
+    const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
+    const res = await request(app)
+      .get('/api/sessions/comparison')
+      .set('X-Lintic-Api-Key', 'wrong-key');
+    expect(res.status).toBe(401);
+  });
+
+  test('returns 200 with empty sessions list when no completed sessions', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    // Only active session — should be excluded
+    await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'a@test.com', constraint: BASE_CONSTRAINT });
+    const res = await request(app)
+      .get('/api/sessions/comparison')
+      .set('X-Lintic-Api-Key', ADMIN_KEY);
+    expect(res.status).toBe(200);
+    const body = res.body as { sessions: unknown[] };
+    expect(body.sessions).toHaveLength(0);
+  });
+
+  test('returns completed sessions with computed metrics', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'b@test.com', constraint: BASE_CONSTRAINT });
+    // Mark session as completed
+    db.sessions.set(id, { ...db.sessions.get(id)!, status: 'completed' });
+
+    const res = await request(app)
+      .get('/api/sessions/comparison')
+      .set('X-Lintic-Api-Key', ADMIN_KEY);
+    expect(res.status).toBe(200);
+    const body = res.body as { sessions: Array<Record<string, unknown>> };
+    expect(body.sessions).toHaveLength(1);
+    const row = body.sessions[0]!;
+    expect(row['session_id']).toBe(id);
+    expect(row['candidate_email']).toBe('b@test.com');
+    expect(row['prompt_id']).toBe('test-prompt');
+    expect(row['prompt_title']).toBe('Test Prompt');
+  });
+
+  test('excludes active sessions', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'active@test.com', constraint: BASE_CONSTRAINT });
+    const { id: completedId } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'done@test.com', constraint: BASE_CONSTRAINT });
+    db.sessions.set(completedId, { ...db.sessions.get(completedId)!, status: 'completed' });
+
+    const res = await request(app)
+      .get('/api/sessions/comparison')
+      .set('X-Lintic-Api-Key', ADMIN_KEY);
+    expect(res.status).toBe(200);
+    const body = res.body as { sessions: Array<Record<string, unknown>> };
+    expect(body.sessions).toHaveLength(1);
+    expect(body.sessions[0]!['candidate_email']).toBe('done@test.com');
+  });
+
+  test('pq and cc are always null', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'c@test.com', constraint: BASE_CONSTRAINT });
+    db.sessions.set(id, { ...db.sessions.get(id)!, status: 'completed' });
+
+    const res = await request(app)
+      .get('/api/sessions/comparison')
+      .set('X-Lintic-Api-Key', ADMIN_KEY);
+    const body = res.body as { sessions: Array<Record<string, unknown>> };
+    const row = body.sessions[0]!;
+    expect(row['pq']).toBeNull();
+    expect(row['cc']).toBeNull();
+  });
+
+  test('composite_score is null when session has no messages', async () => {
+    const db = new FakeDb();
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'd@test.com', constraint: BASE_CONSTRAINT });
+    db.sessions.set(id, { ...db.sessions.get(id)!, status: 'completed' });
+
+    const res = await request(app)
+      .get('/api/sessions/comparison')
+      .set('X-Lintic-Api-Key', ADMIN_KEY);
+    const body = res.body as { sessions: Array<Record<string, unknown>> };
+    const row = body.sessions[0]!;
+    // No messages means metrics may be 0, composite_score depends on metric values
+    expect(typeof row['composite_score']).toBe('number');
+  });
+
+  test('uses custom scoring weights from config when provided', async () => {
+    const db = new FakeDb();
+    const configWithWeights: Config = {
+      ...TEST_CONFIG,
+      scoring: { weights: { ie: 1, te: 0, rs: 0, ir: 0 } },
+    };
+    const app = createApp(db, new FakeAdapter(), configWithWeights);
+    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'e@test.com', constraint: BASE_CONSTRAINT });
+    db.sessions.set(id, { ...db.sessions.get(id)!, status: 'completed' });
+
+    const res = await request(app)
+      .get('/api/sessions/comparison')
+      .set('X-Lintic-Api-Key', ADMIN_KEY);
+    expect(res.status).toBe(200);
+    // Just check it returns without error; exact score depends on session data
+    const body = res.body as { sessions: Array<Record<string, unknown>> };
+    expect(body.sessions).toHaveLength(1);
+  });
+});

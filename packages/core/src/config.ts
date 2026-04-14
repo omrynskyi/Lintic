@@ -23,12 +23,34 @@ export interface ApiConfig {
   secret_key?: string;
 }
 
+export interface EvaluationConfig {
+  provider: AgentProvider;
+  base_url?: string;
+  api_key: string;
+  model: string;
+  /** Maximum number of messages to include in the evaluator's context window. Default: 50. */
+  max_history_messages?: number;
+}
+
+export interface ScoringWeightsConfig {
+  ie?: number;
+  te?: number;
+  rs?: number;
+  ir?: number;
+}
+
+export interface ScoringConfig {
+  weights?: ScoringWeightsConfig;
+}
+
 export interface Config {
   agent: AgentConfig;
   constraints: Constraint;
   prompts: PromptConfig[];
   database?: DatabaseConfig;
   api?: ApiConfig;
+  evaluation?: EvaluationConfig;
+  scoring?: ScoringConfig;
 }
 
 // ─── Env Var Resolution ───────────────────────────────────────────────────────
@@ -167,7 +189,73 @@ export function validateConfig(raw: unknown): Config {
     };
   }
 
-  return { agent, constraints, prompts, ...(database ? { database } : {}), ...(api ? { api } : {}) };
+  // ── evaluation (optional) ──
+  let evaluation: EvaluationConfig | undefined;
+  if (root.evaluation !== undefined) {
+    const rawEval = assertObj(root.evaluation, 'evaluation');
+    const evalProvider = rawEval.provider as AgentProvider;
+    if (!VALID_PROVIDERS.includes(evalProvider)) {
+      err(`evaluation.provider must be one of: ${VALID_PROVIDERS.join(', ')}`);
+    }
+    const evalApiKey =
+      evalProvider === 'local-openai'
+        ? (typeof rawEval.api_key === 'string' && rawEval.api_key.trim()
+            ? rawEval.api_key.trim()
+            : LOCAL_OPENAI_DEFAULT_API_KEY)
+        : assertNonEmptyString(rawEval.api_key, 'evaluation.api_key');
+    const evalModel = assertNonEmptyString(rawEval.model, 'evaluation.model');
+    const evalBaseUrl = typeof rawEval.base_url === 'string' ? rawEval.base_url : undefined;
+    const evalMaxHistory =
+      typeof rawEval.max_history_messages === 'number' && rawEval.max_history_messages > 0
+        ? rawEval.max_history_messages
+        : undefined;
+    const resolvedEvalBaseUrl =
+      evalProvider === 'local-openai'
+        ? (evalBaseUrl?.trim() ? evalBaseUrl.trim() : LOCAL_OPENAI_DEFAULT_BASE_URL)
+        : evalBaseUrl;
+    evaluation = {
+      provider: evalProvider,
+      api_key: evalApiKey,
+      model: evalModel,
+      ...(resolvedEvalBaseUrl ? { base_url: resolvedEvalBaseUrl } : {}),
+      ...(evalMaxHistory !== undefined ? { max_history_messages: evalMaxHistory } : {}),
+    };
+  }
+
+  // ── scoring (optional) ──
+  let scoring: ScoringConfig | undefined;
+  if (root.scoring !== undefined) {
+    const rawScoring = assertObj(root.scoring, 'scoring');
+    const rawWeights = rawScoring.weights !== undefined ? assertObj(rawScoring.weights, 'scoring.weights') : undefined;
+    if (rawWeights !== undefined) {
+      const parseWeight = (val: unknown): number | undefined => {
+        if (typeof val !== 'number' || !Number.isFinite(val) || val < 0 || val > 1) return undefined;
+        return val;
+      };
+      const weights: ScoringWeightsConfig = {};
+      const ieVal = parseWeight(rawWeights['ie']);
+      if (ieVal !== undefined) weights.ie = ieVal;
+      const teVal = parseWeight(rawWeights['te']);
+      if (teVal !== undefined) weights.te = teVal;
+      const rsVal = parseWeight(rawWeights['rs']);
+      if (rsVal !== undefined) weights.rs = rsVal;
+      const irVal = parseWeight(rawWeights['ir']);
+      if (irVal !== undefined) weights.ir = irVal;
+      scoring = { weights };
+    } else {
+      scoring = {};
+    }
+  }
+
+  return {
+    agent,
+    constraints,
+    prompts,
+    ...(database ? { database } : {}),
+    ...(api ? { api } : {}),
+    ...(evaluation ? { evaluation } : {}),
+    ...(scoring ? { scoring } : {}),
+  };
 }
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
