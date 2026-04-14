@@ -21,18 +21,22 @@ import type {
   CreateAssessmentLinkConfig,
   CreateBranchConfig,
   CreateConversationConfig,
+  CreatePromptConfig,
   CreateSessionConfig,
   DatabaseAdapter,
   StoredMessage,
   StoredReplayEvent,
   UpdateConversationConfig,
+  UpdatePromptConfig,
   WorkspaceSnapshotInput,
 } from './contracts.js';
+import type { PromptConfig } from '../config.js';
 import {
   rowToAssessmentLink,
   rowToContextAttachment,
   rowToContextResource,
   rowToConversation,
+  rowToPromptConfig,
   rowToSession,
   rowToSessionBranch,
   rowToWorkspaceSnapshot,
@@ -43,6 +47,7 @@ import type {
   ContextResourceRow,
   ConversationRow,
   MessageRow,
+  PromptRow,
   ReplayEventRow,
   SessionBranchRow,
   SessionRow,
@@ -903,5 +908,69 @@ export class SQLiteAdapter implements DatabaseAdapter {
     const placeholders = ids.map(() => '?').join(', ');
     const result = this.db.prepare(`DELETE FROM assessment_links WHERE id IN (${placeholders})`).run(...ids);
     return Promise.resolve(result.changes);
+  }
+
+  createPrompt(config: CreatePromptConfig): Promise<PromptConfig> {
+    const id = config.id ?? randomUUID();
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO prompts (id, title, description, difficulty, tags_json, acceptance_criteria_json, rubric_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      config.title,
+      config.description ?? null,
+      config.difficulty ?? null,
+      JSON.stringify(config.tags ?? []),
+      JSON.stringify(config.acceptance_criteria ?? []),
+      JSON.stringify(config.rubric ?? []),
+      now,
+      now,
+    );
+    const row = this.db.prepare('SELECT * FROM prompts WHERE id = ?').get(id) as PromptRow;
+    return Promise.resolve(rowToPromptConfig(row));
+  }
+
+  getPrompt(id: string): Promise<PromptConfig | null> {
+    const row = this.db.prepare('SELECT * FROM prompts WHERE id = ?').get(id) as PromptRow | undefined;
+    return Promise.resolve(row ? rowToPromptConfig(row) : null);
+  }
+
+  listPrompts(): Promise<PromptConfig[]> {
+    const rows = this.db.prepare('SELECT * FROM prompts ORDER BY created_at ASC').all() as PromptRow[];
+    return Promise.resolve(rows.map(rowToPromptConfig));
+  }
+
+  updatePrompt(config: UpdatePromptConfig): Promise<PromptConfig | null> {
+    const existing = this.db.prepare('SELECT * FROM prompts WHERE id = ?').get(config.id) as PromptRow | undefined;
+    if (!existing) return Promise.resolve(null);
+    const now = Date.now();
+    this.db.prepare(`
+      UPDATE prompts SET
+        title = ?,
+        description = ?,
+        difficulty = ?,
+        tags_json = ?,
+        acceptance_criteria_json = ?,
+        rubric_json = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      config.title ?? existing.title,
+      config.description !== undefined ? (config.description ?? null) : existing.description,
+      config.difficulty !== undefined ? (config.difficulty ?? null) : existing.difficulty,
+      config.tags !== undefined ? JSON.stringify(config.tags) : existing.tags_json,
+      config.acceptance_criteria !== undefined ? JSON.stringify(config.acceptance_criteria) : existing.acceptance_criteria_json,
+      config.rubric !== undefined ? JSON.stringify(config.rubric) : existing.rubric_json,
+      now,
+      config.id,
+    );
+    const row = this.db.prepare('SELECT * FROM prompts WHERE id = ?').get(config.id) as PromptRow;
+    return Promise.resolve(rowToPromptConfig(row));
+  }
+
+  deletePrompt(id: string): Promise<boolean> {
+    const result = this.db.prepare('DELETE FROM prompts WHERE id = ?').run(id);
+    return Promise.resolve(result.changes > 0);
   }
 }

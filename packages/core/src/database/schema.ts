@@ -131,6 +131,18 @@ export const SQLITE_SCHEMA = `
     session_id TEXT NOT NULL REFERENCES sessions(id),
     used_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS prompts (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    difficulty TEXT,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    acceptance_criteria_json TEXT NOT NULL DEFAULT '[]',
+    rubric_json TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
 `;
 
 export const POSTGRES_SCHEMA_STATEMENTS = [
@@ -250,5 +262,16 @@ export const POSTGRES_SCHEMA_STATEMENTS = [
     link_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id),
     used_at BIGINT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS prompts (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    difficulty TEXT,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    acceptance_criteria_json TEXT NOT NULL DEFAULT '[]',
+    rubric_json TEXT NOT NULL DEFAULT '[]',
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
   )`,
 ] as const;

@@ -17,6 +17,7 @@ import type {
   WorkspaceSnapshot,
   WorkspaceSnapshotKind,
 } from '../types.js';
+import type { PromptConfig, PromptRubricQuestion } from '../config.js';
 
 export interface StoredMessage {
   id: number;
@@ -93,6 +94,28 @@ export interface WorkspaceSnapshotInput {
   filesystem: SnapshotFile[];
   mock_pg: MockPgPoolExport[];
 }
+
+export interface CreatePromptConfig {
+  id?: string;
+  title: string;
+  description?: string;
+  difficulty?: string;
+  tags?: string[];
+  acceptance_criteria?: string[];
+  rubric?: PromptRubricQuestion[];
+}
+
+export interface UpdatePromptConfig {
+  id: string;
+  title?: string;
+  description?: string | null;
+  difficulty?: string | null;
+  tags?: string[];
+  acceptance_criteria?: string[];
+  rubric?: PromptRubricQuestion[];
+}
+
+export { PromptConfig };
 
 export interface CreateSessionConfig {
   prompt_id: string;
@@ -187,4 +210,9 @@ export interface DatabaseAdapter {
   getAssessmentLinkSessionId(linkId: string): Promise<string | null>;
   deleteAssessmentLink(id: string): Promise<boolean>;
   deleteAssessmentLinks(ids: string[]): Promise<number>;
+  createPrompt(config: CreatePromptConfig): Promise<PromptConfig>;
+  getPrompt(id: string): Promise<PromptConfig | null>;
+  listPrompts(): Promise<PromptConfig[]>;
+  updatePrompt(config: UpdatePromptConfig): Promise<PromptConfig | null>;
+  deletePrompt(id: string): Promise<boolean>;
 }

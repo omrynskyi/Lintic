@@ -156,11 +156,11 @@ export function validateConfig(raw: unknown): Config {
   };
 
   // ── prompts ──
-  if (!Array.isArray(root.prompts) || root.prompts.length === 0) {
-    err('prompts must be a non-empty array');
+  if (root.prompts !== undefined && !Array.isArray(root.prompts)) {
+    err('prompts must be an array');
   }
 
-  const prompts: PromptConfig[] = (root.prompts as unknown[]).map((p, i) => {
+  const prompts: PromptConfig[] = (Array.isArray(root.prompts) ? (root.prompts as unknown[]) : []).map((p, i) => {
     const rawPrompt = assertObj(p, `prompts[${i}]`);
     const id = assertNonEmptyString(rawPrompt.id, `prompts[${i}].id`);
     const title = assertNonEmptyString(rawPrompt.title, `prompts[${i}].title`);

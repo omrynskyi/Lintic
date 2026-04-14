@@ -21,6 +21,7 @@ import type {
   Constraint,
   PromptSummary,
   PromptConfig,
+  PromptRubricQuestion,
   SessionBranch,
   SessionStatus,
   SnapshotFile,
@@ -47,6 +48,7 @@ import {
   truncateHistory,
 } from '@lintic/core';
 import { evaluateSession, askAboutSession } from '../services/SynchronousEvaluatorService.js';
+import { generateFullTask, generateCriteriaForTask } from '../services/PromptGenerationService.js';
 import { OpenAIAdapter, AnthropicAdapter } from '@lintic/adapters';
 import type { StoredMessage } from '@lintic/core';
 import { requireToken } from '../middleware/auth.js';
@@ -252,13 +254,16 @@ function toPromptSummary(prompt: PromptConfig): PromptSummary {
     id: prompt.id,
     title: prompt.title,
     ...(prompt.description ? { description: prompt.description } : {}),
+    ...(prompt.difficulty ? { difficulty: prompt.difficulty } : {}),
     ...(prompt.tags ? { tags: prompt.tags } : {}),
+    ...(prompt.acceptance_criteria ? { acceptance_criteria: prompt.acceptance_criteria } : {}),
+    ...(prompt.rubric ? { rubric: prompt.rubric } : {}),
   };
 }
 
 async function resolveAssessmentLinkStatus(
   record: AssessmentLinkRecord,
-  prompts: PromptConfig[],
+  db: DatabaseAdapter,
   secretKey?: string,
 ): Promise<AssessmentLinkStatus> {
   if (record.consumed_session_id) {
@@ -267,7 +272,8 @@ async function resolveAssessmentLinkStatus(
   if (record.expires_at <= Date.now()) {
     return 'expired';
   }
-  if (!secretKey || !prompts.some((prompt) => prompt.id === record.prompt_id)) {
+  const promptExists = (await db.getPrompt(record.prompt_id)) !== null;
+  if (!secretKey || !promptExists) {
     return 'invalid';
   }
 
@@ -290,10 +296,9 @@ async function resolveAssessmentLinkStatus(
 async function toAdminAssessmentLinkSummary(
   db: DatabaseAdapter,
   record: AssessmentLinkRecord,
-  prompts: PromptConfig[],
   secretKey?: string,
 ): Promise<AdminAssessmentLinkSummary> {
-  const prompt = prompts.find((entry) => entry.id === record.prompt_id) ?? null;
+  const prompt = await db.getPrompt(record.prompt_id);
   const sessionStatus: SessionStatus | undefined = record.consumed_session_id
     ? (await resolveSessionWithExpiry(db, record.consumed_session_id))?.status
     : undefined;
@@ -304,7 +309,7 @@ async function toAdminAssessmentLinkSummary(
     candidate_email: record.candidate_email,
     created_at: record.created_at,
     expires_at: record.expires_at,
-    status: await resolveAssessmentLinkStatus(record, prompts, secretKey),
+    status: await resolveAssessmentLinkStatus(record, db, secretKey),
     ...(sessionStatus ? { session_status: sessionStatus } : {}),
   };
 
@@ -321,11 +326,10 @@ async function toAdminAssessmentLinkSummary(
 async function toAdminAssessmentLinkDetail(
   db: DatabaseAdapter,
   record: AssessmentLinkRecord,
-  prompts: PromptConfig[],
   secretKey?: string,
 ): Promise<AdminAssessmentLinkDetail> {
   const detail: AdminAssessmentLinkDetail = {
-    ...(await toAdminAssessmentLinkSummary(db, record, prompts, secretKey)),
+    ...(await toAdminAssessmentLinkSummary(db, record, secretKey)),
     token: record.token,
     constraint: record.constraint,
   };
@@ -719,11 +723,91 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
   const adminKey = resolveAdminKey(config.api?.admin_key);
   const secretKey = resolveSecretKey(config.api?.secret_key);
 
-  router.get('/prompts', requireAdminKey(adminKey), (_req, res) => {
-    res.json({
-      prompts: config.prompts.map(toPromptSummary),
+  router.get('/prompts', requireAdminKey(adminKey), asyncRoute(async (_req, res) => {
+    const prompts = await db.listPrompts();
+    res.json({ prompts: prompts.map(toPromptSummary) });
+  }));
+
+  // Must be registered before /:id routes to avoid Express param matching 'generate' as an ID
+  router.post('/prompts/generate', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    if (!config.evaluation) {
+      res.status(422).json({ error: 'No evaluation config configured. Add an evaluation block to lintic.yml.' });
+      return;
+    }
+    const body = req.body as { description?: unknown };
+    if (typeof body.description !== 'string' || !body.description.trim()) {
+      res.status(400).json({ error: 'description is required' });
+      return;
+    }
+    const generated = await generateFullTask(body.description.trim(), config.evaluation);
+    res.json({ prompt: generated });
+  }));
+
+  router.post('/prompts', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const body = req.body as Record<string, unknown>;
+    if (typeof body['title'] !== 'string' || !body['title'].trim()) {
+      res.status(400).json({ error: 'title is required' });
+      return;
+    }
+    const customId = typeof body['id'] === 'string' && body['id'].trim() ? body['id'].trim() : undefined;
+    const created = await db.createPrompt({
+      ...(customId ? { id: customId } : {}),
+      title: (body['title'] as string).trim(),
+      ...(typeof body['description'] === 'string' ? { description: body['description'] } : {}),
+      ...(typeof body['difficulty'] === 'string' ? { difficulty: body['difficulty'] } : {}),
+      tags: Array.isArray(body['tags']) ? (body['tags'] as string[]) : [],
+      acceptance_criteria: Array.isArray(body['acceptance_criteria'])
+        ? (body['acceptance_criteria'] as string[])
+        : [],
+      rubric: Array.isArray(body['rubric']) ? (body['rubric'] as PromptRubricQuestion[]) : [],
     });
-  });
+    res.status(201).json({ prompt: created });
+  }));
+
+  router.put('/prompts/:id', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const body = req.body as Record<string, unknown>;
+    const updatePayload: import('@lintic/core').UpdatePromptConfig = {
+      id: req.params['id'] as string,
+    };
+    if (typeof body['title'] === 'string') updatePayload.title = body['title'];
+    if (body['description'] !== undefined) updatePayload.description = body['description'] as string | null;
+    if (body['difficulty'] !== undefined) updatePayload.difficulty = body['difficulty'] as string | null;
+    if (Array.isArray(body['tags'])) updatePayload.tags = body['tags'] as string[];
+    if (Array.isArray(body['acceptance_criteria'])) updatePayload.acceptance_criteria = body['acceptance_criteria'] as string[];
+    if (Array.isArray(body['rubric'])) updatePayload.rubric = body['rubric'] as PromptRubricQuestion[];
+    const updated = await db.updatePrompt(updatePayload);
+    if (!updated) {
+      res.status(404).json({ error: 'Prompt not found' });
+      return;
+    }
+    res.json({ prompt: updated });
+  }));
+
+  router.delete('/prompts/:id', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const deleted = await db.deletePrompt(req.params['id'] as string);
+    if (!deleted) {
+      res.status(404).json({ error: 'Prompt not found' });
+      return;
+    }
+    res.json({ deleted: true });
+  }));
+
+  router.post('/prompts/:id/generate-criteria', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    if (!config.evaluation) {
+      res.status(422).json({ error: 'No evaluation config configured. Add an evaluation block to lintic.yml.' });
+      return;
+    }
+    const prompt = await db.getPrompt(req.params['id'] as string);
+    if (!prompt) {
+      res.status(404).json({ error: 'Prompt not found' });
+      return;
+    }
+    const generated = await generateCriteriaForTask(
+      { title: prompt.title, ...(prompt.description ? { description: prompt.description } : {}) },
+      config.evaluation,
+    );
+    res.json(generated);
+  }));
 
   router.post('/links', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
     if (!secretKey) {
@@ -747,7 +831,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const prompt = config.prompts.find((entry) => entry.id === body.prompt_id);
+    const prompt = await db.getPrompt(body.prompt_id);
     if (!prompt) {
       res.status(404).json({ error: 'Prompt not found' });
       return;
@@ -787,7 +871,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       constraint: constraints,
     });
 
-      const detail = await toAdminAssessmentLinkDetail(db, link, config.prompts, secretKey);
+    const detail = await toAdminAssessmentLinkDetail(db, link, secretKey);
 
     res.status(201).json({
       ...detail,
@@ -799,7 +883,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
   router.get('/links', requireAdminKey(adminKey), asyncRoute(async (_req, res) => {
     const records = await db.listAssessmentLinks();
     const links = await Promise.all(
-      records.map((record) => toAdminAssessmentLinkSummary(db, record, config.prompts, secretKey)),
+      records.map((record) => toAdminAssessmentLinkSummary(db, record, secretKey)),
     );
 
     res.json({ links });
@@ -825,7 +909,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const prompt = config.prompts.find((entry) => entry.id === payload.prompt_id);
+    const prompt = await db.getPrompt(payload.prompt_id);
     if (!prompt) {
       res.status(409).json({ error: 'Link is no longer valid' });
       return;
@@ -883,7 +967,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     }
 
     res.json({
-      link: await toAdminAssessmentLinkDetail(db, link, config.prompts, secretKey),
+      link: await toAdminAssessmentLinkDetail(db, link, secretKey),
     });
   }));
 
@@ -919,7 +1003,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const prompt = config.prompts.find((entry) => entry.id === body.prompt_id);
+    const prompt = await db.getPrompt(body.prompt_id);
     if (!prompt) {
       res.status(404).json({ error: 'Prompt not found' });
       return;
@@ -989,7 +1073,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
             ? computeCompositeScore(availableMetrics, config.scoring?.weights)
             : null;
 
-        const promptConfig = config.prompts.find((p) => p.id === session.prompt_id);
+        const promptConfig = await db.getPrompt(session.prompt_id);
 
         return {
           session_id: session.id,
@@ -2401,7 +2485,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       })),
     };
     const metrics = computeSessionMetrics({ session, messages, recording });
-    const prompt = config.prompts.find((entry) => entry.id === session.prompt_id) ?? null;
+    const prompt = await db.getPrompt(session.prompt_id);
 
     res.json({
       session,
@@ -2459,7 +2543,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       .filter((m) => m.content !== null)
       .map((m) => ({ role: m.role, content: m.content as string }));
 
-    const promptConfig = config.prompts.find((p) => p.id === session.prompt_id);
+    const promptConfig = await db.getPrompt(session.prompt_id);
 
     const llm_evaluation = await evaluateSession({
       session,

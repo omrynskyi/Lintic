@@ -108,3 +108,15 @@ export interface AssessmentLinkRow {
   consumed_session_id?: string | null;
   consumed_at?: number | null;
 }
+
+export interface PromptRow {
+  id: string;
+  title: string;
+  description: string | null;
+  difficulty: string | null;
+  tags_json: string;
+  acceptance_criteria_json: string;
+  rubric_json: string;
+  created_at: number;
+  updated_at: number;
+}

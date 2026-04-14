@@ -145,11 +145,19 @@ export interface Session {
   score?: number; // composite 0–1, set after metrics are computed
 }
 
+export interface PromptRubricQuestionSummary {
+  question: string;
+  guide?: string;
+}
+
 export interface PromptSummary {
   id: string;
   title: string;
   description?: string;
+  difficulty?: string;
   tags?: string[];
+  acceptance_criteria?: string[];
+  rubric?: PromptRubricQuestionSummary[];
 }
 
 export interface SessionBranch {
@@ -288,7 +296,7 @@ export interface AdminAssessmentLinkDetailResponse {
 }
 
 export interface AdminPromptsResponse {
-  prompts: PromptSummary[];
+  prompts: PromptSummary[]; // Full prompt config including acceptance_criteria and rubric
 }
 
 // ─── Metrics ──────────────────────────────────────────────────────────────────

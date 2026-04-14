@@ -15,11 +15,13 @@ import type {
   WorkspaceSnapshot,
   WorkspaceSnapshotKind,
 } from '../types.js';
+import type { PromptConfig, PromptRubricQuestion } from '../config.js';
 import type {
   AssessmentLinkRow,
   ContextAttachmentRow,
   ContextResourceRow,
   ConversationRow,
+  PromptRow,
   SessionBranchRow,
   SessionRow,
   WorkspaceSnapshotRow,
@@ -210,6 +212,27 @@ export function rowToWorkspaceSnapshot(row: WorkspaceSnapshotRow): WorkspaceSnap
   }
 
   return snapshot;
+}
+
+export function rowToPromptConfig(row: PromptRow): PromptConfig {
+  const prompt: PromptConfig = {
+    id: row.id,
+    title: row.title,
+  };
+
+  if (row.description) prompt.description = row.description;
+  if (row.difficulty) prompt.difficulty = row.difficulty;
+
+  const tags = JSON.parse(row.tags_json) as string[];
+  if (tags.length > 0) prompt.tags = tags;
+
+  const acceptance_criteria = JSON.parse(row.acceptance_criteria_json) as string[];
+  if (acceptance_criteria.length > 0) prompt.acceptance_criteria = acceptance_criteria;
+
+  const rubric = JSON.parse(row.rubric_json) as PromptRubricQuestion[];
+  if (rubric.length > 0) prompt.rubric = rubric;
+
+  return prompt;
 }
 
 export function rowToAssessmentLink(row: AssessmentLinkRow): AssessmentLinkRecord {

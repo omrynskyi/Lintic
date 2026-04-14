@@ -2,10 +2,13 @@ import { loadConfig } from '@lintic/core';
 import { OpenAIAdapter, AnthropicAdapter } from '@lintic/adapters';
 import { createApp } from './app.js';
 import { createDatabase, findConfigPath, loadEnv, resolveFrontendDistPath } from './runtime.js';
+import { seedPromptsFromConfig } from './services/PromptSeeder.js';
 
 loadEnv();
 const config = loadConfig(findConfigPath());
 const db = await createDatabase(config);
+
+await seedPromptsFromConfig(db, config.prompts);
 
 const adapter =
   config.agent.provider === 'anthropic-native' ? new AnthropicAdapter() : new OpenAIAdapter();

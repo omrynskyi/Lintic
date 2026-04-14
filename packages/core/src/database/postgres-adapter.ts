@@ -21,13 +21,16 @@ import type {
   CreateAssessmentLinkConfig,
   CreateBranchConfig,
   CreateConversationConfig,
+  CreatePromptConfig,
   CreateSessionConfig,
   DatabaseAdapter,
   StoredMessage,
   StoredReplayEvent,
   UpdateConversationConfig,
+  UpdatePromptConfig,
   WorkspaceSnapshotInput,
 } from './contracts.js';
+import type { PromptConfig } from '../config.js';
 import {
   normalizeAssessmentLinkRow,
   normalizeContextAttachmentRow,
@@ -40,6 +43,7 @@ import {
   rowToContextAttachment,
   rowToContextResource,
   rowToConversation,
+  rowToPromptConfig,
   rowToSession,
   rowToSessionBranch,
   rowToWorkspaceSnapshot,
@@ -50,6 +54,7 @@ import type {
   ContextResourceRow,
   ConversationRow,
   MessageRow,
+  PromptRow,
   ReplayEventRow,
   SessionBranchRow,
   SessionRow,
@@ -847,6 +852,76 @@ export class PostgresAdapter implements DatabaseAdapter {
       ids,
     );
     return result.rowCount ?? 0;
+  }
+
+  async createPrompt(config: CreatePromptConfig): Promise<PromptConfig> {
+    await this.initialize();
+    const id = config.id ?? randomUUID();
+    const now = Date.now();
+    const result = await this.pool.query(
+      `INSERT INTO prompts (id, title, description, difficulty, tags_json, acceptance_criteria_json, rubric_json, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        id,
+        config.title,
+        config.description ?? null,
+        config.difficulty ?? null,
+        JSON.stringify(config.tags ?? []),
+        JSON.stringify(config.acceptance_criteria ?? []),
+        JSON.stringify(config.rubric ?? []),
+        now,
+        now,
+      ],
+    );
+    return rowToPromptConfig(result.rows[0] as PromptRow);
+  }
+
+  async getPrompt(id: string): Promise<PromptConfig | null> {
+    await this.initialize();
+    const result = await this.pool.query('SELECT * FROM prompts WHERE id = $1', [id]);
+    if (result.rows.length === 0) return null;
+    return rowToPromptConfig(result.rows[0] as PromptRow);
+  }
+
+  async listPrompts(): Promise<PromptConfig[]> {
+    await this.initialize();
+    const result = await this.pool.query('SELECT * FROM prompts ORDER BY created_at ASC');
+    return result.rows.map((row) => rowToPromptConfig(row as PromptRow));
+  }
+
+  async updatePrompt(config: UpdatePromptConfig): Promise<PromptConfig | null> {
+    await this.initialize();
+    const existing = await this.getPrompt(config.id);
+    if (!existing) return null;
+    const now = Date.now();
+    const result = await this.pool.query(
+      `UPDATE prompts SET
+        title = $1, description = $2, difficulty = $3,
+        tags_json = $4, acceptance_criteria_json = $5, rubric_json = $6,
+        updated_at = $7
+       WHERE id = $8
+       RETURNING *`,
+      [
+        config.title ?? existing.title,
+        config.description !== undefined ? (config.description ?? null) : (existing.description ?? null),
+        config.difficulty !== undefined ? (config.difficulty ?? null) : (existing.difficulty ?? null),
+        config.tags !== undefined ? JSON.stringify(config.tags) : JSON.stringify(existing.tags ?? []),
+        config.acceptance_criteria !== undefined
+          ? JSON.stringify(config.acceptance_criteria)
+          : JSON.stringify(existing.acceptance_criteria ?? []),
+        config.rubric !== undefined ? JSON.stringify(config.rubric) : JSON.stringify(existing.rubric ?? []),
+        now,
+        config.id,
+      ],
+    );
+    return rowToPromptConfig(result.rows[0] as PromptRow);
+  }
+
+  async deletePrompt(id: string): Promise<boolean> {
+    await this.initialize();
+    const result = await this.pool.query('DELETE FROM prompts WHERE id = $1', [id]);
+    return (result.rowCount ?? 0) > 0;
   }
 
   private async bootstrapSchema(): Promise<void> {

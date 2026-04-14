@@ -1,6 +1,7 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { describe, test, expect } from 'vitest';
 import request from 'supertest';
 import type {
@@ -17,12 +18,15 @@ import type {
   StoredMessage,
   StoredReplayEvent,
   CreateAssessmentLinkConfig,
+  CreatePromptConfig,
   CreateSessionConfig,
   MessageRole,
+  PromptConfig,
   ReplayEventType,
   Config,
   Constraint,
   SessionBranch,
+  UpdatePromptConfig,
   WorkspaceSnapshot,
   WorkspaceSnapshotKind,
   SnapshotFile,
@@ -624,6 +628,63 @@ class FakeDb implements DatabaseAdapter {
     let count = 0;
     for (const id of ids) if (this.assessmentLinks.delete(id)) count++;
     return Promise.resolve(count);
+  }
+
+  promptStore = new Map<string, PromptConfig>([
+    ['test-prompt', { id: 'test-prompt', title: 'Test Prompt' }],
+  ]);
+
+  createPrompt(config: CreatePromptConfig): Promise<PromptConfig> {
+    const id = config.id ?? randomUUID();
+    const prompt: PromptConfig = {
+      id,
+      title: config.title,
+      ...(config.description !== undefined ? { description: config.description } : {}),
+      ...(config.difficulty !== undefined ? { difficulty: config.difficulty } : {}),
+      ...(config.tags !== undefined ? { tags: config.tags } : {}),
+      ...(config.acceptance_criteria !== undefined ? { acceptance_criteria: config.acceptance_criteria } : {}),
+      ...(config.rubric !== undefined ? { rubric: config.rubric } : {}),
+    };
+    this.promptStore.set(id, prompt);
+    return Promise.resolve(prompt);
+  }
+
+  getPrompt(id: string): Promise<PromptConfig | null> {
+    return Promise.resolve(this.promptStore.get(id) ?? null);
+  }
+
+  listPrompts(): Promise<PromptConfig[]> {
+    return Promise.resolve(Array.from(this.promptStore.values()));
+  }
+
+  updatePrompt(config: UpdatePromptConfig): Promise<PromptConfig | null> {
+    const existing = this.promptStore.get(config.id);
+    if (!existing) return Promise.resolve(null);
+    const updated: PromptConfig = {
+      id: existing.id,
+      title: config.title ?? existing.title,
+      ...(config.description !== undefined
+        ? (config.description ? { description: config.description } : {})
+        : existing.description !== undefined ? { description: existing.description } : {}),
+      ...(config.difficulty !== undefined
+        ? (config.difficulty ? { difficulty: config.difficulty } : {})
+        : existing.difficulty !== undefined ? { difficulty: existing.difficulty } : {}),
+      ...(config.tags !== undefined
+        ? { tags: config.tags }
+        : existing.tags !== undefined ? { tags: existing.tags } : {}),
+      ...(config.acceptance_criteria !== undefined
+        ? { acceptance_criteria: config.acceptance_criteria }
+        : existing.acceptance_criteria !== undefined ? { acceptance_criteria: existing.acceptance_criteria } : {}),
+      ...(config.rubric !== undefined
+        ? { rubric: config.rubric }
+        : existing.rubric !== undefined ? { rubric: existing.rubric } : {}),
+    };
+    this.promptStore.set(config.id, updated);
+    return Promise.resolve(updated);
+  }
+
+  deletePrompt(id: string): Promise<boolean> {
+    return Promise.resolve(this.promptStore.delete(id));
   }
 }
 
