@@ -1,13 +1,16 @@
 import type {
+  AcceptanceCriterionResult,
   EvaluationConfig,
   EvaluatorDimensionScore,
   EvaluatorResponse,
   InfrastructureMetrics,
   Iteration,
+  PromptRubricQuestion,
   RubricDimension,
+  RubricQuestionScore,
   Session,
 } from '@lintic/core';
-import { buildEvaluatorSystemPrompt, RUBRIC_DIMENSIONS } from '@lintic/core';
+import { buildEvaluatorSystemPrompt, DEFAULT_RUBRIC_QUESTIONS, RUBRIC_DIMENSIONS } from '@lintic/core';
 
 // ─── LLM Wire Types ───────────────────────────────────────────────────────────
 
@@ -18,7 +21,7 @@ interface OpenAIMessage {
 
 interface OpenAICompletionResponse {
   choices: Array<{
-    message: { content: string | null };
+    message: { content: string | null; reasoning_content?: string | null };
     finish_reason: string;
   }>;
 }
@@ -31,13 +34,13 @@ interface AnthropicCompletionResponse {
 
 const ANTHROPIC_BASE = 'https://api.anthropic.com';
 const ANTHROPIC_API_VERSION = '2023-06-01';
-const MAX_OUTPUT_TOKENS = 2048;
+const MAX_OUTPUT_TOKENS = 8192;
 
 function resolveBaseUrl(config: EvaluationConfig): string {
-  if (config.base_url) return config.base_url.replace(/\/$/, '');
+  if (config.base_url) return config.base_url.replace(/\/v1\/?$/, '').replace(/\/$/, '');
   if (config.provider === 'groq') return 'https://api.groq.com/openai';
   if (config.provider === 'cerebras') return 'https://api.cerebras.ai';
-  if (config.provider === 'local-openai') return 'http://localhost:8080/v1';
+  if (config.provider === 'local-openai') return 'http://localhost:8080';
   return 'https://api.openai.com';
 }
 
@@ -46,7 +49,7 @@ async function callAnthropicEvaluator(
   systemPrompt: string,
   userMessage: string,
 ): Promise<string> {
-  const base = config.base_url ? config.base_url.replace(/\/$/, '') : ANTHROPIC_BASE;
+  const base = config.base_url ? config.base_url.replace(/\/v1\/?$/, '').replace(/\/$/, '') : ANTHROPIC_BASE;
   const response = await fetch(`${base}/v1/messages`, {
     method: 'POST',
     headers: {
@@ -79,6 +82,7 @@ async function callOpenAICompatEvaluator(
   config: EvaluationConfig,
   systemPrompt: string,
   userMessage: string,
+  opts: { jsonMode: boolean } = { jsonMode: true },
 ): Promise<string> {
   const base = resolveBaseUrl(config);
   const messages: OpenAIMessage[] = [
@@ -86,18 +90,24 @@ async function callOpenAICompatEvaluator(
     { role: 'user', content: userMessage },
   ];
 
+  const body: Record<string, unknown> = {
+    model: config.model,
+    messages,
+    max_tokens: MAX_OUTPUT_TOKENS,
+  };
+  // local-openai (LM Studio, Ollama, etc.) often doesn't support response_format;
+  // rely on the prompt's JSON instructions instead.
+  if (opts.jsonMode && config.provider !== 'local-openai') {
+    body['response_format'] = { type: 'json_object' };
+  }
+
   const response = await fetch(`${base}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.api_key}`,
     },
-    body: JSON.stringify({
-      model: config.model,
-      messages,
-      max_tokens: MAX_OUTPUT_TOKENS,
-      response_format: { type: 'json_object' },
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -105,10 +115,20 @@ async function callOpenAICompatEvaluator(
     throw new Error(`Evaluator LLM error ${response.status}: ${text.slice(0, 200)}`);
   }
 
-  const data = await response.json() as OpenAICompletionResponse;
-  const content = data.choices[0]?.message?.content;
+  const rawText = await response.text();
+  let data: OpenAICompletionResponse;
+  try {
+    data = JSON.parse(rawText) as OpenAICompletionResponse;
+  } catch {
+    throw new Error(`Evaluator LLM returned non-JSON: ${rawText.slice(0, 300)}`);
+  }
+
+  const msg = Array.isArray(data.choices) ? data.choices[0]?.message : undefined;
+  // Some local/thinking models put the reply in reasoning_content when content is empty
+  const content = msg?.content || msg?.reasoning_content || undefined;
   if (!content) {
-    throw new Error('Evaluator LLM returned empty content');
+    console.error('[evaluator] unexpected response body:', rawText.slice(0, 500));
+    throw new Error(`Evaluator LLM returned empty content. finish_reason=${data.choices?.[0]?.finish_reason ?? 'unknown'}`);
   }
   return content;
 }
@@ -117,23 +137,22 @@ async function callEvaluatorLLM(
   config: EvaluationConfig,
   systemPrompt: string,
   userMessage: string,
+  opts: { jsonMode: boolean } = { jsonMode: true },
 ): Promise<string> {
   if (config.provider === 'anthropic-native') {
     return callAnthropicEvaluator(config, systemPrompt, userMessage);
   }
-  return callOpenAICompatEvaluator(config, systemPrompt, userMessage);
+  return callOpenAICompatEvaluator(config, systemPrompt, userMessage, opts);
 }
 
 // ─── Response Parsing ─────────────────────────────────────────────────────────
 
 const VALID_DIMENSIONS = new Set<string>([
-  'context_management',
-  'problem_decomposition',
-  'debugging_collaboration',
-  'task_iteration_velocity',
-  'security_awareness',
-  'strategic_backtracking',
-  'domain_knowledge_directiveness',
+  'prompt_quality',
+  'technical_direction',
+  'iterative_problem_solving',
+  'debugging_diagnosis',
+  'robustness_edge_cases',
 ]);
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -212,9 +231,48 @@ function parseEvaluatorResponse(raw: string): EvaluatorResponse {
     throw new Error('Evaluator returned no valid dimension scores');
   }
 
+  // Parse optional acceptance_criteria_results
+  const acceptance_criteria_results: AcceptanceCriterionResult[] = [];
+  if (Array.isArray(parsed['acceptance_criteria_results'])) {
+    for (const item of parsed['acceptance_criteria_results']) {
+      if (!isRecord(item)) continue;
+      const criterion = item['criterion'];
+      const score = item['score'];
+      const rationale = item['rationale'];
+      if (typeof criterion === 'string' && typeof score === 'number' && typeof rationale === 'string') {
+        acceptance_criteria_results.push({
+          criterion,
+          score: Math.min(100, Math.max(0, score)),
+          rationale,
+        });
+      }
+    }
+  }
+
+  // Parse optional rubric_scores
+  const rubric_scores: RubricQuestionScore[] = [];
+  if (Array.isArray(parsed['rubric_scores'])) {
+    for (const item of parsed['rubric_scores']) {
+      if (!isRecord(item)) continue;
+      const question = item['question'];
+      const score = item['score'];
+      const rationale = item['rationale'];
+      if (typeof question === 'string' && typeof score === 'number' && typeof rationale === 'string') {
+        rubric_scores.push({
+          question,
+          score: Math.min(10, Math.max(0, score)),
+          rationale,
+          is_default: false, // will be tagged by caller
+        });
+      }
+    }
+  }
+
   return {
     scores,
     overall_summary: parsed['overall_summary'],
+    ...(acceptance_criteria_results.length ? { acceptance_criteria_results } : {}),
+    ...(rubric_scores.length ? { rubric_scores } : {}),
   };
 }
 
@@ -226,6 +284,8 @@ export interface EvaluateSessionInput {
   infrastructure: InfrastructureMetrics;
   truncatedHistory: Array<{ role: string; content: string }>;
   evaluationConfig: EvaluationConfig;
+  acceptanceCriteria?: string[];
+  customRubricQuestions?: PromptRubricQuestion[];
 }
 
 /**
@@ -235,16 +295,26 @@ export interface EvaluateSessionInput {
 export async function evaluateSession(
   input: EvaluateSessionInput,
 ): Promise<EvaluatorResponse> {
-  const { session, iterations, infrastructure, truncatedHistory, evaluationConfig } = input;
+  const { session, iterations, infrastructure, truncatedHistory, evaluationConfig, acceptanceCriteria, customRubricQuestions } = input;
 
-  const systemPrompt = buildEvaluatorSystemPrompt();
+  // Build the combined rubric question list: 5 defaults + any custom ones
+  const allRubricQuestions: Array<{ question: string; is_default: boolean }> = [
+    ...DEFAULT_RUBRIC_QUESTIONS.map((q) => ({ question: q, is_default: true })),
+    ...(customRubricQuestions ?? []).map((q) => ({ question: q.question, is_default: false })),
+  ];
+
+  const systemPrompt = buildEvaluatorSystemPrompt({
+    ...(acceptanceCriteria ? { acceptanceCriteria } : {}),
+    rubricQuestions: allRubricQuestions,
+  });
 
   // Build user context using the session analyzer helper, adapted for the
   // pre-truncated history already provided by the caller.
   const historyText = truncatedHistory
     .map((m) => {
       const role = m.role === 'user' ? 'Candidate' : m.role === 'assistant' ? 'Agent' : m.role;
-      const text = m.content.length > 500 ? m.content.slice(0, 500) + '…' : m.content;
+      const content = m.content ?? '';
+      const text = content.length > 500 ? content.slice(0, 500) + '…' : content;
       return `[${role}]: ${text}`;
     })
     .join('\n\n');
@@ -280,8 +350,63 @@ ${infraLines}
 ${historyText || '(no messages recorded)'}
 
 ---
-Please evaluate the candidate using all 7 rubric dimensions.`;
+Please evaluate the candidate using all 5 rubric dimensions${allRubricQuestions.length ? `, all ${allRubricQuestions.length} rubric questions` : ''}${acceptanceCriteria?.length ? `, and all ${acceptanceCriteria.length} acceptance criteria` : ''}.`;
 
   const rawResponse = await callEvaluatorLLM(evaluationConfig, systemPrompt, userMessage);
-  return parseEvaluatorResponse(rawResponse);
+  const parsed = parseEvaluatorResponse(rawResponse);
+
+  // Tag rubric_scores with is_default based on position in allRubricQuestions
+  if (parsed.rubric_scores?.length) {
+    const defaultQuestionSet = new Set(DEFAULT_RUBRIC_QUESTIONS);
+    parsed.rubric_scores = parsed.rubric_scores.map((rs) => ({
+      ...rs,
+      is_default: defaultQuestionSet.has(rs.question),
+    }));
+  }
+
+  return parsed;
+}
+
+// ─── Reviewer Q&A ──────────────────────────────────────────────────────────────
+
+export interface AskSessionInput {
+  candidateEmail: string;
+  promptId: string;
+  tokensUsed: number;
+  maxTokens: number;
+  interactionsUsed: number;
+  maxInteractions: number;
+  historyText: string;
+  question: string;
+  evaluationConfig: EvaluationConfig;
+}
+
+/**
+ * Answers a free-form reviewer question about a candidate session using the
+ * evaluator LLM, grounded only in the session transcript.
+ */
+export async function askAboutSession(input: AskSessionInput): Promise<string> {
+  const {
+    candidateEmail, promptId, tokensUsed, maxTokens,
+    interactionsUsed, maxInteractions, historyText, question, evaluationConfig,
+  } = input;
+
+  const systemPrompt = `You are an expert technical interview assessor reviewing a software engineering candidate's coding session with an AI agent.
+You have access to the candidate's full conversation transcript.
+Answer the reviewer's question concisely (2–5 sentences) based only on what the session transcript shows.
+Do not speculate beyond the evidence in the transcript. If the transcript doesn't contain enough information to answer, say so clearly.`;
+
+  const userMessage = `## Session Context
+Candidate: ${candidateEmail}
+Prompt: ${promptId}
+Tokens used: ${tokensUsed} / ${maxTokens}
+Interactions: ${interactionsUsed} / ${maxInteractions}
+
+## Conversation Transcript
+${historyText || '(no messages recorded)'}
+
+---
+Reviewer question: ${question}`;
+
+  return callEvaluatorLLM(evaluationConfig, systemPrompt, userMessage, { jsonMode: false });
 }

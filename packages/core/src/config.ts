@@ -4,12 +4,19 @@ import type { AgentConfig, AgentProvider, Constraint } from './types.js';
 
 // ─── Config Types ─────────────────────────────────────────────────────────────
 
+export interface PromptRubricQuestion {
+  question: string;
+  guide?: string;
+}
+
 export interface PromptConfig {
   id: string;
   title: string;
   description?: string;
   difficulty?: string;
   tags?: string[];
+  acceptance_criteria?: string[];
+  rubric?: PromptRubricQuestion[];
 }
 
 export interface DatabaseConfig {
@@ -162,7 +169,28 @@ export function validateConfig(raw: unknown): Config {
     const tags = Array.isArray(rawPrompt.tags)
       ? (rawPrompt.tags as unknown[]).filter((t): t is string => typeof t === 'string')
       : undefined;
-    return { id, title, ...(description ? { description } : {}), ...(difficulty ? { difficulty } : {}), ...(tags ? { tags } : {}) };
+    const acceptance_criteria = Array.isArray(rawPrompt.acceptance_criteria)
+      ? (rawPrompt.acceptance_criteria as unknown[]).filter((c): c is string => typeof c === 'string')
+      : undefined;
+    const rubric = Array.isArray(rawPrompt.rubric)
+      ? (rawPrompt.rubric as unknown[]).flatMap((r) => {
+          if (r === null || typeof r !== 'object' || Array.isArray(r)) return [];
+          const rObj = r as Record<string, unknown>;
+          if (typeof rObj['question'] !== 'string' || !rObj['question'].trim()) return [];
+          const item: PromptRubricQuestion = { question: rObj['question'] };
+          if (typeof rObj['guide'] === 'string') item.guide = rObj['guide'];
+          return [item];
+        })
+      : undefined;
+    return {
+      id,
+      title,
+      ...(description ? { description } : {}),
+      ...(difficulty ? { difficulty } : {}),
+      ...(tags ? { tags } : {}),
+      ...(acceptance_criteria?.length ? { acceptance_criteria } : {}),
+      ...(rubric?.length ? { rubric } : {}),
+    };
   });
 
   // ── database (optional) ──

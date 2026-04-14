@@ -23,6 +23,14 @@ export interface ReviewSessionSummary {
   candidate_email: string;
   status: string;
   created_at: number;
+  closed_at?: number;
+  tokens_used: number;
+  interactions_used: number;
+  constraint: {
+    max_session_tokens: number;
+    max_interactions: number;
+    time_limit_minutes: number;
+  };
   score?: number;
 }
 

@@ -46,7 +46,7 @@ import {
   computeInfrastructureMetrics,
   truncateHistory,
 } from '@lintic/core';
-import { evaluateSession } from '../services/SynchronousEvaluatorService.js';
+import { evaluateSession, askAboutSession } from '../services/SynchronousEvaluatorService.js';
 import { OpenAIAdapter, AnthropicAdapter } from '@lintic/adapters';
 import type { StoredMessage } from '@lintic/core';
 import { requireToken } from '../middleware/auth.js';
@@ -2376,7 +2376,9 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const allStoredMessages = await db.getBranchMessages(sessionId, branch.id, conversation.id, { includeRewound: true });
+    // Fetch all messages for the branch (no conversation filter) so the review
+    // shows the complete history regardless of how many conversations exist.
+    const allStoredMessages = await db.getBranchMessages(sessionId, branch.id, undefined, { includeRewound: true });
     const storedMessages = allStoredMessages.filter((m) => m.rewound_at === null);
     const messages = buildHistory(storedMessages);
     const rawMessages = allStoredMessages.map((m) => ({
@@ -2387,7 +2389,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       created_at: m.created_at,
       rewound_at: m.rewound_at,
     }));
-    const storedEvents = await db.getBranchReplayEvents(sessionId, branch.id, conversation.id);
+    const storedEvents = await db.getBranchReplayEvents(sessionId, branch.id, undefined);
     const workspaceSnapshot = await db.getWorkspaceSnapshot(sessionId, branch.id);
     const recording = {
       session_id: sessionId,
@@ -2453,10 +2455,11 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
     // Truncate history for evaluator context window
     const maxHistory = config.evaluation.max_history_messages ?? 50;
-    const historyForEval = truncateHistory(allMessages, maxHistory).map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const historyForEval = truncateHistory(allMessages, maxHistory)
+      .filter((m) => m.content !== null)
+      .map((m) => ({ role: m.role, content: m.content as string }));
+
+    const promptConfig = config.prompts.find((p) => p.id === session.prompt_id);
 
     const llm_evaluation = await evaluateSession({
       session,
@@ -2464,10 +2467,68 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       infrastructure,
       truncatedHistory: historyForEval,
       evaluationConfig: config.evaluation,
+      ...(promptConfig?.acceptance_criteria ? { acceptanceCriteria: promptConfig.acceptance_criteria } : {}),
+      ...(promptConfig?.rubric ? { customRubricQuestions: promptConfig.rubric } : {}),
     });
 
     const result: EvaluationResult = { infrastructure, llm_evaluation, iterations };
     res.json(result);
+  }));
+
+  // POST /api/sessions/:id/ask — answer a reviewer question about the session using the evaluator LLM
+  router.post('/sessions/:id/ask', asyncRoute(async (req, res) => {
+    const sessionId = req.params['id'] as string;
+    const session = await db.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    if (!config.evaluation) {
+      res.status(422).json({ error: 'No evaluation config found in lintic.yml' });
+      return;
+    }
+
+    const body = req.body as { question?: unknown };
+    const question = typeof body.question === 'string' ? body.question.trim() : '';
+    if (!question) {
+      res.status(400).json({ error: 'question is required' });
+      return;
+    }
+
+    const branch = await db.getMainBranch(sessionId);
+    if (!branch) {
+      res.status(404).json({ error: 'Session branch not found' });
+      return;
+    }
+
+    const maxHistory = config.evaluation.max_history_messages ?? 50;
+    const allMessages = await db.getBranchMessages(sessionId, branch.id, undefined, { includeRewound: false });
+    const historyForContext = truncateHistory(allMessages, maxHistory)
+      .filter((m) => m.content !== null)
+      .map((m) => ({ role: m.role, content: m.content as string }));
+
+    const historyText = historyForContext
+      .map((m) => {
+        const role = m.role === 'user' ? 'Candidate' : m.role === 'assistant' ? 'Agent' : m.role;
+        const text = (m.content?.length ?? 0) > 800 ? m.content.slice(0, 800) + '…' : m.content;
+        return `[${role}]: ${text}`;
+      })
+      .join('\n\n');
+
+    const answer = await askAboutSession({
+      candidateEmail: session.candidate_email,
+      promptId: session.prompt_id,
+      tokensUsed: session.tokens_used,
+      maxTokens: session.constraint.max_session_tokens,
+      interactionsUsed: session.interactions_used,
+      maxInteractions: session.constraint.max_interactions,
+      historyText,
+      question,
+      evaluationConfig: config.evaluation,
+    });
+
+    res.json({ answer });
   }));
 
   // POST /api/sessions/:id/close — mark session as completed

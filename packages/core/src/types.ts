@@ -369,13 +369,11 @@ export interface InfrastructureMetrics {
 }
 
 export type RubricDimension =
-  | 'context_management'
-  | 'problem_decomposition'
-  | 'debugging_collaboration'
-  | 'task_iteration_velocity'
-  | 'security_awareness'
-  | 'strategic_backtracking'
-  | 'domain_knowledge_directiveness';
+  | 'prompt_quality'
+  | 'technical_direction'
+  | 'iterative_problem_solving'
+  | 'debugging_diagnosis'
+  | 'robustness_edge_cases';
 
 export interface EvaluatorDimensionScore {
   dimension: RubricDimension;
@@ -384,9 +382,24 @@ export interface EvaluatorDimensionScore {
   rationale: string;
 }
 
+export interface AcceptanceCriterionResult {
+  criterion: string;
+  score: number;    // 0–100 (percentage, partial credit supported)
+  rationale: string;
+}
+
+export interface RubricQuestionScore {
+  question: string;
+  score: number;    // 0–10
+  rationale: string;
+  is_default: boolean;
+}
+
 export interface EvaluatorResponse {
   scores: EvaluatorDimensionScore[];
   overall_summary: string;
+  acceptance_criteria_results?: AcceptanceCriterionResult[];
+  rubric_scores?: RubricQuestionScore[];
 }
 
 export interface EvaluationResult {

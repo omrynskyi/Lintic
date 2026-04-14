@@ -47,11 +47,21 @@ prompts:
       ## Deliverables
       - A working server on port 3000
       - A README.md explaining how to test the endpoints
+    acceptance_criteria:
+      - "All 5 endpoints are implemented: list books, search books, add book, borrow book, and return book"
+      - "The server starts successfully on port 3000 and responds to requests"
+      - "Double-borrow protection is in place — attempting to borrow an already-borrowed book returns an appropriate error"
+      - "A README.md is present with instructions for testing the API endpoints"
+    rubric:
+      - question: "Did the candidate explicitly choose an HTTP framework (e.g. Express, Fastify, Hono) and communicate that decision to the agent before writing code?"
+      - question: "Did the candidate design the book data structure or schema (fields, types) before asking the agent to implement endpoints?"
+      - question: "Did the candidate test at least one API endpoint (e.g. via curl or a test script) and verify the response before moving on?"
 
 evaluation:
-  provider: cerebras
-  api_key: ${LINTIC_API_KEY}
-  model: qwen-3-235b-a22b-instruct-2507
+  provider: local-openai
+  model: google/gemma-4-26b-a4b
+  base_url: http://127.0.0.1:1234/v1
+  api_key: local-dev
 
 api:
   admin_key: ${LINTIC_ADMIN_KEY}

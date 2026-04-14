@@ -10,7 +10,15 @@ const reviewPayload = {
     prompt_id: 'library-api',
     candidate_email: 'candidate@example.com',
     status: 'completed',
-    created_at: Date.now(),
+    created_at: Date.now() - 20 * 60 * 1000,
+    closed_at: Date.now(),
+    tokens_used: 12000,
+    interactions_used: 8,
+    constraint: {
+      max_session_tokens: 50000,
+      max_interactions: 30,
+      time_limit_minutes: 60,
+    },
   },
   prompt: {
     id: 'library-api',
@@ -54,7 +62,8 @@ describe('ReviewDashboard', () => {
     render(<ReviewDashboard sessionId="sess-1" isDark={false} onToggleTheme={() => undefined} />);
 
     await waitFor(() => expect(screen.getByText('Library API')).toBeInTheDocument());
-    expect(screen.getByText('75%')).toBeInTheDocument();
+    expect(screen.getByText('Token Budget')).toBeInTheDocument();
+    expect(screen.getByText('24%')).toBeInTheDocument(); // 12000/50000
     expect(screen.getByText('Please build it')).toBeInTheDocument();
     expect(screen.getByTestId('code-state-content').textContent).toContain('const app = true;');
   });

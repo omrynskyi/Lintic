@@ -39,6 +39,19 @@ interface EvaluatorDimensionScore {
   rationale: string;
 }
 
+interface AcceptanceCriterionResult {
+  criterion: string;
+  score: number;   // 0–100
+  rationale: string;
+}
+
+interface RubricQuestionScore {
+  question: string;
+  score: number;   // 0–10
+  rationale: string;
+  is_default: boolean;
+}
+
 interface Iteration {
   index: number;
   rewound_at?: number;
@@ -55,6 +68,8 @@ interface EvaluationResult {
   llm_evaluation: {
     scores: EvaluatorDimensionScore[];
     overall_summary: string;
+    acceptance_criteria_results?: AcceptanceCriterionResult[];
+    rubric_scores?: RubricQuestionScore[];
   };
   iterations: Iteration[];
 }
@@ -144,13 +159,11 @@ function parseToolResultBody(body: string): Array<{ name: string; summary: strin
 // ── Infrastructure + LLM Scorecard panel ───────────────────────────────────
 
 const RUBRIC_ICONS: Record<string, React.ElementType> = {
-  context_management: Layers,
-  problem_decomposition: GitBranch,
-  debugging_collaboration: FlaskConical,
-  task_iteration_velocity: Clock,
-  security_awareness: Shield,
-  strategic_backtracking: Navigation,
-  domain_knowledge_directiveness: Database,
+  prompt_quality: MessageSquare,
+  technical_direction: Database,
+  iterative_problem_solving: GitBranch,
+  debugging_diagnosis: FlaskConical,
+  robustness_edge_cases: Shield,
 };
 
 function InfraScoreRow({ metric }: { metric: InfraMetricScore }) {
@@ -205,8 +218,126 @@ function LlmScoreRow({ score }: { score: EvaluatorDimensionScore }) {
   );
 }
 
-function EvaluationPanel({ result }: { result: EvaluationResult }) {
+function AcceptanceCriterionRow({ criterion }: { criterion: AcceptanceCriterionResult }) {
+  const [open, setOpen] = useState(false);
+  const color = criterion.score >= 80 ? '#10B981' : criterion.score >= 50 ? '#F59E0B' : '#EF4444';
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <div className="h-[4px] w-16 shrink-0 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+          <div className="h-full rounded-full" style={{ width: `${criterion.score}%`, background: color }} />
+        </div>
+        <span className="flex-1 text-[12px] font-medium truncate" style={{ color: 'var(--color-text-main)' }}>
+          {criterion.criterion}
+        </span>
+        <span className="shrink-0 text-[13px] font-bold tabular-nums" style={{ color }}>
+          {criterion.score}<span className="text-[10px] opacity-50">%</span>
+        </span>
+        <ChevronRight size={12} style={{ color: 'var(--color-text-dimmest)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 120ms ease' }} />
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-0 text-[12px] leading-relaxed opacity-70" style={{ color: 'var(--color-text-dim)' }}>
+          {criterion.rationale}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RubricQuestionRow({ item }: { item: RubricQuestionScore }) {
+  const [open, setOpen] = useState(false);
+  const color = item.score >= 7 ? '#10B981' : item.score >= 4 ? '#F59E0B' : '#EF4444';
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <BarChart2 size={13} style={{ color, flexShrink: 0 }} />
+        <span className="flex-1 text-[12px] font-medium truncate" style={{ color: 'var(--color-text-main)' }}>
+          {item.question}
+        </span>
+        <span className="shrink-0 text-[14px] font-bold tabular-nums" style={{ color }}>
+          {item.score.toFixed(1)}<span className="text-[10px] opacity-50">/10</span>
+        </span>
+        <ChevronRight size={12} style={{ color: 'var(--color-text-dimmest)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 120ms ease' }} />
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-0 text-[12px] leading-relaxed opacity-70" style={{ color: 'var(--color-text-dim)' }}>
+          {item.rationale}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollapsibleSection({ icon: Icon, label, children, defaultOpen = true }: {
+  icon: React.ElementType;
+  label: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mb-2 flex w-full items-center gap-2 text-left"
+      >
+        <Icon size={13} style={{ color: 'var(--color-text-dimmest)' }} />
+        <span className="flex-1 text-[11px] font-bold uppercase tracking-wider opacity-40" style={{ color: 'var(--color-text-dim)' }}>
+          {label}
+        </span>
+        <ChevronRight size={11} style={{ color: 'var(--color-text-dimmest)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 120ms ease', opacity: 0.4 }} />
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+interface QAEntry {
+  question: string;
+  answer: string | null; // null while loading
+}
+
+function EvaluationPanel({ result, sessionId, apiBase }: {
+  result: EvaluationResult;
+  sessionId: string;
+  apiBase: string;
+}) {
+  const [showInfra, setShowInfra] = useState(false);
+  const [qaEntries, setQaEntries] = useState<QAEntry[]>([]);
+  const [qaInput, setQaInput] = useState('');
+  const [qaLoading, setQaLoading] = useState(false);
   const rewindCount = result.iterations.filter((it) => it.rewound_at !== undefined).length;
+
+  const handleAsk = async () => {
+    const q = qaInput.trim();
+    if (!q || qaLoading) return;
+    setQaInput('');
+    setQaLoading(true);
+    setQaEntries((prev) => [...prev, { question: q, answer: null }]);
+    try {
+      const resp = await fetch(`${apiBase}/api/sessions/${sessionId}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q }),
+      });
+      const data = await resp.json() as { answer?: string; error?: string };
+      const answer = resp.ok ? (data.answer ?? '') : (data.error ?? 'Error getting answer');
+      setQaEntries((prev) => prev.map((e) => e.question === q && e.answer === null ? { ...e, answer } : e));
+    } catch {
+      setQaEntries((prev) => prev.map((e) => e.question === q && e.answer === null ? { ...e, answer: 'Failed to reach server' } : e));
+    } finally {
+      setQaLoading(false);
+    }
+  };
   const infraScores = [
     result.infrastructure.caching_effectiveness,
     result.infrastructure.error_handling_coverage,
@@ -215,16 +346,14 @@ function EvaluationPanel({ result }: { result: EvaluationResult }) {
   return (
     <div className="flex flex-col gap-4">
       {/* Summary */}
-      <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(56,135,206,0.06)', borderLeft: '3px solid rgba(56,135,206,0.4)' }}>
-        <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-dim)' }}>
-          {result.llm_evaluation.overall_summary}
-        </p>
-      </div>
+      <p className="text-[12px] leading-relaxed italic" style={{ color: 'var(--color-text-dim)' }}>
+        {result.llm_evaluation.overall_summary}
+      </p>
 
       {/* Iterations */}
       <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--color-text-dimmest)' }}>
         <GitBranch size={12} />
-        <span>{result.iterations.length} iterations</span>
+        <span>{result.iterations.length} iteration{result.iterations.length !== 1 ? 's' : ''}</span>
         {rewindCount > 0 && (
           <span className="rounded-xl px-1.5 py-0.5" style={{ background: 'rgba(245,158,11,0.1)', color: '#F59E0B' }}>
             {rewindCount} rewound
@@ -232,146 +361,260 @@ function EvaluationPanel({ result }: { result: EvaluationResult }) {
         )}
       </div>
 
-      {/* Infrastructure */}
-      <div>
-        <div className="mb-2 flex items-center gap-2">
-          <Database size={13} style={{ color: 'var(--color-text-dimmest)' }} />
-          <span className="text-[11px] font-bold uppercase tracking-wider opacity-40" style={{ color: 'var(--color-text-dim)' }}>
-            Infrastructure
-          </span>
-        </div>
-        <div className="flex flex-col divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-          {infraScores.map((m) => <InfraScoreRow key={m.name} metric={m} />)}
-        </div>
-      </div>
-
       {/* LLM Dimensions */}
-      <div>
-        <div className="mb-2 flex items-center gap-2">
-          <FlaskConical size={13} style={{ color: 'var(--color-text-dimmest)' }} />
-          <span className="text-[11px] font-bold uppercase tracking-wider opacity-40" style={{ color: 'var(--color-text-dim)' }}>
-            Collaboration Quality
-          </span>
-        </div>
+      <CollapsibleSection icon={FlaskConical} label="Collaboration Quality">
         <div className="flex flex-col gap-1">
           {result.llm_evaluation.scores.map((s) => <LlmScoreRow key={s.dimension} score={s} />)}
+        </div>
+      </CollapsibleSection>
+
+      {/* Acceptance Criteria */}
+      {result.llm_evaluation.acceptance_criteria_results && result.llm_evaluation.acceptance_criteria_results.length > 0 && (() => {
+        const avg = Math.round(result.llm_evaluation.acceptance_criteria_results.reduce((sum, c) => sum + c.score, 0) / result.llm_evaluation.acceptance_criteria_results.length);
+        const avgColor = avg >= 80 ? '#10B981' : avg >= 50 ? '#F59E0B' : '#EF4444';
+        return (
+          <CollapsibleSection icon={Activity} label={`Acceptance Criteria · avg ${avg}%`}>
+            <div className="flex flex-col gap-1">
+              {result.llm_evaluation.acceptance_criteria_results.map((c, i) => (
+                <AcceptanceCriterionRow key={i} criterion={c} />
+              ))}
+            </div>
+          </CollapsibleSection>
+        );
+      })()}
+
+      {/* Rubric Questions */}
+      {result.llm_evaluation.rubric_scores && result.llm_evaluation.rubric_scores.length > 0 && (() => {
+        const defaultQuestions = result.llm_evaluation.rubric_scores!.filter((q) => q.is_default);
+        const customQuestions = result.llm_evaluation.rubric_scores!.filter((q) => !q.is_default);
+        return (
+          <CollapsibleSection icon={Info} label="Rubric Questions">
+            <>
+              {defaultQuestions.length > 0 && (
+                <div className="mb-3">
+                  <div className="mb-1.5 text-[10px] uppercase tracking-wider opacity-30" style={{ color: 'var(--color-text-dim)' }}>
+                    Default
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {defaultQuestions.map((q, i) => <RubricQuestionRow key={`default-${i}`} item={q} />)}
+                  </div>
+                </div>
+              )}
+              {customQuestions.length > 0 && (
+                <div>
+                  <div className="mb-1.5 text-[10px] uppercase tracking-wider opacity-30" style={{ color: 'var(--color-text-dim)' }}>
+                    Custom
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {customQuestions.map((q, i) => <RubricQuestionRow key={`custom-${i}`} item={q} />)}
+                  </div>
+                </div>
+              )}
+            </>
+          </CollapsibleSection>
+        );
+      })()}
+
+      {/* Infrastructure — hidden by default */}
+      {showInfra ? (
+        <CollapsibleSection icon={Database} label="Infrastructure" defaultOpen>
+          <div className="flex flex-col divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+            {infraScores.map((m) => <InfraScoreRow key={m.name} metric={m} />)}
+          </div>
+        </CollapsibleSection>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowInfra(true)}
+          className="text-left text-[11px] opacity-30 hover:opacity-60 transition-opacity"
+          style={{ color: 'var(--color-text-dim)' }}
+        >
+          Show infrastructure metrics
+        </button>
+      )}
+
+      {/* Reviewer Q&A */}
+      <div className="pt-1">
+        <div className="mb-2 flex items-center gap-2">
+          <MessageSquare size={13} style={{ color: 'var(--color-text-dimmest)' }} />
+          <span className="text-[11px] font-bold uppercase tracking-wider opacity-40" style={{ color: 'var(--color-text-dim)' }}>
+            Ask about this candidate
+          </span>
+        </div>
+
+        {/* Previous Q&A pairs */}
+        {qaEntries.length > 0 && (
+          <div className="mb-3 flex flex-col gap-3">
+            {qaEntries.map((entry, i) => (
+              <div key={i} className="flex flex-col gap-1">
+                <div className="flex items-start gap-2">
+                  <User size={11} className="mt-0.5 shrink-0 opacity-40" style={{ color: 'var(--color-text-dim)' }} />
+                  <span className="text-[12px] font-medium" style={{ color: 'var(--color-text-main)' }}>
+                    {entry.question}
+                  </span>
+                </div>
+                <div className="flex items-start gap-2 pl-1">
+                  <FlaskConical size={11} className="mt-0.5 shrink-0 opacity-40" style={{ color: 'var(--color-brand)' }} />
+                  {entry.answer === null ? (
+                    <span className="flex items-center gap-1.5 text-[12px] opacity-40" style={{ color: 'var(--color-text-dim)' }}>
+                      <Loader size={11} className="animate-spin" />
+                      Thinking…
+                    </span>
+                  ) : (
+                    <span className="text-[12px] leading-relaxed" style={{ color: 'var(--color-text-dim)' }}>
+                      {entry.answer}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Input */}
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <input
+            type="text"
+            value={qaInput}
+            onChange={(e) => setQaInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleAsk(); }}
+            placeholder="Did the candidate plan before coding?"
+            disabled={qaLoading}
+            className="flex-1 bg-transparent text-[12px] outline-none placeholder:opacity-25 disabled:opacity-40"
+            style={{ color: 'var(--color-text-main)' }}
+          />
+          <button
+            type="button"
+            onClick={() => void handleAsk()}
+            disabled={!qaInput.trim() || qaLoading}
+            className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-opacity disabled:opacity-30"
+            style={{ background: 'var(--color-brand)', color: '#fff' }}
+          >
+            Ask
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Metrics strip ───────────────────────────────────────────────────────────
+// ── Session Stats strip ──────────────────────────────────────────────────────
 
-const METRIC_COLORS = [
-  '#3887ce', // orange
-  '#3B82F6', // blue
-  '#10B981', // green
-  '#F59E0B', // amber
-  '#EF4444', // red
-  '#8B5CF6', // purple
-];
-
-function getAbbrev(label: string): string {
-  return label
-    .split(/\s+/)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('')
-    .slice(0, 2);
+interface StatCard {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  detail: string;
+  pct: number;   // 0–100 for the progress bar, -1 to hide bar
+  color: string;
 }
 
-const METRIC_DESCRIPTIONS: Record<string, string> = {
-  'Iteration Efficiency': 'Measures the ratio of productive steps to total steps. Higher means more focused work.',
-  'Token Efficiency': 'Measures result quality relative to LLM token consumption. Higher means better use of AI resources.',
-  'Independence Ratio': 'Percentage of code and logic driven by the candidate rather than automated agent suggestions.',
-  'Recovery Score': 'Capability to identify, debug, and fix errors encountered during the development process.',
-};
+function buildSessionStats(session: ReviewDataPayload['session']): StatCard[] {
+  const tokenPct = session.constraint.max_session_tokens > 0
+    ? Math.round((session.tokens_used / session.constraint.max_session_tokens) * 100)
+    : 0;
+  const tokenColor = tokenPct >= 80 ? '#EF4444' : tokenPct >= 50 ? '#F59E0B' : '#10B981';
 
-const METRIC_ICONS: Record<string, React.ElementType> = {
-  'Iteration Efficiency': Zap,
-  'Token Efficiency': Cpu,
-  'Independence Ratio': User,
-  'Recovery Score': LifeBuoy,
-};
+  const interactionPct = session.constraint.max_interactions > 0
+    ? Math.round((session.interactions_used / session.constraint.max_interactions) * 100)
+    : 0;
+  const interactionColor = interactionPct >= 80 ? '#EF4444' : interactionPct >= 50 ? '#F59E0B' : '#10B981';
 
-function MetricsStrip({ metrics, expanded }: { metrics: ReviewMetric[]; expanded: boolean }) {
-  if (metrics.length === 0) return null;
+  const startMs = session.created_at;
+  const endMs = session.closed_at ?? Date.now();
+  const durationMs = Math.max(0, endMs - startMs);
+  const durationMin = Math.round(durationMs / 60000);
+  const timeLimitMin = session.constraint.time_limit_minutes;
+  const timePct = timeLimitMin > 0 ? Math.min(100, Math.round((durationMin / timeLimitMin) * 100)) : 0;
+  const timeColor = timePct >= 90 ? '#EF4444' : timePct >= 60 ? '#F59E0B' : '#3B82F6';
+  const durationStr = durationMin >= 60
+    ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`
+    : `${durationMin}m`;
+
+  const hasScore = session.score != null;
+  const scorePct = hasScore ? Math.round(session.score! * 100) : 0;
+  const scoreColor = scorePct >= 70 ? '#10B981' : scorePct >= 40 ? '#F59E0B' : '#EF4444';
+
+  return [
+    {
+      icon: Zap,
+      label: 'Token Budget',
+      value: `${tokenPct}%`,
+      detail: `${session.tokens_used.toLocaleString()} / ${session.constraint.max_session_tokens.toLocaleString()} tokens`,
+      pct: tokenPct,
+      color: tokenColor,
+    },
+    {
+      icon: MessageSquare,
+      label: 'Interactions',
+      value: `${interactionPct}%`,
+      detail: `${session.interactions_used} / ${session.constraint.max_interactions} messages`,
+      pct: interactionPct,
+      color: interactionColor,
+    },
+    {
+      icon: Clock,
+      label: 'Time Used',
+      value: durationStr,
+      detail: `of ${timeLimitMin} min limit`,
+      pct: timePct,
+      color: timeColor,
+    },
+    {
+      icon: Activity,
+      label: 'Score',
+      value: hasScore ? `${scorePct}%` : '—',
+      detail: hasScore ? 'composite score' : 'run evaluation to score',
+      pct: hasScore ? scorePct : -1,
+      color: hasScore ? scoreColor : 'var(--color-text-dimmest)',
+    },
+  ];
+}
+
+function SessionStatsStrip({ session }: { session: ReviewDataPayload['session'] }) {
+  const stats = buildSessionStats(session);
   return (
     <div
       className="flex shrink-0 gap-[5px] p-[5px]"
       style={{ background: 'var(--color-bg-app)' }}
     >
-      {metrics.map((metric, i) => {
-        const color = METRIC_COLORS[i % METRIC_COLORS.length] ?? '#3887ce';
-        const Icon = METRIC_ICONS[metric.label] || Activity;
-        const pct = Math.round(metric.score * 100);
-        const description = METRIC_DESCRIPTIONS[metric.label];
-
+      {stats.map((stat) => {
+        const Icon = stat.icon;
         return (
           <div
-            key={metric.name}
-            className="flex min-w-0 flex-1 items-start gap-2.5 px-4 py-3 rounded-xl transition-all duration-300"
+            key={stat.label}
+            className="flex min-w-0 flex-1 items-start gap-2.5 px-4 py-3 rounded-xl"
             style={{ background: 'var(--color-bg-panel)' }}
           >
-            {/* Icon badge */}
             <div
               className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: `${color}1a`, color }}
+              style={{ background: `${stat.color}1a`, color: stat.color }}
             >
               <Icon size={14} strokeWidth={2.5} />
             </div>
-            {/* Label + details + bar */}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-1">
-                <span
-                  className="truncate text-[12px] font-semibold"
-                  style={{ color: 'var(--color-text-main)' }}
-                >
-                  {metric.label}
+                <span className="truncate text-[12px] font-semibold" style={{ color: 'var(--color-text-main)' }}>
+                  {stat.label}
                 </span>
-                <span
-                  className="shrink-0 text-[13px] font-bold tabular-nums"
-                  style={{ color }}
-                >
-                  {pct}%
+                <span className="shrink-0 text-[13px] font-bold tabular-nums" style={{ color: stat.color }}>
+                  {stat.value}
                 </span>
               </div>
-
-              <AnimatePresence initial={false}>
-                {expanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0, marginTop: 0 }}
-                    animate={{ height: 'auto', opacity: 1, marginTop: 4 }}
-                    exit={{ height: 0, opacity: 0, marginTop: 0 }}
-                    transition={{ duration: 0.25, ease: 'easeInOut' }}
-                    className="overflow-hidden"
-                  >
-                    <div className="flex flex-col gap-1.5 pb-1">
-                      {description && (
-                        <p className="text-[11px] leading-snug opacity-40">
-                          {description}
-                        </p>
-                      )}
-                      {metric.details && (
-                        <p className="text-[11px] font-medium leading-tight opacity-80" style={{ color: 'var(--color-text-dim)' }}>
-                          {metric.details}
-                        </p>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Progress bar */}
-              <div
-                className="mt-2 h-[3px] w-full overflow-hidden rounded-full"
-                style={{ background: 'rgba(255,255,255,0.06)' }}
-              >
+              <p className="mt-0.5 text-[11px] leading-snug opacity-40 truncate">
+                {stat.detail}
+              </p>
+              {stat.pct >= 0 && (
                 <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${pct}%`, background: color }}
-                />
-              </div>
+                  className="mt-2 h-[3px] w-full overflow-hidden rounded-full"
+                  style={{ background: 'rgba(255,255,255,0.06)' }}
+                >
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${stat.pct}%`, background: stat.color }}
+                  />
+                </div>
+              )}
             </div>
           </div>
         );
@@ -654,12 +897,21 @@ export function ReviewDashboard({
   const [loading, setLoading] = useState(true);
   const [selectedEventIndex, setSelectedEventIndex] = useState(0);
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
-  const [showMetricDetails, setShowMetricDetails] = useState(false);
   const [evaluationResult, setEvaluationResult] = useState<EvaluationResult | null>(null);
   const [evaluating, setEvaluating] = useState(false);
   const [evaluationError, setEvaluationError] = useState<string | null>(null);
   const [showEvaluation, setShowEvaluation] = useState(false);
+  const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
   const [expandedRewindBlocks, setExpandedRewindBlocks] = useState<Set<string>>(new Set());
+
+  // Reset branch and evaluation state when the session changes
+  useEffect(() => {
+    setActiveBranchId(null);
+    setData(null);
+    setEvaluationResult(null);
+    setShowEvaluation(false);
+    setAnalysisCollapsed(false);
+  }, [sessionId]);
   const conversationRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   useEffect(() => {
@@ -672,6 +924,11 @@ export function ReviewDashboard({
         const branchQuery = activeBranchId ? `?branch_id=${encodeURIComponent(activeBranchId)}` : '';
         const response = await fetch(`${apiBase}/api/review/${sessionId}${branchQuery}`);
         if (!response.ok) {
+          // Stale branch ID from a previous session → reset and retry without it
+          if (response.status === 404 && activeBranchId) {
+            if (!cancelled) setActiveBranchId(null);
+            return;
+          }
           const body = await response.json() as { error?: string };
           throw new Error(body.error ?? `HTTP ${response.status}`);
         }
@@ -889,16 +1146,6 @@ export function ReviewDashboard({
               : <FlaskConical size={14} />}
             Analyze Session
           </button>
-          <button
-            type="button"
-            onClick={() => setShowMetricDetails(!showMetricDetails)}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-white/5"
-            style={{ color: showMetricDetails ? 'var(--color-brand)' : 'var(--color-text-muted)' }}
-            title="Show metric details"
-          >
-            <Info size={14} />
-            Details
-          </button>
           {branchItems.length > 0 ? (
             <DropdownMenu
               label="Branch selector"
@@ -938,45 +1185,56 @@ export function ReviewDashboard({
         </div>
       </header>
 
-      {/* ── Metrics strip (Top) ── */}
-      <MetricsStrip metrics={data.metrics} expanded={showMetricDetails} />
+      {/* ── Session stats strip (Top) ── */}
+      <SessionStatsStrip session={data.session} />
 
       {/* ── Evaluation Panel ── */}
       {showEvaluation && (
         <div
-          className="shrink-0 overflow-y-auto max-h-[40vh] px-[5px] pb-[5px]"
+          className="shrink-0 px-[5px] pb-[5px]"
           style={{ background: 'var(--color-bg-app)' }}
         >
-          <div className="rounded-xl p-4" style={{ background: 'var(--color-bg-panel)' }}>
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FlaskConical size={14} style={{ color: 'var(--color-brand)' }} />
-                <span className="text-[12px] font-bold" style={{ color: 'var(--color-text-dim)' }}>
-                  Session Analysis
-                </span>
+          <div className="rounded-xl" style={{ background: 'var(--color-bg-panel)' }}>
+            {/* Panel header — always visible, click to collapse */}
+            <button
+              type="button"
+              onClick={() => setAnalysisCollapsed((v) => !v)}
+              className="flex w-full items-center gap-2 px-4 py-3 text-left"
+            >
+              <FlaskConical size={14} style={{ color: 'var(--color-brand)' }} />
+              <span className="flex-1 text-[12px] font-bold" style={{ color: 'var(--color-text-dim)' }}>
+                Session Analysis
+              </span>
+              {evaluating && <Loader size={13} className="animate-spin opacity-50" />}
+              <ChevronDown
+                size={13}
+                style={{
+                  color: 'var(--color-text-dimmest)',
+                  transform: analysisCollapsed ? 'rotate(0deg)' : 'rotate(180deg)',
+                  transition: 'transform 160ms ease',
+                  opacity: 0.5,
+                }}
+              />
+            </button>
+
+            {/* Panel body */}
+            {!analysisCollapsed && (
+              <div className="overflow-y-auto max-h-[38vh] px-4 pb-4">
+                {evaluating && (
+                  <div className="flex items-center gap-2 py-3 text-[12px]" style={{ color: 'var(--color-text-dimmest)' }}>
+                    <Loader size={14} className="animate-spin" />
+                    Running LLM evaluation…
+                  </div>
+                )}
+                {evaluationError && !evaluating && (
+                  <div className="text-[12px] py-2" style={{ color: 'var(--color-status-error)' }}>
+                    {evaluationError}
+                  </div>
+                )}
+                {evaluationResult && !evaluating && (
+                  <EvaluationPanel result={evaluationResult} sessionId={sessionId} apiBase={apiBase} />
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => setShowEvaluation(false)}
-                className="text-[11px] opacity-40 hover:opacity-80 transition-opacity"
-                style={{ color: 'var(--color-text-dim)' }}
-              >
-                dismiss
-              </button>
-            </div>
-            {evaluating && (
-              <div className="flex items-center gap-2 py-3 text-[12px]" style={{ color: 'var(--color-text-dimmest)' }}>
-                <Loader size={14} className="animate-spin" />
-                Running LLM evaluation…
-              </div>
-            )}
-            {evaluationError && !evaluating && (
-              <div className="text-[12px] py-2" style={{ color: 'var(--color-status-error)' }}>
-                {evaluationError}
-              </div>
-            )}
-            {evaluationResult && !evaluating && (
-              <EvaluationPanel result={evaluationResult} />
             )}
           </div>
         </div>
