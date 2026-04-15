@@ -299,6 +299,58 @@ export interface AdminPromptsResponse {
   prompts: PromptSummary[]; // Full prompt config including acceptance_criteria and rubric
 }
 
+export type SessionReviewStatus = 'unviewed' | 'viewed' | 'reviewed';
+
+export interface SessionReviewState {
+  session_id: string;
+  status: SessionReviewStatus;
+  first_viewed_at?: number;
+  last_viewed_at?: number;
+  reviewed_at?: number;
+  updated_at: number;
+}
+
+export interface SessionComparisonAnalysis {
+  session_id: string;
+  prompt_id: string;
+  schema_version: string;
+  comparison_score: number; // 0-100
+  recommendation: string;
+  strengths: string[];
+  risks: string[];
+  summary: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface AdminReviewRow {
+  session_id: string;
+  candidate_email: string;
+  prompt_id: string;
+  prompt_title: string;
+  completed_at: number;
+  session_score?: number;
+  review_status: SessionReviewStatus;
+  comparison_status: 'pending' | 'ready';
+  comparison_score?: number;
+}
+
+export interface AdminReviewsResponse {
+  reviews: AdminReviewRow[];
+}
+
+export interface AdminComparisonRow extends AdminReviewRow {
+  recommendation?: string;
+  strengths: string[];
+  risks: string[];
+  summary?: string;
+}
+
+export interface AdminComparisonResponse {
+  prompt?: PromptSummary | null;
+  rows: AdminComparisonRow[];
+}
+
 // ─── Metrics ──────────────────────────────────────────────────────────────────
 
 export interface MetricResult {
@@ -422,25 +474,4 @@ export interface SessionEvaluation {
   result: EvaluationResult;
   created_at: number;
   updated_at: number;
-}
-
-// ─── Candidate Comparison Dashboard ──────────────────────────────────────────
-
-export interface ComparisonSessionRow {
-  session_id: string;
-  candidate_email: string;
-  prompt_id: string;
-  prompt_title: string;
-  date: number;              // Unix ms (closed_at ?? created_at)
-  composite_score: number | null;
-  ie: number | null;         // iteration_efficiency 0–1
-  te: number | null;         // token_efficiency 0–1
-  rs: number | null;         // recovery_score 0–1
-  ir: number | null;         // independence_ratio 0–1
-  pq: number | null;         // problem_decomposition (LLM eval) — null until persisted
-  cc: number | null;         // context_management (LLM eval) — null until persisted
-}
-
-export interface ComparisonResponse {
-  sessions: ComparisonSessionRow[];
 }

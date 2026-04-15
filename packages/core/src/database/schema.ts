@@ -38,6 +38,31 @@ export const SQLITE_SCHEMA = `
     updated_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS session_review_states (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id),
+    status TEXT NOT NULL,
+    first_viewed_at INTEGER,
+    last_viewed_at INTEGER,
+    reviewed_at INTEGER,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS session_comparison_analyses (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id),
+    prompt_id TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    comparison_score REAL NOT NULL,
+    recommendation TEXT NOT NULL,
+    strengths_json TEXT NOT NULL,
+    risks_json TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_session_comparison_analyses_prompt
+    ON session_comparison_analyses(prompt_id, comparison_score DESC, updated_at DESC);
+
   CREATE TABLE IF NOT EXISTS replay_events (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL REFERENCES sessions(id),
@@ -190,6 +215,28 @@ export const POSTGRES_SCHEMA_STATEMENTS = [
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS session_review_states (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id),
+    status TEXT NOT NULL,
+    first_viewed_at BIGINT,
+    last_viewed_at BIGINT,
+    reviewed_at BIGINT,
+    updated_at BIGINT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS session_comparison_analyses (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id),
+    prompt_id TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    comparison_score DOUBLE PRECISION NOT NULL,
+    recommendation TEXT NOT NULL,
+    strengths_json TEXT NOT NULL,
+    risks_json TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_session_comparison_analyses_prompt
+    ON session_comparison_analyses(prompt_id, comparison_score DESC, updated_at DESC)`,
   `CREATE TABLE IF NOT EXISTS replay_events (
     id BIGSERIAL PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id),

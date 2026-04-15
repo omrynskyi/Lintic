@@ -11,8 +11,11 @@ import type {
   MessageRole,
   ReplayEventType,
   Session,
+  SessionComparisonAnalysis,
   SessionEvaluation,
   SessionBranch,
+  SessionReviewState,
+  SessionReviewStatus,
   SessionStatus,
   WorkspaceSnapshot,
   WorkspaceSnapshotKind,
@@ -26,6 +29,7 @@ import type {
   CreatePromptConfig,
   CreateSessionConfig,
   DatabaseAdapter,
+  SessionComparisonAnalysisInput,
   StoredMessage,
   StoredReplayEvent,
   UpdateConversationConfig,
@@ -38,7 +42,9 @@ import {
   normalizeContextAttachmentRow,
   normalizeContextResourceRow,
   normalizeConversationRow,
+  normalizeSessionComparisonAnalysisRow,
   normalizeSessionEvaluationRow,
+  normalizeSessionReviewStateRow,
   normalizeSessionBranchRow,
   normalizeSessionRow,
   normalizeWorkspaceSnapshotRow,
@@ -48,7 +54,9 @@ import {
   rowToConversation,
   rowToPromptConfig,
   rowToSession,
+  rowToSessionComparisonAnalysis,
   rowToSessionEvaluation,
+  rowToSessionReviewState,
   rowToSessionBranch,
   rowToWorkspaceSnapshot,
 } from './mapping.js';
@@ -60,7 +68,9 @@ import type {
   MessageRow,
   PromptRow,
   ReplayEventRow,
+  SessionComparisonAnalysisRow,
   SessionEvaluationRow,
+  SessionReviewStateRow,
   SessionBranchRow,
   SessionRow,
   WorkspaceSnapshotRow,
@@ -214,6 +224,124 @@ export class PostgresAdapter implements DatabaseAdapter {
       session_id: sessionId,
       score,
       result,
+      created_at: createdAt,
+      updated_at: now,
+    };
+  }
+
+  async getSessionReviewState(sessionId: string): Promise<SessionReviewState | null> {
+    await this.initialize();
+    const result = await this.pool.query<SessionReviewStateRow>(
+      'SELECT * FROM session_review_states WHERE session_id = $1',
+      [sessionId],
+    );
+    return result.rows[0]
+      ? rowToSessionReviewState(normalizeSessionReviewStateRow(result.rows[0]))
+      : null;
+  }
+
+  async listSessionReviewStates(): Promise<SessionReviewState[]> {
+    await this.initialize();
+    const result = await this.pool.query<SessionReviewStateRow>(
+      'SELECT * FROM session_review_states ORDER BY updated_at DESC',
+    );
+    return result.rows.map((row) => rowToSessionReviewState(normalizeSessionReviewStateRow(row)));
+  }
+
+  async upsertSessionReviewState(sessionId: string, status: SessionReviewStatus): Promise<SessionReviewState> {
+    await this.initialize();
+    const now = Date.now();
+    const existing = await this.pool.query<SessionReviewStateRow>(
+      'SELECT * FROM session_review_states WHERE session_id = $1',
+      [sessionId],
+    );
+    const current = existing.rows[0] ? normalizeSessionReviewStateRow(existing.rows[0]) : null;
+    const firstViewedAt = status === 'unviewed' ? null : current?.first_viewed_at ?? now;
+    const lastViewedAt = status === 'unviewed' ? null : now;
+    const reviewedAt = status === 'reviewed' ? now : null;
+
+    await this.pool.query(
+      `INSERT INTO session_review_states (
+        session_id, status, first_viewed_at, last_viewed_at, reviewed_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (session_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        first_viewed_at = EXCLUDED.first_viewed_at,
+        last_viewed_at = EXCLUDED.last_viewed_at,
+        reviewed_at = EXCLUDED.reviewed_at,
+        updated_at = EXCLUDED.updated_at`,
+      [sessionId, status, firstViewedAt, lastViewedAt, reviewedAt, now],
+    );
+
+    return {
+      session_id: sessionId,
+      status,
+      updated_at: now,
+      ...(firstViewedAt !== null ? { first_viewed_at: firstViewedAt } : {}),
+      ...(lastViewedAt !== null ? { last_viewed_at: lastViewedAt } : {}),
+      ...(reviewedAt !== null ? { reviewed_at: reviewedAt } : {}),
+    };
+  }
+
+  async getSessionComparisonAnalysis(sessionId: string): Promise<SessionComparisonAnalysis | null> {
+    await this.initialize();
+    const result = await this.pool.query<SessionComparisonAnalysisRow>(
+      'SELECT * FROM session_comparison_analyses WHERE session_id = $1',
+      [sessionId],
+    );
+    return result.rows[0]
+      ? rowToSessionComparisonAnalysis(normalizeSessionComparisonAnalysisRow(result.rows[0]))
+      : null;
+  }
+
+  async listSessionComparisonAnalysesByPrompt(promptId: string): Promise<SessionComparisonAnalysis[]> {
+    await this.initialize();
+    const result = await this.pool.query<SessionComparisonAnalysisRow>(
+      'SELECT * FROM session_comparison_analyses WHERE prompt_id = $1 ORDER BY comparison_score DESC, updated_at DESC',
+      [promptId],
+    );
+    return result.rows.map((row) => rowToSessionComparisonAnalysis(normalizeSessionComparisonAnalysisRow(row)));
+  }
+
+  async upsertSessionComparisonAnalysis(input: SessionComparisonAnalysisInput): Promise<SessionComparisonAnalysis> {
+    await this.initialize();
+    const now = Date.now();
+    const existing = await this.pool.query<{ created_at: string | number }>(
+      'SELECT created_at FROM session_comparison_analyses WHERE session_id = $1',
+      [input.session_id],
+    );
+    const createdAt = existing.rows[0] ? Number(existing.rows[0].created_at) : now;
+
+    await this.pool.query(
+      `INSERT INTO session_comparison_analyses (
+        session_id, prompt_id, schema_version, comparison_score, recommendation,
+        strengths_json, risks_json, summary, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (session_id) DO UPDATE SET
+        prompt_id = EXCLUDED.prompt_id,
+        schema_version = EXCLUDED.schema_version,
+        comparison_score = EXCLUDED.comparison_score,
+        recommendation = EXCLUDED.recommendation,
+        strengths_json = EXCLUDED.strengths_json,
+        risks_json = EXCLUDED.risks_json,
+        summary = EXCLUDED.summary,
+        updated_at = EXCLUDED.updated_at`,
+      [
+        input.session_id,
+        input.prompt_id,
+        input.schema_version,
+        input.comparison_score,
+        input.recommendation,
+        JSON.stringify(input.strengths),
+        JSON.stringify(input.risks),
+        input.summary,
+        createdAt,
+        now,
+      ],
+    );
+
+    return {
+      ...input,
       created_at: createdAt,
       updated_at: now,
     };

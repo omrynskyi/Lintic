@@ -22,7 +22,10 @@ import type {
   ReplayEventType,
   Config,
   Constraint,
+  SessionComparisonAnalysis,
   SessionBranch,
+  SessionReviewState,
+  SessionReviewStatus,
   UpdatePromptConfig,
   WorkspaceSnapshot,
   WorkspaceSnapshotKind,
@@ -57,6 +60,8 @@ class FakeDb implements DatabaseAdapter {
   assessmentLinks = new Map<string, AssessmentLinkRecord>();
   usedAssessmentLinks = new Map<string, string>();
   sessionEvaluations = new Map<string, SessionEvaluation>();
+  sessionReviewStates = new Map<string, SessionReviewState>();
+  sessionComparisonAnalyses = new Map<string, SessionComparisonAnalysis>();
   turnSequences = new Map<string, number>();
   nextMsgId = 1;
   nextReplayId = 1;
@@ -174,6 +179,59 @@ class FakeDb implements DatabaseAdapter {
       this.sessions.set(sessionId, { ...session, score });
     }
     return Promise.resolve(evaluation);
+  }
+
+  getSessionReviewState(sessionId: string): Promise<SessionReviewState | null> {
+    return Promise.resolve(this.sessionReviewStates.get(sessionId) ?? null);
+  }
+
+  listSessionReviewStates(): Promise<SessionReviewState[]> {
+    return Promise.resolve(Array.from(this.sessionReviewStates.values()));
+  }
+
+  upsertSessionReviewState(sessionId: string, status: SessionReviewStatus): Promise<SessionReviewState> {
+    const now = Date.now();
+    const existing = this.sessionReviewStates.get(sessionId);
+    const next: SessionReviewState = {
+      session_id: sessionId,
+      status,
+      updated_at: now,
+      ...(status !== 'unviewed' ? { first_viewed_at: existing?.first_viewed_at ?? now, last_viewed_at: now } : {}),
+      ...(status === 'reviewed' ? { reviewed_at: now } : {}),
+    };
+    this.sessionReviewStates.set(sessionId, next);
+    return Promise.resolve(next);
+  }
+
+  getSessionComparisonAnalysis(sessionId: string): Promise<SessionComparisonAnalysis | null> {
+    return Promise.resolve(this.sessionComparisonAnalyses.get(sessionId) ?? null);
+  }
+
+  listSessionComparisonAnalysesByPrompt(promptId: string): Promise<SessionComparisonAnalysis[]> {
+    return Promise.resolve(
+      Array.from(this.sessionComparisonAnalyses.values()).filter((analysis) => analysis.prompt_id === promptId),
+    );
+  }
+
+  upsertSessionComparisonAnalysis(input: {
+    session_id: string;
+    prompt_id: string;
+    schema_version: string;
+    comparison_score: number;
+    recommendation: string;
+    strengths: string[];
+    risks: string[];
+    summary: string;
+  }): Promise<SessionComparisonAnalysis> {
+    const now = Date.now();
+    const existing = this.sessionComparisonAnalyses.get(input.session_id);
+    const next: SessionComparisonAnalysis = {
+      ...input,
+      created_at: existing?.created_at ?? now,
+      updated_at: now,
+    };
+    this.sessionComparisonAnalyses.set(input.session_id, next);
+    return Promise.resolve(next);
   }
 
   getMainBranch(sessionId: string): Promise<SessionBranch | null> {

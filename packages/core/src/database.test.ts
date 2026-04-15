@@ -138,6 +138,49 @@ describe('session evaluation persistence', () => {
   });
 });
 
+describe('session review state persistence', () => {
+  test('stores and reloads viewed and reviewed states', async () => {
+    const db = makeAdapter();
+    const { id } = await db.createSession(BASE_CONFIG);
+
+    const viewed = await db.upsertSessionReviewState(id, 'viewed');
+    const reviewed = await db.upsertSessionReviewState(id, 'reviewed');
+    const reloaded = await db.getSessionReviewState(id);
+
+    expect(viewed.status).toBe('viewed');
+    expect(viewed.first_viewed_at).toBeDefined();
+    expect(viewed.last_viewed_at).toBeDefined();
+    expect(reviewed.status).toBe('reviewed');
+    expect(reviewed.reviewed_at).toBeDefined();
+    expect(reloaded?.status).toBe('reviewed');
+  });
+});
+
+describe('session comparison analysis persistence', () => {
+  test('stores and reloads compact comparison summaries by prompt', async () => {
+    const db = makeAdapter();
+    const { id } = await db.createSession(BASE_CONFIG);
+
+    const stored = await db.upsertSessionComparisonAnalysis({
+      session_id: id,
+      prompt_id: BASE_CONFIG.prompt_id,
+      schema_version: 'comparison-v1',
+      comparison_score: 87,
+      recommendation: 'Yes',
+      strengths: ['Clear planning', 'Good verification'],
+      risks: ['Limited edge cases'],
+      summary: 'Strong overall collaboration.',
+    });
+    const reloaded = await db.getSessionComparisonAnalysis(id);
+    const list = await db.listSessionComparisonAnalysesByPrompt(BASE_CONFIG.prompt_id);
+
+    expect(stored.comparison_score).toBe(87);
+    expect(reloaded?.strengths).toEqual(['Clear planning', 'Good verification']);
+    expect(list).toHaveLength(1);
+    expect(list[0]?.session_id).toBe(id);
+  });
+});
+
 describe('addMessage / getMessages', () => {
   let db: SQLiteAdapter;
   let sessionId: string;

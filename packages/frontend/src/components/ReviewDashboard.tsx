@@ -14,6 +14,7 @@ import {
   type ReviewMetric,
   type ReviewSessionEvaluation,
 } from '../lib/review-replay.js';
+import type { SessionReviewStatus } from '@lintic/core';
 import { Timeline } from './Timeline.js';
 import { DropdownMenu, DropdownTriggerLabel } from './DropdownMenu.js';
 import { SplitPane } from './SplitPane.js';
@@ -23,6 +24,8 @@ interface ReviewDashboardProps {
   apiBase?: string;
   isDark: boolean;
   onToggleTheme: () => void;
+  reviewStatus?: SessionReviewStatus | null;
+  onReviewStatusChange?: (status: Extract<SessionReviewStatus, 'viewed' | 'reviewed'>) => Promise<void> | void;
 }
 
 // ─── Evaluation types ───────────────────────────────────────────────────────
@@ -41,6 +44,12 @@ function formatTimestamp(timestamp: number): string {
     minute: '2-digit',
     second: '2-digit',
   });
+}
+
+function formatReviewStatus(status: SessionReviewStatus): string {
+  if (status === 'reviewed') return 'Reviewed';
+  if (status === 'viewed') return 'Viewed';
+  return 'Unviewed';
 }
 
 function triggerJsonDownload(filename: string, data: unknown): void {
@@ -853,6 +862,8 @@ export function ReviewDashboard({
   apiBase = '',
   isDark,
   onToggleTheme,
+  reviewStatus = null,
+  onReviewStatusChange,
 }: ReviewDashboardProps) {
   const [data, setData] = useState<ReviewDataPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -865,6 +876,7 @@ export function ReviewDashboard({
   const [showEvaluation, setShowEvaluation] = useState(false);
   const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
   const [expandedRewindBlocks, setExpandedRewindBlocks] = useState<Set<string>>(new Set());
+  const [updatingReviewStatus, setUpdatingReviewStatus] = useState(false);
 
   // Reset branch and evaluation state when the session changes
   useEffect(() => {
@@ -994,6 +1006,16 @@ export function ReviewDashboard({
   }, [codeState, data]);
   const activeCode = effectiveCodeState.activePath ? effectiveCodeState.files[effectiveCodeState.activePath] ?? '' : '';
 
+  const handleReviewStatusChange = async (status: 'viewed' | 'reviewed') => {
+    if (!onReviewStatusChange || updatingReviewStatus) return;
+    setUpdatingReviewStatus(true);
+    try {
+      await onReviewStatusChange(status);
+    } finally {
+      setUpdatingReviewStatus(false);
+    }
+  };
+
   // Map from ConversationEntry index to ConversationItem index for anchor tracking
   const anchorItemIndex = useMemo(() => {
     let entryCount = 0;
@@ -1070,7 +1092,7 @@ export function ReviewDashboard({
     );
   }
 
-  const overallScore = data.session.score != null ? formatMetricScore(data.session.score) : '—';
+  const sessionAnalysisAverage = data.session.score != null ? formatMetricScore(data.session.score) : null;
 
   const branchItems = (data.branches ?? []).map((branch) => ({
     value: branch.id,
@@ -1087,26 +1109,45 @@ export function ReviewDashboard({
         className="flex shrink-0 items-center justify-between px-5"
         style={{ height: '52px', background: 'var(--color-bg-app)' }}
       >
-        <div className="flex min-w-0 items-center gap-4">
-          <span className="truncate text-[15px] font-bold tracking-tight" style={{ color: 'var(--color-text-bold)' }}>
+        <div className="min-w-0">
+          <span className="block truncate text-[15px] font-bold tracking-tight" style={{ color: 'var(--color-text-bold)' }}>
             {data.prompt?.title ?? data.session.prompt_id}
           </span>
-          <div className="flex shrink-0 items-center gap-1.5 opacity-60">
-            <User size={12} style={{ color: 'var(--color-text-dim)' }} />
-            <span className="text-[13px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] opacity-70">
+            <span className="flex items-center gap-1.5" style={{ color: 'var(--color-text-muted)' }}>
+              <User size={12} style={{ color: 'var(--color-text-dim)' }} />
               {data.session.candidate_email}
             </span>
+            <span style={{ color: 'var(--color-text-dim)' }}>
+              Session: {data.session.status}
+            </span>
+            {reviewStatus ? (
+              <span style={{ color: 'var(--color-text-dim)' }}>
+                Review status: {formatReviewStatus(reviewStatus)}
+              </span>
+            ) : null}
+            {sessionAnalysisAverage ? (
+              <span style={{ color: 'var(--color-text-dim)' }}>
+                Session analysis average: {sessionAnalysisAverage}
+              </span>
+            ) : null}
           </div>
-          <span className="shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-bold"
-            style={{
-              background: data.session.status === 'completed' ? 'rgba(16,185,129,0.1)' : 'rgba(56,135,206,0.1)',
-              color: data.session.status === 'completed' ? 'var(--color-status-success)' : 'var(--color-brand)',
-            }}>
-            {data.session.status}
-          </span>
         </div>
 
         <div className="flex shrink-0 items-center gap-4">
+          {onReviewStatusChange ? (
+            <button
+              type="button"
+              disabled={updatingReviewStatus}
+              onClick={() => {
+                void handleReviewStatusChange(reviewStatus === 'reviewed' ? 'viewed' : 'reviewed');
+              }}
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {reviewStatus === 'reviewed' ? 'Mark Viewed' : 'Mark Reviewed'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => { void handleAnalyzeSession(); }}

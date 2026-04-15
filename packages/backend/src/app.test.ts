@@ -26,7 +26,10 @@ import type {
   ReplayEventType,
   Config,
   Constraint,
+  SessionComparisonAnalysis,
   SessionBranch,
+  SessionReviewState,
+  SessionReviewStatus,
   UpdatePromptConfig,
   WorkspaceSnapshot,
   WorkspaceSnapshotKind,
@@ -75,6 +78,8 @@ class FakeDb implements DatabaseAdapter {
   assessmentLinks = new Map<string, AssessmentLinkRecord>();
   usedAssessmentLinks = new Map<string, string>();
   sessionEvaluations = new Map<string, SessionEvaluation>();
+  sessionReviewStates = new Map<string, SessionReviewState>();
+  sessionComparisonAnalyses = new Map<string, SessionComparisonAnalysis>();
   turnSequences = new Map<string, number>();
   nextMsgId = 1;
   nextReplayId = 1;
@@ -192,6 +197,59 @@ class FakeDb implements DatabaseAdapter {
       this.sessions.set(sessionId, { ...session, score });
     }
     return Promise.resolve(evaluation);
+  }
+
+  getSessionReviewState(sessionId: string): Promise<SessionReviewState | null> {
+    return Promise.resolve(this.sessionReviewStates.get(sessionId) ?? null);
+  }
+
+  listSessionReviewStates(): Promise<SessionReviewState[]> {
+    return Promise.resolve(Array.from(this.sessionReviewStates.values()));
+  }
+
+  upsertSessionReviewState(sessionId: string, status: SessionReviewStatus): Promise<SessionReviewState> {
+    const now = Date.now();
+    const existing = this.sessionReviewStates.get(sessionId);
+    const next: SessionReviewState = {
+      session_id: sessionId,
+      status,
+      updated_at: now,
+      ...(status !== 'unviewed' ? { first_viewed_at: existing?.first_viewed_at ?? now, last_viewed_at: now } : {}),
+      ...(status === 'reviewed' ? { reviewed_at: now } : {}),
+    };
+    this.sessionReviewStates.set(sessionId, next);
+    return Promise.resolve(next);
+  }
+
+  getSessionComparisonAnalysis(sessionId: string): Promise<SessionComparisonAnalysis | null> {
+    return Promise.resolve(this.sessionComparisonAnalyses.get(sessionId) ?? null);
+  }
+
+  listSessionComparisonAnalysesByPrompt(promptId: string): Promise<SessionComparisonAnalysis[]> {
+    return Promise.resolve(
+      Array.from(this.sessionComparisonAnalyses.values()).filter((analysis) => analysis.prompt_id === promptId),
+    );
+  }
+
+  upsertSessionComparisonAnalysis(input: {
+    session_id: string;
+    prompt_id: string;
+    schema_version: string;
+    comparison_score: number;
+    recommendation: string;
+    strengths: string[];
+    risks: string[];
+    summary: string;
+  }): Promise<SessionComparisonAnalysis> {
+    const now = Date.now();
+    const existing = this.sessionComparisonAnalyses.get(input.session_id);
+    const next: SessionComparisonAnalysis = {
+      ...input,
+      created_at: existing?.created_at ?? now,
+      updated_at: now,
+    };
+    this.sessionComparisonAnalyses.set(input.session_id, next);
+    return Promise.resolve(next);
   }
 
   getMainBranch(sessionId: string): Promise<SessionBranch | null> {
@@ -753,6 +811,16 @@ const TEST_CONFIG: Config = {
   constraints: BASE_CONSTRAINT,
   prompts: [{ id: 'test-prompt', title: 'Test Prompt' }],
   api: { admin_key: 'admin-key', secret_key: 'secret-key' },
+};
+
+const TEST_CONFIG_WITH_EVALUATION: Config = {
+  ...TEST_CONFIG,
+  evaluation: {
+    provider: 'openai-compatible',
+    api_key: 'eval-key',
+    model: 'gpt-4o-mini',
+    base_url: 'https://api.openai.com',
+  },
 };
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -2216,120 +2284,132 @@ describe('auth middleware', () => {
   });
 });
 
-// ─── GET /api/sessions/comparison ────────────────────────────────────────────
-
-describe('GET /api/sessions/comparison', () => {
-  const ADMIN_KEY = 'admin-key';
-
-  test('returns 401 without admin key', async () => {
-    const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
-    const res = await request(app).get('/api/sessions/comparison');
-    expect(res.status).toBe(401);
-  });
-
-  test('returns 401 with wrong admin key', async () => {
-    const app = createApp(new FakeDb(), new FakeAdapter(), TEST_CONFIG);
-    const res = await request(app)
-      .get('/api/sessions/comparison')
-      .set('X-Lintic-Api-Key', 'wrong-key');
-    expect(res.status).toBe(401);
-  });
-
-  test('returns 200 with empty sessions list when no completed sessions', async () => {
+describe('review queue APIs', () => {
+  test('GET /api/reviews returns completed sessions with review and comparison status', async () => {
     const db = new FakeDb();
+    const { id: sessionA } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'a@test.com', constraint: BASE_CONSTRAINT });
+    const { id: sessionB } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'b@test.com', constraint: BASE_CONSTRAINT });
+    db.sessions.set(sessionA, { ...db.sessions.get(sessionA)!, status: 'completed', closed_at: Date.now() - 10_000 });
+    db.sessions.set(sessionB, { ...db.sessions.get(sessionB)!, status: 'completed', closed_at: Date.now() - 5_000 });
+    await db.upsertSessionReviewState(sessionA, 'reviewed');
+    await db.upsertSessionComparisonAnalysis({
+      session_id: sessionA,
+      prompt_id: 'test-prompt',
+      schema_version: 'comparison-v1',
+      comparison_score: 91,
+      recommendation: 'Strong Yes',
+      strengths: ['Strong planning'],
+      risks: ['Minor gaps'],
+      summary: 'Excellent overall.',
+    });
+
     const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
-    // Only active session — should be excluded
-    await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'a@test.com', constraint: BASE_CONSTRAINT });
-    const res = await request(app)
-      .get('/api/sessions/comparison')
-      .set('X-Lintic-Api-Key', ADMIN_KEY);
+    const res = await request(app).get('/api/reviews').set('X-Lintic-Api-Key', 'admin-key');
+
     expect(res.status).toBe(200);
-    const body = res.body as { sessions: unknown[] };
-    expect(body.sessions).toHaveLength(0);
+    expect(res.body.reviews).toHaveLength(2);
+    const first = res.body.reviews.find((row: { session_id: string }) => row.session_id === sessionA);
+    const second = res.body.reviews.find((row: { session_id: string }) => row.session_id === sessionB);
+    expect(first?.review_status).toBe('reviewed');
+    expect(first?.comparison_status).toBe('ready');
+    expect(first?.comparison_score).toBe(91);
+    expect(second?.review_status).toBe('unviewed');
+    expect(second?.comparison_status).toBe('pending');
   });
 
-  test('returns completed sessions with computed metrics', async () => {
+  test('POST /api/reviews/:id/viewed does not downgrade reviewed sessions', async () => {
     const db = new FakeDb();
-    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
-    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'b@test.com', constraint: BASE_CONSTRAINT });
-    // Mark session as completed
-    db.sessions.set(id, { ...db.sessions.get(id)!, status: 'completed' });
+    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'viewed@test.com', constraint: BASE_CONSTRAINT });
+    await db.upsertSessionReviewState(id, 'reviewed');
 
-    const res = await request(app)
-      .get('/api/sessions/comparison')
-      .set('X-Lintic-Api-Key', ADMIN_KEY);
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const res = await request(app).post(`/api/reviews/${id}/viewed`).set('X-Lintic-Api-Key', 'admin-key');
+
     expect(res.status).toBe(200);
-    const body = res.body as { sessions: Array<Record<string, unknown>> };
-    expect(body.sessions).toHaveLength(1);
-    const row = body.sessions[0]!;
-    expect(row['session_id']).toBe(id);
-    expect(row['candidate_email']).toBe('b@test.com');
-    expect(row['prompt_id']).toBe('test-prompt');
-    expect(row['prompt_title']).toBe('Test Prompt');
+    expect(res.body.review_state.status).toBe('reviewed');
   });
 
-  test('excludes active sessions', async () => {
+  test('PATCH /api/reviews/:id/status updates the persisted review state', async () => {
     const db = new FakeDb();
-    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
-    await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'active@test.com', constraint: BASE_CONSTRAINT });
-    const { id: completedId } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'done@test.com', constraint: BASE_CONSTRAINT });
-    db.sessions.set(completedId, { ...db.sessions.get(completedId)!, status: 'completed' });
+    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'status@test.com', constraint: BASE_CONSTRAINT });
 
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
     const res = await request(app)
-      .get('/api/sessions/comparison')
-      .set('X-Lintic-Api-Key', ADMIN_KEY);
+      .patch(`/api/reviews/${id}/status`)
+      .set('X-Lintic-Api-Key', 'admin-key')
+      .send({ status: 'reviewed' });
+
     expect(res.status).toBe(200);
-    const body = res.body as { sessions: Array<Record<string, unknown>> };
-    expect(body.sessions).toHaveLength(1);
-    expect(body.sessions[0]!['candidate_email']).toBe('done@test.com');
+    expect(res.body.review_state.status).toBe('reviewed');
+    expect((await db.getSessionReviewState(id))?.status).toBe('reviewed');
   });
 
-  test('pq and cc are always null', async () => {
+  test('POST /api/reviews/comparison/run uses compact comparison batches and persists results', async () => {
     const db = new FakeDb();
-    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
-    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'c@test.com', constraint: BASE_CONSTRAINT });
-    db.sessions.set(id, { ...db.sessions.get(id)!, status: 'completed' });
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ body: Record<string, unknown> }> = [];
 
-    const res = await request(app)
-      .get('/api/sessions/comparison')
-      .set('X-Lintic-Api-Key', ADMIN_KEY);
-    const body = res.body as { sessions: Array<Record<string, unknown>> };
-    const row = body.sessions[0]!;
-    expect(row['pq']).toBeNull();
-    expect(row['cc']).toBeNull();
-  });
+    try {
+      const { id: sessionA } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'a@test.com', constraint: BASE_CONSTRAINT });
+      const { id: sessionB } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'b@test.com', constraint: BASE_CONSTRAINT });
+      db.sessions.set(sessionA, { ...db.sessions.get(sessionA)!, status: 'completed', closed_at: Date.now() - 10_000, tokens_used: 111, interactions_used: 3 });
+      db.sessions.set(sessionB, { ...db.sessions.get(sessionB)!, status: 'completed', closed_at: Date.now() - 5_000, tokens_used: 222, interactions_used: 4 });
+      await db.addBranchMessage(sessionA, 'main', 1, 'user', 'Please start with a plan and test as we go.', 5);
+      await db.addBranchMessage(sessionB, 'main', 1, 'user', 'Focus on shipping the API fast.', 5);
 
-  test('composite_score is null when session has no messages', async () => {
-    const db = new FakeDb();
-    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
-    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'd@test.com', constraint: BASE_CONSTRAINT });
-    db.sessions.set(id, { ...db.sessions.get(id)!, status: 'completed' });
+      globalThis.fetch = (async (_input: string | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+        calls.push({ body });
+        const userMessage = ((body.messages as Array<{ content: string }>)?.[1]?.content ?? '') as string;
+        expect(userMessage).toContain('Candidate packets (2 total)');
+        expect(userMessage.includes('Conversation History (')).toBe(false);
 
-    const res = await request(app)
-      .get('/api/sessions/comparison')
-      .set('X-Lintic-Api-Key', ADMIN_KEY);
-    const body = res.body as { sessions: Array<Record<string, unknown>> };
-    const row = body.sessions[0]!;
-    // No messages means metrics may be 0, composite_score depends on metric values
-    expect(typeof row['composite_score']).toBe('number');
-  });
+        return {
+          ok: true,
+          text: async () => JSON.stringify({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  analyses: [
+                    {
+                      session_id: sessionA,
+                      comparison_score: 88,
+                      recommendation: 'Yes',
+                      strengths: ['Clear direction', 'Good testing'],
+                      risks: ['Some edge cases'],
+                      summary: 'Strong candidate with good structure.',
+                    },
+                    {
+                      session_id: sessionB,
+                      comparison_score: 71,
+                      recommendation: 'Mixed',
+                      strengths: ['Fast iteration'],
+                      risks: ['Less validation'],
+                      summary: 'Moved quickly but left more risk.',
+                    },
+                  ],
+                }),
+              },
+              finish_reason: 'stop',
+            }],
+          }),
+        } as Response;
+      }) as typeof fetch;
 
-  test('uses custom scoring weights from config when provided', async () => {
-    const db = new FakeDb();
-    const configWithWeights: Config = {
-      ...TEST_CONFIG,
-      scoring: { weights: { ie: 1, te: 0, rs: 0, ir: 0 } },
-    };
-    const app = createApp(db, new FakeAdapter(), configWithWeights);
-    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'e@test.com', constraint: BASE_CONSTRAINT });
-    db.sessions.set(id, { ...db.sessions.get(id)!, status: 'completed' });
+      const app = createApp(db, new FakeAdapter(), TEST_CONFIG_WITH_EVALUATION);
+      const res = await request(app)
+        .post('/api/reviews/comparison/run')
+        .set('X-Lintic-Api-Key', 'admin-key')
+        .send({ prompt_id: 'test-prompt' });
 
-    const res = await request(app)
-      .get('/api/sessions/comparison')
-      .set('X-Lintic-Api-Key', ADMIN_KEY);
-    expect(res.status).toBe(200);
-    // Just check it returns without error; exact score depends on session data
-    const body = res.body as { sessions: Array<Record<string, unknown>> };
-    expect(body.sessions).toHaveLength(1);
+      expect(res.status).toBe(200);
+      expect(calls).toHaveLength(1);
+      expect(res.body.rows).toHaveLength(2);
+      expect((await db.getSessionComparisonAnalysis(sessionA))?.comparison_score).toBe(88);
+      expect((await db.getSessionComparisonAnalysis(sessionB))?.recommendation).toBe('Mixed');
+      expect(db.sessionEvaluations.size).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

@@ -8,7 +8,6 @@ import type {
   ToolCall,
   ToolResult,
 } from './types.js';
-import type { ScoringWeightsConfig } from './config.js';
 
 export interface MetricComputationInput {
   session?: Pick<Session, 'tokens_used' | 'interactions_used' | 'score' | 'constraint'>;
@@ -379,42 +378,4 @@ export function computeSessionMetrics(input: MetricComputationInput): MetricResu
     computeIndependenceRatio(input),
     computeRecoveryScore(input),
   ];
-}
-
-// ─── Composite Score ──────────────────────────────────────────────────────────
-
-const DEFAULT_COMPOSITE_WEIGHTS: Required<ScoringWeightsConfig> = {
-  ie: 0.25,
-  te: 0.25,
-  rs: 0.25,
-  ir: 0.25,
-};
-
-const METRIC_WEIGHT_KEY: Record<string, keyof ScoringWeightsConfig> = {
-  iteration_efficiency: 'ie',
-  token_efficiency: 'te',
-  recovery_score: 'rs',
-  independence_ratio: 'ir',
-};
-
-/**
- * Computes a composite score (0–1) as a weighted average of the provided
- * MetricResult values. Metrics not present in the weight map are ignored.
- * Weights default to 0.25 each for ie/te/rs/ir.
- */
-export function computeCompositeScore(
-  metrics: MetricResult[],
-  weights?: ScoringWeightsConfig,
-): number {
-  const w = { ...DEFAULT_COMPOSITE_WEIGHTS, ...weights };
-  let weightedSum = 0;
-  let totalWeight = 0;
-  for (const m of metrics) {
-    const key = METRIC_WEIGHT_KEY[m.name];
-    if (key === undefined) continue;
-    const mw = w[key] ?? 0;
-    weightedSum += m.score * mw;
-    totalWeight += mw;
-  }
-  return totalWeight === 0 ? 0 : clamp01(weightedSum / totalWeight);
 }

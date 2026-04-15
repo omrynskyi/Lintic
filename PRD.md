@@ -460,16 +460,18 @@ For UI stories, also include:
 
 **Description:** As a reviewer, I need a table view of all candidates who took the same assessment so I can compare scores, sort by metrics, and quickly identify top performers.
 
+Current status: removed pending redesign.
+
 **Acceptance Criteria:**
 
-- [x] GET /review route renders a dashboard listing all completed sessions
-- [x] Table columns: candidate email, prompt title, date, overall score, and each individual metric (PQ, IE, CC, TE, RS, IR)
-- [x] Clicking any column header sorts the table by that metric (ascending/descending toggle)
-- [x] Filter dropdown to show only sessions for a specific prompt
-- [x] Filter by date range (last 7 days, 30 days, all time)
-- [x] Clicking a row navigates to the individual session replay at /review/:sessionId
-- [x] Composite score is a weighted average of all metrics (weights configurable in lintic.yml)
-- [x] Table supports pagination (25 candidates per page)
+- [ ] GET /review route renders a dashboard listing all completed sessions
+- [ ] Table columns: candidate email, prompt title, date, overall score, and each individual metric (PQ, IE, CC, TE, RS, IR)
+- [ ] Clicking any column header sorts the table by that metric (ascending/descending toggle)
+- [ ] Filter dropdown to show only sessions for a specific prompt
+- [ ] Filter by date range (last 7 days, 30 days, all time)
+- [ ] Clicking a row navigates to the individual session replay at /review/:sessionId
+- [ ] Composite score is a weighted average of all metrics (weights configurable in lintic.yml)
+- [ ] Table supports pagination (25 candidates per page)
 - [x] npm run typecheck passes
 - [ ] Verify in browser using dev-browser skill
 

@@ -7,6 +7,9 @@ import type {
   ConversationSummary,
   MockPgPoolExport,
   EvaluationResult,
+  SessionComparisonAnalysis,
+  SessionReviewState,
+  SessionReviewStatus,
   Session,
   SessionEvaluation,
   SessionBranch,
@@ -136,6 +139,17 @@ export interface CreateAssessmentLinkConfig {
   constraint: Constraint;
 }
 
+export interface SessionComparisonAnalysisInput {
+  session_id: string;
+  prompt_id: string;
+  schema_version: string;
+  comparison_score: number;
+  recommendation: string;
+  strengths: string[];
+  risks: string[];
+  summary: string;
+}
+
 export interface DatabaseAdapter {
   createSession(config: CreateSessionConfig): Promise<{ id: string; token: string }>;
   createAssessmentLink(config: CreateAssessmentLinkConfig): Promise<AssessmentLinkRecord>;
@@ -143,6 +157,12 @@ export interface DatabaseAdapter {
   getSessionToken(id: string): Promise<string | null>;
   getSessionEvaluation(sessionId: string): Promise<SessionEvaluation | null>;
   upsertSessionEvaluation(sessionId: string, result: EvaluationResult, score: number): Promise<SessionEvaluation>;
+  getSessionReviewState(sessionId: string): Promise<SessionReviewState | null>;
+  listSessionReviewStates(): Promise<SessionReviewState[]>;
+  upsertSessionReviewState(sessionId: string, status: SessionReviewStatus): Promise<SessionReviewState>;
+  getSessionComparisonAnalysis(sessionId: string): Promise<SessionComparisonAnalysis | null>;
+  listSessionComparisonAnalysesByPrompt(promptId: string): Promise<SessionComparisonAnalysis[]>;
+  upsertSessionComparisonAnalysis(input: SessionComparisonAnalysisInput): Promise<SessionComparisonAnalysis>;
   addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
   getMessages(sessionId: string): Promise<StoredMessage[]>;
   closeSession(id: string, status?: Exclude<SessionStatus, 'active'>): Promise<void>;

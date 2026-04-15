@@ -25,11 +25,9 @@ import type { WebContainer } from '@webcontainer/api';
 import type { LocalToolCall, LocalToolResult } from './components/ToolActionCard.js';
 import type { TerminalHandle } from './components/Terminal.js';
 import { ReviewDashboard } from './components/ReviewDashboard.js';
-import { getReviewSessionId, isComparisonDashboardRoute } from './lib/review-replay.js';
+import { getReviewSessionId } from './lib/review-replay.js';
 import { AssessmentLinkLoader } from './components/AssessmentLinkLoader.js';
 import { AdminDashboard } from './components/admin/AdminDashboard.js';
-import { AdminKeyProvider } from './components/admin/AdminKeyContext.js';
-import { CandidateComparisonDashboard } from './components/CandidateComparisonDashboard.js';
 import {
   saveSession,
   loadSession,
@@ -72,9 +70,6 @@ export function App() {
   );
   const [adminRoute, setAdminRoute] = useState<boolean>(() =>
     typeof window === 'undefined' ? false : isAdminRoute(window.location),
-  );
-  const [isComparisonRoute, setIsComparisonRoute] = useState<boolean>(() =>
-    typeof window === 'undefined' ? false : isComparisonDashboardRoute(window.location.pathname),
   );
   const [appState, setAppState] = useState<AppState>('setup');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -165,7 +160,6 @@ export function App() {
       setAssessmentToken(getAssessmentLinkToken(window.location));
       setReviewSessionId(getReviewSessionId(window.location.pathname));
       setAdminRoute(isAdminRoute(window.location));
-      setIsComparisonRoute(isComparisonDashboardRoute(window.location.pathname));
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -193,7 +187,7 @@ export function App() {
   );
 
   useEffect(() => {
-    if (reviewSessionId || assessmentToken || adminRoute || isComparisonRoute) {
+    if (reviewSessionId || assessmentToken || adminRoute) {
       return;
     }
     getWebContainer()
@@ -202,11 +196,11 @@ export function App() {
         executorRef.current = new ToolExecutor(wc, (chunk) => terminalRef.current?.write(chunk));
       })
       .catch(() => { });
-  }, [reviewSessionId, assessmentToken, adminRoute, isComparisonRoute]);
+  }, [reviewSessionId, assessmentToken, adminRoute]);
 
   // Restore persisted session on page load (assessment sessions only).
   useEffect(() => {
-    if (assessmentToken || reviewSessionId || adminRoute || isComparisonRoute) return;
+    if (assessmentToken || reviewSessionId || adminRoute) return;
     if (hasAttemptedSavedSessionRestoreRef.current) return;
     hasAttemptedSavedSessionRestoreRef.current = true;
 
@@ -582,14 +576,6 @@ export function App() {
     submitAssessment,
     submittingTask,
   ]);
-
-  if (isComparisonRoute) {
-    return (
-      <AdminKeyProvider>
-        <CandidateComparisonDashboard isDark={isDark} onToggleTheme={() => setIsDark(!isDark)} />
-      </AdminKeyProvider>
-    );
-  }
 
   if (reviewSessionId) {
     return (

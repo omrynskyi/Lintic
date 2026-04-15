@@ -5,7 +5,10 @@ import type {
   ContextResource,
   ContextResourceKind,
   ConversationSummary,
+  SessionComparisonAnalysis,
   SessionEvaluation,
+  SessionReviewState,
+  SessionReviewStatus,
   MockPgPoolExport,
   Session,
   SessionBranch,
@@ -23,7 +26,9 @@ import type {
   ContextResourceRow,
   ConversationRow,
   PromptRow,
+  SessionComparisonAnalysisRow,
   SessionEvaluationRow,
+  SessionReviewStateRow,
   SessionBranchRow,
   SessionRow,
   WorkspaceSnapshotRow,
@@ -58,6 +63,27 @@ export function normalizeSessionEvaluationRow(row: SessionEvaluationRow): Sessio
   return {
     ...row,
     score: Number(row.score),
+    created_at: Number(row.created_at),
+    updated_at: Number(row.updated_at),
+  };
+}
+
+export function normalizeSessionReviewStateRow(row: SessionReviewStateRow): SessionReviewStateRow {
+  return {
+    ...row,
+    first_viewed_at: row.first_viewed_at === null ? null : Number(row.first_viewed_at),
+    last_viewed_at: row.last_viewed_at === null ? null : Number(row.last_viewed_at),
+    reviewed_at: row.reviewed_at === null ? null : Number(row.reviewed_at),
+    updated_at: Number(row.updated_at),
+  };
+}
+
+export function normalizeSessionComparisonAnalysisRow(
+  row: SessionComparisonAnalysisRow,
+): SessionComparisonAnalysisRow {
+  return {
+    ...row,
+    comparison_score: Number(row.comparison_score),
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
   };
@@ -142,6 +168,35 @@ export function rowToSessionEvaluation(row: SessionEvaluationRow): SessionEvalua
     session_id: row.session_id,
     score: Number(row.score),
     result: JSON.parse(row.result_json),
+    created_at: Number(row.created_at),
+    updated_at: Number(row.updated_at),
+  };
+}
+
+export function rowToSessionReviewState(row: SessionReviewStateRow): SessionReviewState {
+  const state: SessionReviewState = {
+    session_id: row.session_id,
+    status: row.status as SessionReviewStatus,
+    updated_at: Number(row.updated_at),
+  };
+  if (row.first_viewed_at !== null) state.first_viewed_at = Number(row.first_viewed_at);
+  if (row.last_viewed_at !== null) state.last_viewed_at = Number(row.last_viewed_at);
+  if (row.reviewed_at !== null) state.reviewed_at = Number(row.reviewed_at);
+  return state;
+}
+
+export function rowToSessionComparisonAnalysis(
+  row: SessionComparisonAnalysisRow,
+): SessionComparisonAnalysis {
+  return {
+    session_id: row.session_id,
+    prompt_id: row.prompt_id,
+    schema_version: row.schema_version,
+    comparison_score: Number(row.comparison_score),
+    recommendation: row.recommendation,
+    strengths: JSON.parse(row.strengths_json) as string[],
+    risks: JSON.parse(row.risks_json) as string[],
+    summary: row.summary,
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
   };

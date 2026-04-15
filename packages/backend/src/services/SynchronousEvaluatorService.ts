@@ -367,6 +367,148 @@ Please evaluate the candidate using all 5 rubric dimensions${allRubricQuestions.
   return parsed;
 }
 
+// ─── Low-cost batch comparison ───────────────────────────────────────────────
+
+export interface ComparisonCandidatePacket {
+  session_id: string;
+  candidate_email: string;
+  prompt_id: string;
+  prompt_title: string;
+  tokens_used: number;
+  interactions_used: number;
+  iteration_count: number;
+  rewind_count: number;
+  infrastructure: {
+    caching_effectiveness: number;
+    error_handling_coverage: number;
+    scaling_awareness: number;
+  };
+  transcript_digest: string;
+  existing_summary?: string;
+}
+
+export interface ComparisonAnalysis {
+  session_id: string;
+  comparison_score: number; // 0-100
+  recommendation: string;
+  strengths: string[];
+  risks: string[];
+  summary: string;
+}
+
+export interface CompareCandidatesInput {
+  prompt_id: string;
+  prompt_title: string;
+  candidates: ComparisonCandidatePacket[];
+  evaluationConfig: EvaluationConfig;
+}
+
+function parseComparisonResponse(raw: string): ComparisonAnalysis[] {
+  let parsed: unknown;
+  try {
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new Error(`Comparison evaluator returned non-JSON response: ${raw.slice(0, 160)}`);
+  }
+
+  if (!isRecord(parsed) || !Array.isArray(parsed['analyses'])) {
+    throw new Error('Comparison evaluator response missing analyses array');
+  }
+
+  const analyses: ComparisonAnalysis[] = [];
+  for (const item of parsed['analyses']) {
+    if (!isRecord(item)) continue;
+    const sessionId = item['session_id'];
+    const comparisonScore = item['comparison_score'];
+    const recommendation = item['recommendation'];
+    const summary = item['summary'];
+    if (
+      typeof sessionId !== 'string'
+      || typeof comparisonScore !== 'number'
+      || typeof recommendation !== 'string'
+      || typeof summary !== 'string'
+    ) {
+      continue;
+    }
+    const strengths = Array.isArray(item['strengths'])
+      ? item['strengths'].filter((entry): entry is string => typeof entry === 'string').slice(0, 3)
+      : [];
+    const risks = Array.isArray(item['risks'])
+      ? item['risks'].filter((entry): entry is string => typeof entry === 'string').slice(0, 2)
+      : [];
+    analyses.push({
+      session_id: sessionId,
+      comparison_score: Math.max(0, Math.min(100, Math.round(comparisonScore))),
+      recommendation: recommendation.trim() || 'Mixed',
+      strengths,
+      risks,
+      summary: summary.trim(),
+    });
+  }
+
+  if (analyses.length === 0) {
+    throw new Error('Comparison evaluator returned no valid analyses');
+  }
+
+  return analyses;
+}
+
+export async function compareCandidates(
+  input: CompareCandidatesInput,
+): Promise<ComparisonAnalysis[]> {
+  const { prompt_id, prompt_title, candidates, evaluationConfig } = input;
+
+  const systemPrompt = `You are an expert technical interview assessor comparing software engineering candidates who completed the same assessment with an AI coding agent.
+
+You will receive compact deterministic packets for multiple candidates. These packets are intentionally short and may omit detail. Compare candidates only on the evidence provided.
+
+Return a single JSON object:
+{
+  "analyses": [
+    {
+      "session_id": "string",
+      "comparison_score": 0-100,
+      "recommendation": "Strong Yes" | "Yes" | "Mixed" | "No",
+      "strengths": ["2-3 short strengths"],
+      "risks": ["1-2 short risks"],
+      "summary": "1-2 concise sentences"
+    }
+  ]
+}
+
+Rules:
+- Return exactly one analysis per candidate packet.
+- Use compact output. Keep strengths and risks short.
+- Base scores on relative interview strength for this task cohort only.
+- Do not include markdown fences or extra prose.`;
+
+  const candidateBlocks = candidates.map((candidate, index) => `## Candidate ${index + 1}
+session_id: ${candidate.session_id}
+candidate_email: ${candidate.candidate_email}
+tokens_used: ${candidate.tokens_used}
+interactions_used: ${candidate.interactions_used}
+iteration_count: ${candidate.iteration_count}
+rewind_count: ${candidate.rewind_count}
+infrastructure:
+  caching_effectiveness: ${candidate.infrastructure.caching_effectiveness}
+  error_handling_coverage: ${candidate.infrastructure.error_handling_coverage}
+  scaling_awareness: ${candidate.infrastructure.scaling_awareness}
+transcript_digest:
+${candidate.transcript_digest || '(no transcript digest)'}
+${candidate.existing_summary ? `existing_summary:\n${candidate.existing_summary}` : ''}`).join('\n\n');
+
+  const userMessage = `Task cohort:
+prompt_id: ${prompt_id}
+prompt_title: ${prompt_title}
+
+Candidate packets (${candidates.length} total):
+${candidateBlocks}`;
+
+  const rawResponse = await callEvaluatorLLM(evaluationConfig, systemPrompt, userMessage);
+  return parseComparisonResponse(rawResponse);
+}
+
 // ─── Reviewer Q&A ──────────────────────────────────────────────────────────────
 
 export interface AskSessionInput {

@@ -11,8 +11,11 @@ import type {
   MessageRole,
   ReplayEventType,
   Session,
+  SessionComparisonAnalysis,
   SessionEvaluation,
   SessionBranch,
+  SessionReviewState,
+  SessionReviewStatus,
   SessionStatus,
   WorkspaceSnapshot,
   WorkspaceSnapshotKind,
@@ -26,6 +29,7 @@ import type {
   CreatePromptConfig,
   CreateSessionConfig,
   DatabaseAdapter,
+  SessionComparisonAnalysisInput,
   StoredMessage,
   StoredReplayEvent,
   UpdateConversationConfig,
@@ -40,7 +44,9 @@ import {
   rowToConversation,
   rowToPromptConfig,
   rowToSession,
+  rowToSessionComparisonAnalysis,
   rowToSessionEvaluation,
+  rowToSessionReviewState,
   rowToSessionBranch,
   rowToWorkspaceSnapshot,
 } from './mapping.js';
@@ -52,7 +58,9 @@ import type {
   MessageRow,
   PromptRow,
   ReplayEventRow,
+  SessionComparisonAnalysisRow,
   SessionEvaluationRow,
+  SessionReviewStateRow,
   SessionBranchRow,
   SessionRow,
   WorkspaceSnapshotRow,
@@ -240,6 +248,109 @@ export class SQLiteAdapter implements DatabaseAdapter {
       session_id: sessionId,
       score,
       result,
+      created_at: createdAt,
+      updated_at: now,
+    });
+  }
+
+  getSessionReviewState(sessionId: string): Promise<SessionReviewState | null> {
+    const row = this.db.prepare(
+      'SELECT * FROM session_review_states WHERE session_id = ?',
+    ).get(sessionId) as SessionReviewStateRow | undefined;
+    return Promise.resolve(row ? rowToSessionReviewState(row) : null);
+  }
+
+  listSessionReviewStates(): Promise<SessionReviewState[]> {
+    const rows = this.db.prepare(
+      'SELECT * FROM session_review_states ORDER BY updated_at DESC',
+    ).all() as SessionReviewStateRow[];
+    return Promise.resolve(rows.map(rowToSessionReviewState));
+  }
+
+  upsertSessionReviewState(sessionId: string, status: SessionReviewStatus): Promise<SessionReviewState> {
+    const now = Date.now();
+    const existing = this.db.prepare(
+      'SELECT * FROM session_review_states WHERE session_id = ?',
+    ).get(sessionId) as SessionReviewStateRow | undefined;
+    const firstViewedAt =
+      status === 'unviewed' ? null : existing?.first_viewed_at ?? now;
+    const lastViewedAt =
+      status === 'unviewed' ? null : now;
+    const reviewedAt =
+      status === 'reviewed' ? now : null;
+
+    this.db.prepare(`
+      INSERT INTO session_review_states (
+        session_id, status, first_viewed_at, last_viewed_at, reviewed_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET
+        status = excluded.status,
+        first_viewed_at = excluded.first_viewed_at,
+        last_viewed_at = excluded.last_viewed_at,
+        reviewed_at = excluded.reviewed_at,
+        updated_at = excluded.updated_at
+    `).run(sessionId, status, firstViewedAt, lastViewedAt, reviewedAt, now);
+
+    return Promise.resolve({
+      session_id: sessionId,
+      status,
+      updated_at: now,
+      ...(firstViewedAt !== null ? { first_viewed_at: firstViewedAt } : {}),
+      ...(lastViewedAt !== null ? { last_viewed_at: lastViewedAt } : {}),
+      ...(reviewedAt !== null ? { reviewed_at: reviewedAt } : {}),
+    });
+  }
+
+  getSessionComparisonAnalysis(sessionId: string): Promise<SessionComparisonAnalysis | null> {
+    const row = this.db.prepare(
+      'SELECT * FROM session_comparison_analyses WHERE session_id = ?',
+    ).get(sessionId) as SessionComparisonAnalysisRow | undefined;
+    return Promise.resolve(row ? rowToSessionComparisonAnalysis(row) : null);
+  }
+
+  listSessionComparisonAnalysesByPrompt(promptId: string): Promise<SessionComparisonAnalysis[]> {
+    const rows = this.db.prepare(
+      'SELECT * FROM session_comparison_analyses WHERE prompt_id = ? ORDER BY comparison_score DESC, updated_at DESC',
+    ).all(promptId) as SessionComparisonAnalysisRow[];
+    return Promise.resolve(rows.map(rowToSessionComparisonAnalysis));
+  }
+
+  upsertSessionComparisonAnalysis(input: SessionComparisonAnalysisInput): Promise<SessionComparisonAnalysis> {
+    const now = Date.now();
+    const existing = this.db.prepare(
+      'SELECT created_at FROM session_comparison_analyses WHERE session_id = ?',
+    ).get(input.session_id) as { created_at: number } | undefined;
+    const createdAt = existing?.created_at ?? now;
+
+    this.db.prepare(`
+      INSERT INTO session_comparison_analyses (
+        session_id, prompt_id, schema_version, comparison_score, recommendation,
+        strengths_json, risks_json, summary, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET
+        prompt_id = excluded.prompt_id,
+        schema_version = excluded.schema_version,
+        comparison_score = excluded.comparison_score,
+        recommendation = excluded.recommendation,
+        strengths_json = excluded.strengths_json,
+        risks_json = excluded.risks_json,
+        summary = excluded.summary,
+        updated_at = excluded.updated_at
+    `).run(
+      input.session_id,
+      input.prompt_id,
+      input.schema_version,
+      input.comparison_score,
+      input.recommendation,
+      JSON.stringify(input.strengths),
+      JSON.stringify(input.risks),
+      input.summary,
+      createdAt,
+      now,
+    );
+
+    return Promise.resolve({
+      ...input,
       created_at: createdAt,
       updated_at: now,
     });

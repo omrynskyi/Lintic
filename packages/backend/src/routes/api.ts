@@ -2,8 +2,12 @@ import { Router } from 'express';
 import type { Request, Response, RequestHandler } from 'express';
 import { randomUUID } from 'node:crypto';
 import type {
+  AdminComparisonResponse,
+  AdminComparisonRow,
   AdminAssessmentLinkDetail,
   AdminAssessmentLinkSummary,
+  AdminReviewRow,
+  AdminReviewsResponse,
   AgentRequestMode,
   AssessmentLinkRecord,
   AssessmentLinkStatus,
@@ -22,7 +26,10 @@ import type {
   PromptSummary,
   PromptConfig,
   PromptRubricQuestion,
+  SessionComparisonAnalysis,
   SessionBranch,
+  SessionReviewState,
+  SessionReviewStatus,
   SessionStatus,
   SnapshotFile,
   ThinkingBlock,
@@ -30,13 +37,10 @@ import type {
   WorkspaceSnapshotKind,
   MockPgPoolExport,
   EvaluationResult,
-  ComparisonSessionRow,
-  ComparisonResponse,
 } from '@lintic/core';
 import {
   buildAssessmentLink,
   computeSessionMetrics,
-  computeCompositeScore,
   createAssessmentLinkToken,
   resolveAdminKey,
   resolveSecretKey,
@@ -48,7 +52,12 @@ import {
   computeInfrastructureMetrics,
   truncateHistory,
 } from '@lintic/core';
-import { evaluateSession, askAboutSession } from '../services/SynchronousEvaluatorService.js';
+import {
+  askAboutSession,
+  compareCandidates,
+  evaluateSession,
+  type ComparisonCandidatePacket,
+} from '../services/SynchronousEvaluatorService.js';
 import { generateFullTask, generateCriteriaForTask } from '../services/PromptGenerationService.js';
 import { OpenAIAdapter, AnthropicAdapter } from '@lintic/adapters';
 import type { StoredMessage } from '@lintic/core';
@@ -65,6 +74,11 @@ function asyncRoute(fn: (req: Request, res: Response) => Promise<void>): Request
     fn(req, res).catch(next);
   };
 }
+
+const COMPARISON_SCHEMA_VERSION = 'comparison-v1';
+const COMPARISON_BATCH_SIZE = 8;
+const COMPARISON_DIGEST_CHAR_LIMIT = 900;
+const COMPARISON_SNIPPET_CHAR_LIMIT = 180;
 
 /** Reconstruct a Message[] from stored rows, deserialising tool_use assistant turns and tool result rows. */
 function buildHistory(storedMessages: StoredMessage[]): Message[] {
@@ -262,6 +276,112 @@ function toPromptSummary(prompt: PromptConfig): PromptSummary {
   };
 }
 
+function getReviewStatus(state: SessionReviewState | null): SessionReviewStatus {
+  return state?.status ?? 'unviewed';
+}
+
+function buildAdminReviewRow(
+  session: import('@lintic/core').Session,
+  prompt: PromptConfig | null,
+  reviewState: SessionReviewState | null,
+  comparison: SessionComparisonAnalysis | null,
+): AdminReviewRow {
+  const comparisonReady = comparison?.schema_version === COMPARISON_SCHEMA_VERSION;
+  return {
+    session_id: session.id,
+    candidate_email: session.candidate_email,
+    prompt_id: session.prompt_id,
+    prompt_title: prompt?.title ?? session.prompt_id,
+    completed_at: session.closed_at ?? session.created_at,
+    ...(session.score !== undefined ? { session_score: session.score } : {}),
+    review_status: getReviewStatus(reviewState),
+    comparison_status: comparisonReady ? 'ready' : 'pending',
+    ...(comparisonReady ? { comparison_score: comparison.comparison_score } : {}),
+  };
+}
+
+function buildAdminComparisonRow(
+  session: import('@lintic/core').Session,
+  prompt: PromptConfig | null,
+  reviewState: SessionReviewState | null,
+  comparison: SessionComparisonAnalysis | null,
+): AdminComparisonRow {
+  const base = buildAdminReviewRow(session, prompt, reviewState, comparison);
+  const comparisonReady = comparison?.schema_version === COMPARISON_SCHEMA_VERSION;
+  return {
+    ...base,
+    strengths: comparisonReady ? comparison.strengths : [],
+    risks: comparisonReady ? comparison.risks : [],
+    ...(comparisonReady ? {
+      recommendation: comparison.recommendation,
+      summary: comparison.summary,
+    } : {}),
+  };
+}
+
+function shortenSnippet(content: string, maxChars: number = COMPARISON_SNIPPET_CHAR_LIMIT): string {
+  const trimmed = content.replace(/\s+/g, ' ').trim();
+  if (!trimmed) return '';
+  return trimmed.length > maxChars ? `${trimmed.slice(0, maxChars)}...` : trimmed;
+}
+
+function buildTranscriptDigest(
+  storedMessages: StoredMessage[],
+  storedEvents: Array<{ type: string; payload: unknown }>,
+): string {
+  const activeMessages = storedMessages.filter((message) => message.rewound_at === null && message.content.trim().length > 0);
+  const userMessages = activeMessages.filter((message) => message.role === 'user');
+  const assistantMessages = activeMessages.filter((message) => message.role === 'assistant');
+  const digestLines: string[] = [];
+
+  userMessages.slice(0, 2).forEach((message, index) => {
+    const snippet = shortenSnippet(message.content);
+    if (snippet) digestLines.push(`Candidate early ${index + 1}: ${snippet}`);
+  });
+
+  userMessages.slice(-2).forEach((message, index) => {
+    const snippet = shortenSnippet(message.content);
+    if (snippet) digestLines.push(`Candidate late ${index + 1}: ${snippet}`);
+  });
+
+  assistantMessages.slice(-2).forEach((message, index) => {
+    const snippet = shortenSnippet(message.content);
+    if (snippet) digestLines.push(`Agent late ${index + 1}: ${snippet}`);
+  });
+
+  const errorLines = storedEvents.flatMap((event) => {
+    if (event.type === 'agent_response' && typeof event.payload === 'object' && event.payload !== null) {
+      const error = (event.payload as Record<string, unknown>)['error'];
+      if (typeof error === 'string' && error.trim()) {
+        return [`Agent error: ${shortenSnippet(error, 120)}`];
+      }
+    }
+    if (event.type === 'tool_result' && typeof event.payload === 'object' && event.payload !== null) {
+      const toolResults = (event.payload as Record<string, unknown>)['tool_results'];
+      if (Array.isArray(toolResults)) {
+        return toolResults.flatMap((result) => {
+          if (typeof result !== 'object' || result === null) return [];
+          const output = (result as Record<string, unknown>)['output'];
+          const isError = (result as Record<string, unknown>)['is_error'];
+          const name = (result as Record<string, unknown>)['name'];
+          if (isError === true && typeof output === 'string') {
+            return [`Tool error${typeof name === 'string' ? ` (${name})` : ''}: ${shortenSnippet(output, 120)}`];
+          }
+          return [];
+        });
+      }
+    }
+    return [];
+  }).slice(0, 2);
+
+  digestLines.push(...errorLines);
+
+  const digest = digestLines.join('\n');
+  return digest.length > COMPARISON_DIGEST_CHAR_LIMIT
+    ? `${digest.slice(0, COMPARISON_DIGEST_CHAR_LIMIT)}...`
+    : digest;
+}
+
 async function resolveAssessmentLinkStatus(
   record: AssessmentLinkRecord,
   db: DatabaseAdapter,
@@ -340,6 +460,62 @@ async function toAdminAssessmentLinkDetail(
   }
 
   return detail;
+}
+
+async function buildComparisonCandidatePacket(
+  db: DatabaseAdapter,
+  session: import('@lintic/core').Session,
+  promptTitle: string,
+): Promise<ComparisonCandidatePacket> {
+  const branch = await db.getMainBranch(session.id);
+  if (!branch) {
+    return {
+      session_id: session.id,
+      candidate_email: session.candidate_email,
+      prompt_id: session.prompt_id,
+      prompt_title: promptTitle,
+      tokens_used: session.tokens_used,
+      interactions_used: session.interactions_used,
+      iteration_count: 0,
+      rewind_count: 0,
+      infrastructure: {
+        caching_effectiveness: 0,
+        error_handling_coverage: 0,
+        scaling_awareness: 0,
+      },
+      transcript_digest: '',
+    };
+  }
+
+  const allMessages = await db.getBranchMessages(session.id, branch.id, undefined, { includeRewound: true });
+  const replayEvents = await db.getBranchReplayEvents(session.id, branch.id);
+  const iterations = buildIterations(allMessages);
+  const redisStats = extractRedisStats(replayEvents);
+  const snapshot =
+    await db.getWorkspaceSnapshot(session.id, branch.id, { kind: 'checkpoint' })
+    ?? await db.getWorkspaceSnapshot(session.id, branch.id, { kind: 'turn' })
+    ?? null;
+  const pgStats = aggregatePostgresStats(snapshot?.mock_pg ?? []);
+  const infrastructure = computeInfrastructureMetrics(redisStats, pgStats);
+  const existingEvaluation = await db.getSessionEvaluation(session.id);
+
+  return {
+    session_id: session.id,
+    candidate_email: session.candidate_email,
+    prompt_id: session.prompt_id,
+    prompt_title: promptTitle,
+    tokens_used: session.tokens_used,
+    interactions_used: session.interactions_used,
+    iteration_count: iterations.length,
+    rewind_count: iterations.filter((iteration) => iteration.rewound_at !== undefined).length,
+    infrastructure: {
+      caching_effectiveness: Math.round(infrastructure.caching_effectiveness.score * 100),
+      error_handling_coverage: Math.round(infrastructure.error_handling_coverage.score * 100),
+      scaling_awareness: Math.round(infrastructure.scaling_awareness.score * 100),
+    },
+    transcript_digest: buildTranscriptDigest(allMessages, replayEvents),
+    ...(existingEvaluation ? { existing_summary: existingEvaluation.result.llm_evaluation.overall_summary } : {}),
+  };
 }
 
 /** Create a fresh adapter from an AgentConfig provided in the request body. */
@@ -991,6 +1167,169 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     res.json({ deleted: count });
   }));
 
+  router.get('/reviews', requireAdminKey(adminKey), asyncRoute(async (_req, res) => {
+    const completedSessions = (await db.listSessions()).filter((session) => session.status !== 'active');
+    const reviews = await Promise.all(completedSessions.map(async (session): Promise<AdminReviewRow> => {
+      const [prompt, reviewState, comparison] = await Promise.all([
+        db.getPrompt(session.prompt_id),
+        db.getSessionReviewState(session.id),
+        db.getSessionComparisonAnalysis(session.id),
+      ]);
+      return buildAdminReviewRow(session, prompt, reviewState, comparison);
+    }));
+
+    reviews.sort((a, b) => {
+      const promptCmp = a.prompt_title.localeCompare(b.prompt_title);
+      if (promptCmp !== 0) return promptCmp;
+      const statusOrder: Record<SessionReviewStatus, number> = { unviewed: 0, viewed: 1, reviewed: 2 };
+      const statusCmp = statusOrder[a.review_status] - statusOrder[b.review_status];
+      if (statusCmp !== 0) return statusCmp;
+      return b.completed_at - a.completed_at;
+    });
+
+    res.json({ reviews } satisfies AdminReviewsResponse);
+  }));
+
+  router.post('/reviews/:sessionId/viewed', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const sessionId = req.params['sessionId'] as string;
+    const session = await db.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const existing = await db.getSessionReviewState(sessionId);
+    const nextState = existing?.status === 'reviewed'
+      ? existing
+      : await db.upsertSessionReviewState(sessionId, 'viewed');
+    res.json({ review_state: nextState });
+  }));
+
+  router.patch('/reviews/:sessionId/status', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const sessionId = req.params['sessionId'] as string;
+    const session = await db.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const body = req.body as { status?: unknown };
+    if (body.status !== 'viewed' && body.status !== 'reviewed') {
+      res.status(400).json({ error: "status must be 'viewed' or 'reviewed'" });
+      return;
+    }
+
+    const reviewState = await db.upsertSessionReviewState(sessionId, body.status);
+    res.json({ review_state: reviewState });
+  }));
+
+  router.get('/reviews/comparison', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const promptId = typeof req.query['prompt_id'] === 'string' ? req.query['prompt_id'].trim() : '';
+    if (!promptId) {
+      res.status(400).json({ error: 'prompt_id is required' });
+      return;
+    }
+
+    const prompt = await db.getPrompt(promptId);
+    const completedSessions = (await db.getSessionsByPrompt(promptId)).filter((session) => session.status !== 'active');
+    const rows = await Promise.all(completedSessions.map(async (session): Promise<AdminComparisonRow> => {
+      const [reviewState, comparison] = await Promise.all([
+        db.getSessionReviewState(session.id),
+        db.getSessionComparisonAnalysis(session.id),
+      ]);
+      return buildAdminComparisonRow(session, prompt, reviewState, comparison);
+    }));
+
+    rows.sort((a, b) => {
+      if (a.comparison_status !== b.comparison_status) {
+        return a.comparison_status === 'ready' ? -1 : 1;
+      }
+      return (b.comparison_score ?? -1) - (a.comparison_score ?? -1) || b.completed_at - a.completed_at;
+    });
+
+    res.json({
+      prompt: prompt ? toPromptSummary(prompt) : null,
+      rows,
+    } satisfies AdminComparisonResponse);
+  }));
+
+  router.post('/reviews/comparison/run', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const body = req.body as { prompt_id?: unknown };
+    const promptId = typeof body.prompt_id === 'string' ? body.prompt_id.trim() : '';
+    if (!promptId) {
+      res.status(400).json({ error: 'prompt_id is required' });
+      return;
+    }
+
+    if (!config.evaluation) {
+      res.status(422).json({ error: 'No evaluation config found in lintic.yml' });
+      return;
+    }
+
+    const prompt = await db.getPrompt(promptId);
+    if (!prompt) {
+      res.status(404).json({ error: 'Prompt not found' });
+      return;
+    }
+
+    const completedSessions = (await db.getSessionsByPrompt(promptId)).filter((session) => session.status !== 'active');
+    const existingAnalyses = await db.listSessionComparisonAnalysesByPrompt(promptId);
+    const existingBySession = new Map(existingAnalyses.map((analysis) => [analysis.session_id, analysis]));
+    const pendingSessions = completedSessions.filter((session) => {
+      const existing = existingBySession.get(session.id);
+      return !existing || existing.schema_version !== COMPARISON_SCHEMA_VERSION;
+    });
+
+    for (let start = 0; start < pendingSessions.length; start += COMPARISON_BATCH_SIZE) {
+      const chunk = pendingSessions.slice(start, start + COMPARISON_BATCH_SIZE);
+      const packets = await Promise.all(
+        chunk.map((session) => buildComparisonCandidatePacket(db, session, prompt.title)),
+      );
+      const analyses = await compareCandidates({
+        prompt_id: prompt.id,
+        prompt_title: prompt.title,
+        candidates: packets,
+        evaluationConfig: config.evaluation,
+      });
+      const analysisBySession = new Map(analyses.map((analysis) => [analysis.session_id, analysis]));
+      for (const session of chunk) {
+        const analysis = analysisBySession.get(session.id);
+        if (!analysis) {
+          throw new Error(`Comparison evaluator returned no analysis for session ${session.id}`);
+        }
+        await db.upsertSessionComparisonAnalysis({
+          session_id: session.id,
+          prompt_id: prompt.id,
+          schema_version: COMPARISON_SCHEMA_VERSION,
+          comparison_score: analysis.comparison_score,
+          recommendation: analysis.recommendation,
+          strengths: analysis.strengths,
+          risks: analysis.risks,
+          summary: analysis.summary,
+        });
+      }
+    }
+
+    const refreshedAnalyses = await db.listSessionComparisonAnalysesByPrompt(promptId);
+    const analysisBySession = new Map(refreshedAnalyses.map((analysis) => [analysis.session_id, analysis]));
+    const rows = await Promise.all(completedSessions.map(async (session): Promise<AdminComparisonRow> => {
+      const reviewState = await db.getSessionReviewState(session.id);
+      return buildAdminComparisonRow(session, prompt, reviewState, analysisBySession.get(session.id) ?? null);
+    }));
+
+    rows.sort((a, b) => {
+      if (a.comparison_status !== b.comparison_status) {
+        return a.comparison_status === 'ready' ? -1 : 1;
+      }
+      return (b.comparison_score ?? -1) - (a.comparison_score ?? -1) || b.completed_at - a.completed_at;
+    });
+
+    res.json({
+      prompt: toPromptSummary(prompt),
+      rows,
+    } satisfies AdminComparisonResponse);
+  }));
+
   // POST /api/sessions — create a new session
   router.post('/sessions', asyncRoute(async (req, res) => {
     const body = req.body as { prompt_id?: unknown; candidate_email?: unknown };
@@ -1025,75 +1364,6 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       agent: buildAgentSummary(config),
       branch,
     });
-  }));
-
-  // GET /api/sessions/comparison — admin-only list of all completed sessions with computed metrics
-  router.get('/sessions/comparison', requireAdminKey(adminKey), asyncRoute(async (_req, res) => {
-    const allSessions = await db.listSessions();
-    const completedSessions = allSessions.filter((s) => s.status !== 'active');
-
-    const rows: ComparisonSessionRow[] = await Promise.all(
-      completedSessions.map(async (session): Promise<ComparisonSessionRow> => {
-        const branch = await db.getMainBranch(session.id);
-        const conversation = branch ? await db.getMainConversation(session.id, branch.id) : null;
-
-        let ie: number | null = null;
-        let te: number | null = null;
-        let rs: number | null = null;
-        let ir: number | null = null;
-
-        if (branch && conversation) {
-          const storedMessages = await db.getBranchMessages(session.id, branch.id, conversation.id, {});
-          const messages = buildHistory(storedMessages);
-          const storedEvents = await db.getBranchReplayEvents(session.id, branch.id, conversation.id);
-          const recording = {
-            session_id: session.id,
-            branch_id: branch.id,
-            events: storedEvents.map((e) => ({
-              type: e.type,
-              timestamp: e.timestamp,
-              payload: e.payload,
-            })),
-          };
-          const metrics = computeSessionMetrics({ session, messages, recording });
-          ie = metrics.find((m) => m.name === 'iteration_efficiency')?.score ?? null;
-          te = metrics.find((m) => m.name === 'token_efficiency')?.score ?? null;
-          rs = metrics.find((m) => m.name === 'recovery_score')?.score ?? null;
-          ir = metrics.find((m) => m.name === 'independence_ratio')?.score ?? null;
-        }
-
-        const availableMetrics = [
-          ...(ie !== null ? [{ name: 'iteration_efficiency', label: 'IE', score: ie }] : []),
-          ...(te !== null ? [{ name: 'token_efficiency', label: 'TE', score: te }] : []),
-          ...(rs !== null ? [{ name: 'recovery_score', label: 'RS', score: rs }] : []),
-          ...(ir !== null ? [{ name: 'independence_ratio', label: 'IR', score: ir }] : []),
-        ];
-
-        const composite_score =
-          availableMetrics.length > 0
-            ? computeCompositeScore(availableMetrics, config.scoring?.weights)
-            : null;
-
-        const promptConfig = await db.getPrompt(session.prompt_id);
-
-        return {
-          session_id: session.id,
-          candidate_email: session.candidate_email,
-          prompt_id: session.prompt_id,
-          prompt_title: promptConfig?.title ?? session.prompt_id,
-          date: session.closed_at ?? session.created_at,
-          composite_score,
-          ie,
-          te,
-          rs,
-          ir,
-          pq: null,
-          cc: null,
-        } satisfies ComparisonSessionRow;
-      }),
-    );
-
-    res.json({ sessions: rows } satisfies ComparisonResponse);
   }));
 
   // GET /api/sessions/:id — get session state with remaining constraints

@@ -172,10 +172,6 @@ export function getReviewSessionId(pathname: string): string | null {
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
-export function isComparisonDashboardRoute(pathname: string): boolean {
-  return pathname === '/review';
-}
-
 export function formatMetricScore(score: number): string {
   return `${Math.round(score * 100)}%`;
 }

@@ -1,14 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import type { Message, ReplayEvent, Session } from './types.js';
 import {
-  computeCompositeScore,
   computeIndependenceRatio,
   computeIterationEfficiency,
   computeRecoveryScore,
   computeSessionMetrics,
   computeTokenEfficiency,
 } from './metrics.js';
-import type { MetricResult } from './types.js';
 
 const baseSession: Pick<Session, 'tokens_used' | 'interactions_used' | 'score' | 'constraint'> = {
   tokens_used: 400,
@@ -204,52 +202,5 @@ describe('metrics', () => {
       'recovery_score',
     ]);
     expect(metrics.every((metric) => metric.score >= 0 && metric.score <= 1)).toBe(true);
-  });
-});
-
-// ─── computeCompositeScore ─────────────────────────────────────────────────────
-
-function metric(name: string, score: number): MetricResult {
-  return { name, label: name, score };
-}
-
-describe('computeCompositeScore', () => {
-  const all4 = [
-    metric('iteration_efficiency', 0.8),
-    metric('token_efficiency', 0.6),
-    metric('recovery_score', 0.4),
-    metric('independence_ratio', 0.2),
-  ];
-
-  test('returns equal-weighted average of 4 metrics with default weights', () => {
-    // (0.8 + 0.6 + 0.4 + 0.2) / 4 = 0.5
-    expect(computeCompositeScore(all4)).toBeCloseTo(0.5);
-  });
-
-  test('respects custom weights', () => {
-    // ie=0.5, te=0.5, rs=0, ir=0 → (0.8*0.5 + 0.6*0.5) / (0.5+0.5) = 0.7
-    expect(computeCompositeScore(all4, { ie: 0.5, te: 0.5, rs: 0, ir: 0 })).toBeCloseTo(0.7);
-  });
-
-  test('returns 0 for empty metric array', () => {
-    expect(computeCompositeScore([])).toBe(0);
-  });
-
-  test('clamps result to [0, 1]', () => {
-    // score > 1 is invalid per spec, but clamp should handle it
-    const high = [metric('iteration_efficiency', 2.0)];
-    expect(computeCompositeScore(high)).toBe(1);
-  });
-
-  test('ignores metrics not in the weight key map', () => {
-    const unknown = [metric('unknown_metric', 0.9), metric('iteration_efficiency', 0.4)];
-    // Only iteration_efficiency contributes; weight = 0.25, result = 0.4
-    expect(computeCompositeScore(unknown)).toBeCloseTo(0.4);
-  });
-
-  test('handles subset of metrics (only some available)', () => {
-    const partial = [metric('iteration_efficiency', 1.0), metric('token_efficiency', 0.0)];
-    // weights: ie=0.25, te=0.25, total=0.5 → (1.0*0.25 + 0.0*0.25) / 0.5 = 0.5
-    expect(computeCompositeScore(partial)).toBeCloseTo(0.5);
   });
 });

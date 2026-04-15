@@ -66,10 +66,3 @@ evaluation:
 api:
   admin_key: ${LINTIC_ADMIN_KEY}
   secret_key: ${LINTIC_SECRET_KEY}
-
-scoring:
-  weights:
-    ie: 0.25  # Iteration Efficiency
-    te: 0.25  # Token Efficiency
-    rs: 0.25  # Recovery Score
-    ir: 0.25  # Independence Ratio

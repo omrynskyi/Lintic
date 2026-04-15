@@ -24,6 +24,28 @@ export interface SessionEvaluationRow {
   updated_at: number;
 }
 
+export interface SessionReviewStateRow {
+  session_id: string;
+  status: string;
+  first_viewed_at: number | null;
+  last_viewed_at: number | null;
+  reviewed_at: number | null;
+  updated_at: number;
+}
+
+export interface SessionComparisonAnalysisRow {
+  session_id: string;
+  prompt_id: string;
+  schema_version: string;
+  comparison_score: number;
+  recommendation: string;
+  strengths_json: string;
+  risks_json: string;
+  summary: string;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface MessageRow {
   id: number;
   session_id: string;

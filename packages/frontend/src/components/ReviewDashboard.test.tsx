@@ -204,9 +204,18 @@ describe('ReviewDashboard', () => {
       }),
     } as Response));
 
-    render(<ReviewDashboard sessionId="sess-1" isDark={false} onToggleTheme={() => undefined} />);
+    render(
+      <ReviewDashboard
+        sessionId="sess-1"
+        isDark={false}
+        onToggleTheme={() => undefined}
+        reviewStatus="viewed"
+      />,
+    );
 
     await waitFor(() => expect(screen.getByText('Persisted analysis summary.')).toBeInTheDocument());
     expect(screen.getByText('73%')).toBeInTheDocument();
+    expect(screen.getByText('Review status: Viewed')).toBeInTheDocument();
+    expect(screen.getByText('Session analysis average: 73%')).toBeInTheDocument();
   });
 });

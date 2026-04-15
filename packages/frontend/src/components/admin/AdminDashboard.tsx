@@ -15,6 +15,7 @@ function sectionFromPathname(pathname: string): AdminSection {
   if (pathname.startsWith('/admin/links')) return 'assessments';
   if (pathname.startsWith('/admin/tasks')) return 'tasks';
   if (pathname.startsWith('/admin/reviews')) return 'reviews';
+  if (pathname.startsWith('/admin/comparison')) return 'reviews';
   if (pathname.startsWith('/admin/settings')) return 'settings';
   return 'overview';
 }
