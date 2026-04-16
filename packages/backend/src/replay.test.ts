@@ -438,6 +438,50 @@ class FakeDb implements DatabaseAdapter {
     return Promise.resolve();
   }
 
+  archiveSession(id: string): Promise<Session | null> {
+    const session = this.sessions.get(id);
+    if (!session) {
+      return Promise.resolve(null);
+    }
+    const archived = { ...session, archived_at: Date.now() };
+    this.sessions.set(id, archived);
+    return Promise.resolve(archived);
+  }
+
+  deleteSession(id: string): Promise<boolean> {
+    const existed = this.sessions.delete(id);
+    this.branches.delete(id);
+    this.conversations.delete(id);
+    this.sessionEvaluations.delete(id);
+    this.sessionReviewStates.delete(id);
+    this.sessionComparisonAnalyses.delete(id);
+    for (const key of Array.from(this.messageStore.keys())) {
+      if (key.startsWith(`${id}:`)) this.messageStore.delete(key);
+    }
+    for (const key of Array.from(this.replayStore.keys())) {
+      if (key.startsWith(`${id}:`)) this.replayStore.delete(key);
+    }
+    for (const key of Array.from(this.workspaceSnapshots.keys())) {
+      if (key.startsWith(`${id}:`)) this.workspaceSnapshots.delete(key);
+    }
+    for (const [linkId, sessionId] of Array.from(this.usedAssessmentLinks.entries())) {
+      if (sessionId === id) {
+        this.usedAssessmentLinks.delete(linkId);
+      }
+    }
+    return Promise.resolve(existed);
+  }
+
+  purgeArchivedSessions(olderThan: number): Promise<number> {
+    const archivedIds = Array.from(this.sessions.values())
+      .filter((session) => session.archived_at !== undefined && session.archived_at <= olderThan)
+      .map((session) => session.id);
+    for (const sessionId of archivedIds) {
+      void this.deleteSession(sessionId);
+    }
+    return Promise.resolve(archivedIds.length);
+  }
+
   listSessions(): Promise<Session[]> {
     return Promise.resolve([...this.sessions.values()]);
   }

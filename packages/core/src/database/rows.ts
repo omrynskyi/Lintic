@@ -6,6 +6,7 @@ export interface SessionRow {
   status: string;
   created_at: number;
   closed_at: number | null;
+  archived_at: number | null;
   max_session_tokens: number;
   max_message_tokens: number;
   max_interactions: number;

@@ -102,6 +102,10 @@ export class PostgresAdapter implements DatabaseAdapter {
     await this.initializationPromise;
   }
 
+  async close(): Promise<void> {
+    await this.pool.end();
+  }
+
   async createSession(config: CreateSessionConfig): Promise<{ id: string; token: string }> {
     await this.initialize();
 
@@ -642,6 +646,60 @@ export class PostgresAdapter implements DatabaseAdapter {
     );
   }
 
+  async archiveSession(id: string): Promise<Session | null> {
+    await this.initialize();
+    await this.pool.query('UPDATE sessions SET archived_at = $1 WHERE id = $2', [Date.now(), id]);
+    return this.getSession(id);
+  }
+
+  async deleteSession(id: string): Promise<boolean> {
+    await this.initialize();
+    const existing = await this.pool.query<{ id: string }>('SELECT id FROM sessions WHERE id = $1', [id]);
+    if (!existing.rows[0]) {
+      return false;
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `DELETE FROM conversation_context_attachments
+         WHERE conversation_id IN (SELECT id FROM conversations WHERE session_id = $1)`,
+        [id],
+      );
+      await client.query('DELETE FROM context_resources WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM workspace_snapshots WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM session_comparison_analyses WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM session_review_states WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM session_evaluations WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM assessment_link_uses WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM replay_events WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM messages WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM conversations WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM session_branches WHERE session_id = $1', [id]);
+      await client.query('DELETE FROM sessions WHERE id = $1', [id]);
+      await client.query('COMMIT');
+      return true;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async purgeArchivedSessions(olderThan: number): Promise<number> {
+    await this.initialize();
+    const result = await this.pool.query<{ id: string }>(
+      'SELECT id FROM sessions WHERE archived_at IS NOT NULL AND archived_at <= $1',
+      [olderThan],
+    );
+    for (const row of result.rows) {
+      await this.deleteSession(row.id);
+    }
+    return result.rows.length;
+  }
+
   async listSessions(): Promise<Session[]> {
     await this.initialize();
     const result = await this.pool.query<SessionRow>('SELECT * FROM sessions ORDER BY created_at DESC');
@@ -1101,9 +1159,11 @@ export class PostgresAdapter implements DatabaseAdapter {
       for (const statement of POSTGRES_SCHEMA_STATEMENTS) {
         await this.pool.query(statement);
       }
+      await this.pool.query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS archived_at BIGINT');
       await this.pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_id TEXT');
       await this.pool.query('ALTER TABLE replay_events ADD COLUMN IF NOT EXISTS conversation_id TEXT');
       await this.pool.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS rewound_at BIGINT');
+      await this.pool.query('CREATE INDEX IF NOT EXISTS idx_sessions_archived_at ON sessions(archived_at, created_at DESC)');
       await this.backfillPostgresConversations();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

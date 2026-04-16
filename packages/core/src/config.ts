@@ -181,6 +181,10 @@ export function validateConfig(raw: unknown): Config {
     };
   });
 
+  if (prompts.length === 0) {
+    err('prompts must contain at least one prompt');
+  }
+
   // ── database (optional) ──
   let database: DatabaseConfig | undefined;
   if (root.database !== undefined) {

@@ -8,7 +8,7 @@ const tsxCli = resolve(rootDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 const cliEntry = resolve(rootDir, 'packages', 'cli', 'src', 'index.ts');
 
 const result = spawnSync(process.execPath, [tsxCli, cliEntry, ...process.argv.slice(2)], {
-  cwd: rootDir,
+  cwd: process.cwd(),
   stdio: 'inherit',
 });
 

@@ -292,6 +292,63 @@ describe('closeSession', () => {
   });
 });
 
+describe('archiveSession / deleteSession / purgeArchivedSessions', () => {
+  test('archiveSession timestamps a completed session', async () => {
+    const db = makeAdapter();
+    const { id } = await db.createSession(BASE_CONFIG);
+    await db.closeSession(id);
+
+    const archived = await db.archiveSession(id);
+
+    expect(archived?.archived_at).toBeDefined();
+  });
+
+  test('deleteSession removes a session and related review artifacts', async () => {
+    const db = makeAdapter();
+    const { id } = await db.createSession(BASE_CONFIG);
+    await db.closeSession(id);
+    await db.upsertSessionReviewState(id, 'reviewed');
+    await db.upsertSessionComparisonAnalysis({
+      session_id: id,
+      prompt_id: BASE_CONFIG.prompt_id,
+      schema_version: 'comparison-v1',
+      comparison_score: 87,
+      recommendation: 'Yes',
+      strengths: ['Strong planning'],
+      risks: ['Minor gaps'],
+      summary: 'Strong overall.',
+    });
+
+    await expect(db.deleteSession(id)).resolves.toBe(true);
+    await expect(db.getSession(id)).resolves.toBeNull();
+    await expect(db.getSessionReviewState(id)).resolves.toBeNull();
+    await expect(db.getSessionComparisonAnalysis(id)).resolves.toBeNull();
+  });
+
+  test('purgeArchivedSessions deletes archived sessions older than the cutoff', async () => {
+    const db = makeAdapter();
+    const { id: oldId } = await db.createSession({ ...BASE_CONFIG, candidate_email: 'old@example.com' });
+    const { id: recentId } = await db.createSession({ ...BASE_CONFIG, candidate_email: 'recent@example.com' });
+    await db.closeSession(oldId);
+    await db.closeSession(recentId);
+    await db.archiveSession(oldId);
+    await db.archiveSession(recentId);
+
+    const oldArchivedAt = Date.now() - (11 * 24 * 60 * 60 * 1000);
+    const recentArchivedAt = Date.now() - (2 * 24 * 60 * 60 * 1000);
+    (db as unknown as { db: import('better-sqlite3').Database }).db.prepare(
+      'UPDATE sessions SET archived_at = ? WHERE id = ?',
+    ).run(oldArchivedAt, oldId);
+    (db as unknown as { db: import('better-sqlite3').Database }).db.prepare(
+      'UPDATE sessions SET archived_at = ? WHERE id = ?',
+    ).run(recentArchivedAt, recentId);
+
+    await expect(db.purgeArchivedSessions(Date.now() - (10 * 24 * 60 * 60 * 1000))).resolves.toBe(1);
+    await expect(db.getSession(oldId)).resolves.toBeNull();
+    await expect(db.getSession(recentId)).resolves.not.toBeNull();
+  });
+});
+
 describe('listSessions', () => {
   test('returns empty array when no sessions exist', async () => {
     const db = makeAdapter();

@@ -7,3 +7,4 @@ export * from './metrics.js';
 export * from './assessment-links.js';
 export * from './EvaluatorRubric.js';
 export * from './SessionAnalyzer.js';
+export * from './setup.js';

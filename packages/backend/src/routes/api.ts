@@ -79,6 +79,7 @@ const COMPARISON_SCHEMA_VERSION = 'comparison-v1';
 const COMPARISON_BATCH_SIZE = 8;
 const COMPARISON_DIGEST_CHAR_LIMIT = 900;
 const COMPARISON_SNIPPET_CHAR_LIMIT = 180;
+const REVIEW_ARCHIVE_RETENTION_MS = 10 * 24 * 60 * 60 * 1000;
 
 /** Reconstruct a Message[] from stored rows, deserialising tool_use assistant turns and tool result rows. */
 function buildHistory(storedMessages: StoredMessage[]): Message[] {
@@ -293,6 +294,7 @@ function buildAdminReviewRow(
     prompt_id: session.prompt_id,
     prompt_title: prompt?.title ?? session.prompt_id,
     completed_at: session.closed_at ?? session.created_at,
+    ...(session.archived_at !== undefined ? { archived_at: session.archived_at } : {}),
     ...(session.score !== undefined ? { session_score: session.score } : {}),
     review_status: getReviewStatus(reviewState),
     comparison_status: comparisonReady ? 'ready' : 'pending',
@@ -1167,8 +1169,12 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     res.json({ deleted: count });
   }));
 
-  router.get('/reviews', requireAdminKey(adminKey), asyncRoute(async (_req, res) => {
-    const completedSessions = (await db.listSessions()).filter((session) => session.status !== 'active');
+  router.get('/reviews', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    await db.purgeArchivedSessions(Date.now() - REVIEW_ARCHIVE_RETENTION_MS);
+    const showArchived = req.query['archived'] === 'true';
+    const completedSessions = (await db.listSessions()).filter((session) => (
+      session.status !== 'active' && (showArchived ? session.archived_at !== undefined : session.archived_at === undefined)
+    ));
     const reviews = await Promise.all(completedSessions.map(async (session): Promise<AdminReviewRow> => {
       const [prompt, reviewState, comparison] = await Promise.all([
         db.getPrompt(session.prompt_id),
@@ -1188,6 +1194,38 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     });
 
     res.json({ reviews } satisfies AdminReviewsResponse);
+  }));
+
+  router.post('/reviews/:sessionId/archive', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const sessionId = req.params['sessionId'] as string;
+    const session = await db.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+    if (session.status === 'active') {
+      res.status(400).json({ error: 'Only completed reviews can be archived' });
+      return;
+    }
+
+    const archived = await db.archiveSession(sessionId);
+    res.json({ session: archived });
+  }));
+
+  router.delete('/reviews/:sessionId', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
+    const sessionId = req.params['sessionId'] as string;
+    const session = await db.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+    if (session.archived_at === undefined) {
+      res.status(400).json({ error: 'Archive a review before permanently deleting it' });
+      return;
+    }
+
+    const deleted = await db.deleteSession(sessionId);
+    res.json({ deleted });
   }));
 
   router.post('/reviews/:sessionId/viewed', requireAdminKey(adminKey), asyncRoute(async (req, res) => {
@@ -1231,7 +1269,9 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     }
 
     const prompt = await db.getPrompt(promptId);
-    const completedSessions = (await db.getSessionsByPrompt(promptId)).filter((session) => session.status !== 'active');
+    const completedSessions = (await db.getSessionsByPrompt(promptId)).filter((session) => (
+      session.status !== 'active' && session.archived_at === undefined
+    ));
     const rows = await Promise.all(completedSessions.map(async (session): Promise<AdminComparisonRow> => {
       const [reviewState, comparison] = await Promise.all([
         db.getSessionReviewState(session.id),
@@ -1272,7 +1312,9 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const completedSessions = (await db.getSessionsByPrompt(promptId)).filter((session) => session.status !== 'active');
+    const completedSessions = (await db.getSessionsByPrompt(promptId)).filter((session) => (
+      session.status !== 'active' && session.archived_at === undefined
+    ));
     const existingAnalyses = await db.listSessionComparisonAnalysesByPrompt(promptId);
     const existingBySession = new Map(existingAnalyses.map((analysis) => [analysis.session_id, analysis]));
     const pendingSessions = completedSessions.filter((session) => {

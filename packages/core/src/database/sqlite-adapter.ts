@@ -82,6 +82,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
 
   private applySqliteMigrations(): void {
     const migrations = [
+      'ALTER TABLE sessions ADD COLUMN archived_at INTEGER',
       'ALTER TABLE messages ADD COLUMN branch_id TEXT',
       'ALTER TABLE messages ADD COLUMN turn_sequence INTEGER',
       'ALTER TABLE messages ADD COLUMN conversation_id TEXT',
@@ -99,6 +100,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       }
     }
 
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_archived_at ON sessions(archived_at, created_at DESC)');
     this.db.exec("UPDATE messages SET branch_id = COALESCE(branch_id, 'main') WHERE branch_id IS NULL OR branch_id = ''");
     this.db.exec("UPDATE replay_events SET branch_id = COALESCE(branch_id, 'main') WHERE branch_id IS NULL OR branch_id = ''");
     this.backfillSqliteConversations();
@@ -184,6 +186,10 @@ export class SQLiteAdapter implements DatabaseAdapter {
     `).run(randomUUID(), id, branchId, now, now);
 
     return Promise.resolve({ id, token });
+  }
+
+  close(): void {
+    this.db.close();
   }
 
   createAssessmentLink(config: CreateAssessmentLinkConfig): Promise<AssessmentLinkRecord> {
@@ -683,6 +689,49 @@ export class SQLiteAdapter implements DatabaseAdapter {
       UPDATE sessions SET status = ?, closed_at = ? WHERE id = ?
     `).run(status, Date.now(), id);
     return Promise.resolve();
+  }
+
+  archiveSession(id: string): Promise<Session | null> {
+    this.db.prepare('UPDATE sessions SET archived_at = ? WHERE id = ?').run(Date.now(), id);
+    return this.getSession(id);
+  }
+
+  deleteSession(id: string): Promise<boolean> {
+    const existing = this.db.prepare('SELECT id FROM sessions WHERE id = ?').get(id) as { id: string } | undefined;
+    if (!existing) {
+      return Promise.resolve(false);
+    }
+
+    const deleteSessionData = this.db.transaction((sessionId: string) => {
+      this.db.prepare(
+        `DELETE FROM conversation_context_attachments
+         WHERE conversation_id IN (SELECT id FROM conversations WHERE session_id = ?)`,
+      ).run(sessionId);
+      this.db.prepare('DELETE FROM context_resources WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM workspace_snapshots WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM session_comparison_analyses WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM session_review_states WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM session_evaluations WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM assessment_link_uses WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM replay_events WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM conversations WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM session_branches WHERE session_id = ?').run(sessionId);
+      this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+    });
+
+    deleteSessionData(id);
+    return Promise.resolve(true);
+  }
+
+  purgeArchivedSessions(olderThan: number): Promise<number> {
+    const rows = this.db.prepare(
+      'SELECT id FROM sessions WHERE archived_at IS NOT NULL AND archived_at <= ?',
+    ).all(olderThan) as Array<{ id: string }>;
+    for (const row of rows) {
+      void this.deleteSession(row.id);
+    }
+    return Promise.resolve(rows.length);
   }
 
   listSessions(): Promise<Session[]> {

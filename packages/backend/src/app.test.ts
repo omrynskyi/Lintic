@@ -456,6 +456,50 @@ class FakeDb implements DatabaseAdapter {
     return Promise.resolve();
   }
 
+  archiveSession(id: string): Promise<Session | null> {
+    const session = this.sessions.get(id);
+    if (!session) {
+      return Promise.resolve(null);
+    }
+    const archived = { ...session, archived_at: Date.now() };
+    this.sessions.set(id, archived);
+    return Promise.resolve(archived);
+  }
+
+  deleteSession(id: string): Promise<boolean> {
+    const existed = this.sessions.delete(id);
+    this.branches.delete(id);
+    this.conversations.delete(id);
+    this.sessionEvaluations.delete(id);
+    this.sessionReviewStates.delete(id);
+    this.sessionComparisonAnalyses.delete(id);
+    for (const key of Array.from(this.messageStore.keys())) {
+      if (key.startsWith(`${id}:`)) this.messageStore.delete(key);
+    }
+    for (const key of Array.from(this.replayStore.keys())) {
+      if (key.startsWith(`${id}:`)) this.replayStore.delete(key);
+    }
+    for (const key of Array.from(this.workspaceSnapshots.keys())) {
+      if (key.startsWith(`${id}:`)) this.workspaceSnapshots.delete(key);
+    }
+    for (const [linkId, sessionId] of Array.from(this.usedAssessmentLinks.entries())) {
+      if (sessionId === id) {
+        this.usedAssessmentLinks.delete(linkId);
+      }
+    }
+    return Promise.resolve(existed);
+  }
+
+  purgeArchivedSessions(olderThan: number): Promise<number> {
+    const archivedIds = Array.from(this.sessions.values())
+      .filter((session) => session.archived_at !== undefined && session.archived_at <= olderThan)
+      .map((session) => session.id);
+    for (const sessionId of archivedIds) {
+      void this.deleteSession(sessionId);
+    }
+    return Promise.resolve(archivedIds.length);
+  }
+
   listSessions(): Promise<Session[]> {
     return Promise.resolve([...this.sessions.values()]);
   }
@@ -2317,6 +2361,31 @@ describe('review queue APIs', () => {
     expect(second?.comparison_status).toBe('pending');
   });
 
+  test('GET /api/reviews excludes archived sessions unless archived=true', async () => {
+    const db = new FakeDb();
+    const { id: activeReview } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'a@test.com', constraint: BASE_CONSTRAINT });
+    const { id: archivedReview } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'b@test.com', constraint: BASE_CONSTRAINT });
+    db.sessions.set(activeReview, { ...db.sessions.get(activeReview)!, status: 'completed', closed_at: Date.now() - 10_000 });
+    db.sessions.set(archivedReview, {
+      ...db.sessions.get(archivedReview)!,
+      status: 'completed',
+      closed_at: Date.now() - 5_000,
+      archived_at: Date.now() - 1_000,
+    });
+
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const liveRes = await request(app).get('/api/reviews').set('X-Lintic-Api-Key', 'admin-key');
+    const archivedRes = await request(app).get('/api/reviews?archived=true').set('X-Lintic-Api-Key', 'admin-key');
+
+    expect(liveRes.status).toBe(200);
+    expect(liveRes.body.reviews).toHaveLength(1);
+    expect(liveRes.body.reviews[0]?.session_id).toBe(activeReview);
+
+    expect(archivedRes.status).toBe(200);
+    expect(archivedRes.body.reviews).toHaveLength(1);
+    expect(archivedRes.body.reviews[0]?.session_id).toBe(archivedReview);
+  });
+
   test('POST /api/reviews/:id/viewed does not downgrade reviewed sessions', async () => {
     const db = new FakeDb();
     const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'viewed@test.com', constraint: BASE_CONSTRAINT });
@@ -2342,6 +2411,39 @@ describe('review queue APIs', () => {
     expect(res.status).toBe(200);
     expect(res.body.review_state.status).toBe('reviewed');
     expect((await db.getSessionReviewState(id))?.status).toBe('reviewed');
+  });
+
+  test('POST /api/reviews/:id/archive archives a completed review', async () => {
+    const db = new FakeDb();
+    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'archive@test.com', constraint: BASE_CONSTRAINT });
+    db.sessions.set(id, { ...db.sessions.get(id)!, status: 'completed', closed_at: Date.now() - 1000 });
+
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const res = await request(app)
+      .post(`/api/reviews/${id}/archive`)
+      .set('X-Lintic-Api-Key', 'admin-key');
+
+    expect(res.status).toBe(200);
+    expect((await db.getSession(id))?.archived_at).toBeDefined();
+  });
+
+  test('DELETE /api/reviews/:id permanently deletes an archived review', async () => {
+    const db = new FakeDb();
+    const { id } = await db.createSession({ prompt_id: 'test-prompt', candidate_email: 'delete@test.com', constraint: BASE_CONSTRAINT });
+    db.sessions.set(id, {
+      ...db.sessions.get(id)!,
+      status: 'completed',
+      closed_at: Date.now() - 1000,
+      archived_at: Date.now() - 500,
+    });
+
+    const app = createApp(db, new FakeAdapter(), TEST_CONFIG);
+    const res = await request(app)
+      .delete(`/api/reviews/${id}`)
+      .set('X-Lintic-Api-Key', 'admin-key');
+
+    expect(res.status).toBe(200);
+    expect(await db.getSession(id)).toBeNull();
   });
 
   test('POST /api/reviews/comparison/run uses compact comparison batches and persists results', async () => {

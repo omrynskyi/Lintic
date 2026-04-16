@@ -437,6 +437,16 @@ For UI stories, also include:
 **Acceptance Criteria:**
 
 - [ ] npx lintic init generates a starter lintic.yml with commented examples
+- [ ] The primary first-time setup experience is website-driven, not command-first:
+  a company can copy a setup prompt from the Lintic website into their preferred AI coding agent
+- [ ] The setup prompt instructs the agent to clone the Lintic repository, ask the company the necessary setup questions, and configure the deployment interactively
+- [ ] The agent-guided setup flow should cover:
+  infrastructure choice, database provider, environment variables, prompts/tasks, admin access, and evaluation configuration
+- [ ] The website-generated setup prompt should be reusable across common agents (for example Codex, Claude Code, Cursor, or similar repo-capable agents)
+- [ ] After the guided setup, the agent should provision or validate the database schema, seed prompts/tasks, and leave the install in a runnable state
+- [ ] Lintic should still expose explicit lifecycle commands for the agent or operator to run when needed:
+  `npx lintic init`, `npx lintic migrate`, and `npx lintic doctor`
+- [ ] Normal backend startup should not be the primary production mechanism for first-time schema creation
 - [ ] npx lintic generate-link --prompt <id> --email <email> outputs assessment URL
 - [ ] npx lintic list-sessions shows all sessions with status and scores
 - [ ] npx lintic export --session <id> --format json outputs full session data

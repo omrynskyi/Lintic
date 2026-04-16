@@ -348,4 +348,63 @@ describe('AdminReviews', () => {
     await waitFor(() => expect(screen.getByText('Now refreshed correctly.')).toBeInTheDocument());
     expect(reviewFetchCount).toBe(2);
   });
+
+  test('archives live reviews and lets archived reviews be deleted manually', async () => {
+    const liveReview = {
+      session_id: 'sess-archive-1',
+      candidate_email: 'archive@example.com',
+      prompt_id: 'prompt-1',
+      prompt_title: 'Build API',
+      completed_at: Date.now() - 1000,
+      review_status: 'viewed',
+      comparison_status: 'pending',
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/reviews') {
+        return jsonResponse({ reviews: [liveReview] });
+      }
+      if (url === '/api/reviews?archived=true') {
+        return jsonResponse({
+          reviews: [
+            {
+              ...liveReview,
+              archived_at: Date.now(),
+            },
+          ],
+        });
+      }
+      if (url === '/api/reviews/sess-archive-1/archive') {
+        expect(init?.method).toBe('POST');
+        return jsonResponse({ session: { ...liveReview, archived_at: Date.now() } });
+      }
+      if (url === '/api/reviews/sess-archive-1') {
+        expect(init?.method).toBe('DELETE');
+        return jsonResponse({ deleted: true });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <AdminKeyProvider>
+        <AdminReviews isDark={false} onToggleTheme={() => undefined} />
+      </AdminKeyProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText('Build API')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Viewed \(1\)/ }));
+    await waitFor(() => expect(screen.getByText('archive@example.com')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Archive review'));
+    await waitFor(() => expect(screen.queryByText('archive@example.com')).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await waitFor(() => expect(screen.getByText('Build API')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Viewed \(1\)/ }));
+    await waitFor(() => expect(screen.getByText('archive@example.com')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('Delete permanently'));
+    await waitFor(() => expect(screen.queryByText('archive@example.com')).not.toBeInTheDocument());
+  });
 });

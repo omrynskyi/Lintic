@@ -139,6 +139,7 @@ export interface Session {
   status: SessionStatus;
   created_at: number;  // Unix ms
   closed_at?: number;  // Unix ms, set when status becomes 'completed' or 'expired'
+  archived_at?: number; // Unix ms, set when a completed review is archived
   constraint: Constraint;
   tokens_used: number;
   interactions_used: number;
@@ -329,6 +330,7 @@ export interface AdminReviewRow {
   prompt_id: string;
   prompt_title: string;
   completed_at: number;
+  archived_at?: number;
   session_score?: number;
   review_status: SessionReviewStatus;
   comparison_status: 'pending' | 'ready';

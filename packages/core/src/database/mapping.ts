@@ -39,6 +39,8 @@ export function normalizeSessionRow(row: SessionRow): SessionRow {
     ...row,
     created_at: Number(row.created_at),
     closed_at: row.closed_at === null ? null : Number(row.closed_at),
+    archived_at:
+      row.archived_at === null || row.archived_at === undefined ? null : Number(row.archived_at),
     max_session_tokens: Number(row.max_session_tokens),
     max_message_tokens: Number(row.max_message_tokens),
     max_interactions: Number(row.max_interactions),
@@ -155,6 +157,9 @@ export function rowToSession(row: SessionRow): Session {
 
   if (row.closed_at !== null) {
     session.closed_at = row.closed_at;
+  }
+  if (row.archived_at !== null) {
+    session.archived_at = row.archived_at;
   }
   if (row.score !== null) {
     session.score = row.score;

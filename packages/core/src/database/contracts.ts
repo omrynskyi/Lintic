@@ -166,6 +166,9 @@ export interface DatabaseAdapter {
   addMessage(sessionId: string, role: MessageRole, content: string, tokenCount: number): Promise<void>;
   getMessages(sessionId: string): Promise<StoredMessage[]>;
   closeSession(id: string, status?: Exclude<SessionStatus, 'active'>): Promise<void>;
+  archiveSession(id: string): Promise<Session | null>;
+  deleteSession(id: string): Promise<boolean>;
+  purgeArchivedSessions(olderThan: number): Promise<number>;
   listSessions(): Promise<Session[]>;
   getSessionsByPrompt(promptId: string): Promise<Session[]>;
   listAssessmentLinks(): Promise<AssessmentLinkRecord[]>;

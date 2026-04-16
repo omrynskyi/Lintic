@@ -7,6 +7,7 @@ export const SQLITE_SCHEMA = `
     status TEXT NOT NULL DEFAULT 'active',
     created_at INTEGER NOT NULL,
     closed_at INTEGER,
+    archived_at INTEGER,
     max_session_tokens INTEGER NOT NULL,
     max_message_tokens INTEGER NOT NULL,
     max_interactions INTEGER NOT NULL,
@@ -187,6 +188,7 @@ export const POSTGRES_SCHEMA_STATEMENTS = [
     status TEXT NOT NULL DEFAULT 'active',
     created_at BIGINT NOT NULL,
     closed_at BIGINT,
+    archived_at BIGINT,
     max_session_tokens INTEGER NOT NULL,
     max_message_tokens INTEGER NOT NULL,
     max_interactions INTEGER NOT NULL,
@@ -196,6 +198,8 @@ export const POSTGRES_SCHEMA_STATEMENTS = [
     interactions_used INTEGER NOT NULL DEFAULT 0,
     score DOUBLE PRECISION
   )`,
+  `CREATE INDEX IF NOT EXISTS idx_sessions_archived_at
+    ON sessions(archived_at, created_at DESC)`,
   `CREATE TABLE IF NOT EXISTS messages (
     id BIGSERIAL PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id),

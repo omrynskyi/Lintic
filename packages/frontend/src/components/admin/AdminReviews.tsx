@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Archive,
   ArrowLeft,
   ChevronDown,
   ChevronRight,
@@ -8,6 +9,7 @@ import {
   FlaskConical,
   Loader,
   RefreshCw,
+  Trash2,
   X,
 } from 'lucide-react';
 import { fetchAdminJson, useAdminKey } from './AdminKeyContext.js';
@@ -185,15 +187,21 @@ function CollapsibleSection({
 function ReviewRowCard({
   review,
   isStaged,
+  archivedView,
   mutating,
   onOpenReview,
   onToggleStage,
+  onArchive,
+  onDelete,
 }: {
   review: AdminReviewRow;
   isStaged: boolean;
+  archivedView: boolean;
   mutating: boolean;
   onOpenReview: (review: AdminReviewRow) => void;
   onToggleStage: (review: AdminReviewRow) => void;
+  onArchive: (review: AdminReviewRow) => void;
+  onDelete: (review: AdminReviewRow) => void;
 }) {
   return (
     <article
@@ -219,23 +227,56 @@ function ReviewRowCard({
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              disabled={mutating}
-              aria-label={isStaged ? 'Remove from comparison' : 'Stage for comparison'}
-              title={isStaged ? 'Remove from comparison' : 'Stage for comparison'}
-              className="rounded-xl p-2 text-[11px] font-medium disabled:opacity-40"
-              style={{
-                background: isStaged ? 'rgba(16,185,129,0.12)' : 'rgba(56,135,206,0.1)',
-                color: isStaged ? 'var(--color-status-success)' : 'var(--color-brand)',
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleStage(review);
-              }}
-            >
-              {isStaged ? <X size={13} /> : <Columns2 size={13} />}
-            </button>
+            {archivedView ? (
+              <button
+                type="button"
+                disabled={mutating}
+                aria-label="Delete permanently"
+                title="Delete permanently"
+                className="rounded-xl p-2 text-[11px] font-medium disabled:opacity-40"
+                style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--color-status-error)' }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete(review);
+                }}
+              >
+                <Trash2 size={13} />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={mutating}
+                  aria-label={isStaged ? 'Remove from comparison' : 'Stage for comparison'}
+                  title={isStaged ? 'Remove from comparison' : 'Stage for comparison'}
+                  className="rounded-xl p-2 text-[11px] font-medium disabled:opacity-40"
+                  style={{
+                    background: isStaged ? 'rgba(16,185,129,0.12)' : 'rgba(56,135,206,0.1)',
+                    color: isStaged ? 'var(--color-status-success)' : 'var(--color-brand)',
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleStage(review);
+                  }}
+                >
+                  {isStaged ? <X size={13} /> : <Columns2 size={13} />}
+                </button>
+                <button
+                  type="button"
+                  disabled={mutating}
+                  aria-label="Archive review"
+                  title="Archive review"
+                  className="rounded-xl p-2 text-[11px] font-medium disabled:opacity-40"
+                  style={{ background: 'var(--color-bg-app)', color: 'var(--color-text-muted)' }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onArchive(review);
+                  }}
+                >
+                  <Archive size={13} />
+                </button>
+              </>
+            )}
             <button
               type="button"
               disabled={mutating}
@@ -628,6 +669,7 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
   const [comparisonOpenByPrompt, setComparisonOpenByPrompt] = useState<Record<string, boolean>>({});
   const [stagedByPrompt, setStagedByPrompt] = useState<Record<string, string[]>>(() => loadStagedSelections());
   const [comparisonDetailsBySession, setComparisonDetailsBySession] = useState<Record<string, ComparisonDetailState>>({});
+  const [showArchived, setShowArchived] = useState(false);
 
   function updateReviewStatusLocally(sessionId: string, status: SessionReviewStatus) {
     setReviews((prev) => prev.map((review) => (
@@ -637,17 +679,33 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
     )));
   }
 
+  function removeSessionFromLocalState(sessionId: string) {
+    setReviews((prev) => prev.filter((review) => review.session_id !== sessionId));
+    setComparisonDetailsBySession((prev) => {
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
+    setStagedByPrompt((prev) => Object.fromEntries(
+      Object.entries(prev).map(([promptId, sessionIds]) => [
+        promptId,
+        sessionIds.filter((value) => value !== sessionId),
+      ]),
+    ));
+  }
+
   function load() {
     if (!adminKey) return;
     setLoading(true);
     setError(null);
-    fetchAdminJson<AdminReviewsResponse>('/api/reviews', adminKey)
+    const path = showArchived ? '/api/reviews?archived=true' : '/api/reviews';
+    fetchAdminJson<AdminReviewsResponse>(path, adminKey)
       .then((response) => setReviews(response.reviews))
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); }, [adminKey]);
+  useEffect(() => { load(); }, [adminKey, showArchived]);
 
   useEffect(() => {
     persistStagedSelections(stagedByPrompt);
@@ -791,6 +849,40 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
     setComparisonOpenByPrompt((prev) => ({ ...prev, [promptId]: true }));
   }
 
+  async function archiveReviewSession(review: AdminReviewRow) {
+    if (!adminKey) return;
+    setMutatingSessionId(review.session_id);
+    try {
+      await fetchAdminJson<{ session: { archived_at?: number } }>(
+        `/api/reviews/${review.session_id}/archive`,
+        adminKey,
+        { method: 'POST' },
+      );
+      removeSessionFromLocalState(review.session_id);
+    } catch (archiveError) {
+      setError(archiveError instanceof Error ? archiveError.message : 'Failed to archive review');
+    } finally {
+      setMutatingSessionId(null);
+    }
+  }
+
+  async function deleteArchivedReview(review: AdminReviewRow) {
+    if (!adminKey) return;
+    setMutatingSessionId(review.session_id);
+    try {
+      await fetchAdminJson<{ deleted: boolean }>(
+        `/api/reviews/${review.session_id}`,
+        adminKey,
+        { method: 'DELETE' },
+      );
+      removeSessionFromLocalState(review.session_id);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete archived review');
+    } finally {
+      setMutatingSessionId(null);
+    }
+  }
+
   function toggleStage(review: AdminReviewRow) {
     setStagedByPrompt((prev) => {
       const current = prev[review.prompt_id] ?? [];
@@ -892,16 +984,29 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
           </h2>
         </div>
 
-        <button
-          type="button"
-          onClick={load}
-          disabled={!adminKey || loading}
-          className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-medium disabled:opacity-40"
-          style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-panel)' }}
-        >
-          <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={load}
+            disabled={!adminKey || loading}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-medium disabled:opacity-40"
+            style={{ color: 'var(--color-text-muted)', background: 'var(--color-bg-panel)' }}
+          >
+            <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowArchived((value) => !value)}
+            className="rounded-xl px-3 py-1.5 text-[12px] font-medium"
+            style={{
+              color: showArchived ? 'var(--color-text-main)' : 'var(--color-text-muted)',
+              background: showArchived ? 'rgba(56,135,206,0.12)' : 'var(--color-bg-panel)',
+            }}
+          >
+            Archived
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -916,7 +1021,7 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
         </div>
       ) : groups.length === 0 && !loading ? (
         <div className="rounded-xl px-4 py-8 text-center text-[12px]" style={{ background: 'var(--color-bg-panel)', color: 'var(--color-text-dim)' }}>
-          No completed review sessions yet.
+          {showArchived ? 'No archived review sessions yet.' : 'No completed review sessions yet.'}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
@@ -972,7 +1077,7 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                         <span>{unviewedRows.length} unviewed</span>
                         <span>{viewedRows.length} viewed</span>
                         <span>{reviewedRows.length} reviewed</span>
-                        {stagedCount > 0 ? <span>{stagedCount} staged</span> : null}
+                        {!showArchived && stagedCount > 0 ? <span>{stagedCount} staged</span> : null}
                       </div>
                     </div>
                   </div>
@@ -990,9 +1095,12 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                             key={review.session_id}
                             review={review}
                             isStaged={stagedIds.includes(review.session_id)}
+                            archivedView={showArchived}
                             mutating={mutatingSessionId === review.session_id}
                             onOpenReview={(row) => { void openReview(row); }}
                             onToggleStage={toggleStage}
+                            onArchive={(row) => { void archiveReviewSession(row); }}
+                            onDelete={(row) => { void deleteArchivedReview(row); }}
                           />
                         ))}
                       </div>
@@ -1006,9 +1114,12 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                           key={review.session_id}
                           review={review}
                           isStaged={stagedIds.includes(review.session_id)}
+                          archivedView={showArchived}
                           mutating={mutatingSessionId === review.session_id}
                           onOpenReview={(row) => { void openReview(row); }}
                           onToggleStage={toggleStage}
+                          onArchive={(row) => { void archiveReviewSession(row); }}
+                          onDelete={(row) => { void deleteArchivedReview(row); }}
                         />
                       ))}
                     </div>
@@ -1021,15 +1132,18 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                           key={review.session_id}
                           review={review}
                           isStaged={stagedIds.includes(review.session_id)}
+                          archivedView={showArchived}
                           mutating={mutatingSessionId === review.session_id}
                           onOpenReview={(row) => { void openReview(row); }}
                           onToggleStage={toggleStage}
+                          onArchive={(row) => { void archiveReviewSession(row); }}
+                          onDelete={(row) => { void deleteArchivedReview(row); }}
                         />
                       ))}
                     </div>
                   </CollapsibleSection>
 
-                  {stagedCount > 0 ? (
+                  {!showArchived && stagedCount > 0 ? (
                     <CollapsibleSection
                       title="Comparison"
                       count={stagedCount}
