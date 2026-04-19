@@ -33,14 +33,174 @@ Traditional coding assessments test memorization. Lintic tests AI collaboration 
 
 ## Quick Start
 
+### Prerequisites
+
+- Node.js 20+
+- npm 10+
+- A `lintic.yml` config file in the repo root
+- Provider credentials for whichever model backend you plan to use
+
+### 1. Install dependencies
+
 ```bash
 npm install
+```
+
+### 2. Configure Lintic
+
+You can generate a starter config:
+
+```bash
+npx lintic init
+```
+
+Or edit the existing `lintic.yml` in the repo root.
+
+Typical local setup:
+
+```yaml
+agent:
+  provider: openai-compatible       # or local-openai, groq, cerebras, anthropic-native
+  api_key: ${OPENAI_API_KEY}
+  model: gpt-4o
+
+constraints:
+  max_session_tokens: 50000
+  max_message_tokens: 4000
+  context_window: 32000
+  max_interactions: 30
+  time_limit_minutes: 60
+
+database:
+  provider: sqlite
+  path: ./lintic.db
+
+api:
+  admin_key: ${LINTIC_ADMIN_KEY}
+  secret_key: ${LINTIC_SECRET_KEY}
+
+prompts:
+  - id: dev
+    title: Dev Testing Session
+
+  - id: library-api
+    title: Library Catalog API
+    description: Build a REST API for managing a library catalog with borrowing logic.
+    difficulty: medium
+    tags: [backend, api-design]
+```
+
+Copy `.env.example` to `.env` and fill in only the variables your setup uses.
+
+### 3. Verify config and seed prompts
+
+```bash
+npx lintic doctor
+npx lintic migrate
+```
+
+### 4. Start local development
+
+```bash
 npm run startdev
+```
+
+This starts:
+
+- backend on `http://localhost:3300`
+- frontend on `http://localhost:5173`
+
+Open `http://localhost:5173`.
+
+### 5. Quality checks
+
+```bash
 npm run build
 npm run typecheck
 npm run lint
 npm run test
 ```
+
+## How To Use Lintic
+
+### Local dev testing
+
+Open `http://localhost:5173/`.
+
+The default landing page is a dev session launcher. It creates a throwaway session using the `dev` prompt from `lintic.yml`, then lets you choose the agent provider, model, API key, and optional base URL from the UI before chatting with the agent.
+
+Use this path when you want to:
+
+- test the IDE and agent loop locally
+- try different providers without restarting the backend
+- open a review dashboard for a fresh test session
+
+### Create or manage tasks
+
+You have two ways to define assessment tasks:
+
+- `lintic.yml`: prompts are loaded from the `prompts:` block and seeded with `npx lintic migrate`
+- Admin UI: open `http://localhost:5173/admin/tasks` and enter your admin key in `Settings`
+
+Each task needs at least an `id` and `title`. Optional fields like `description`, `acceptance_criteria`, and `rubric` improve the candidate prompt and reviewer workflow.
+
+### Launch a candidate assessment
+
+Create a signed single-use assessment link in one of three ways:
+
+```bash
+# CLI
+npx lintic generate-link \
+  --prompt library-api \
+  --email candidate@example.com \
+  --base-url http://localhost:3300
+```
+
+```bash
+# REST API
+curl -X POST http://localhost:3300/api/links \
+  -H "X-Lintic-Api-Key: $LINTIC_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt_id":"library-api","email":"candidate@example.com"}'
+```
+
+- Admin UI: open `http://localhost:5173/admin/assessments` and create links there
+
+Notes:
+
+- Use `--base-url http://localhost:3300` when the built app is being served by the backend or Docker.
+- Use `--base-url http://localhost:5173` only when candidates should hit the Vite dev frontend directly.
+- Links are single-use and expire after 72 hours by default.
+
+### Candidate flow
+
+Candidates open a link in the form:
+
+```text
+/assessment?token=...
+```
+
+From there they can:
+
+- read the task instructions
+- edit files in the browser IDE
+- run commands in the terminal
+- collaborate with the AI agent inside the same session
+- submit the assessment when finished
+
+### Review and compare submissions
+
+Reviewers can use:
+
+- `http://localhost:5173/admin/reviews` for the admin review queue
+- `http://localhost:5173/review/<session-id>` for a direct replay view
+
+The review experience includes:
+
+- synchronized conversation and timeline replay
+- code diffs and workspace snapshots
+- evaluation status and reviewer notes
+- cross-candidate comparison for the same prompt
 
 ## Docker Deployment
 
@@ -51,15 +211,19 @@ Lintic ships as a single production image. The Express backend serves the built 
 ```yaml
 agent:
   provider: openai-compatible       # or local-openai, cerebras, groq, anthropic-native
-  base_url: https://api.openai.com/v1
-  api_key: ${LINTIC_API_KEY}
+  api_key: ${OPENAI_API_KEY}
   model: gpt-4o
 
 constraints:
   max_session_tokens: 50000
-  max_message_tokens: 2000
+  max_message_tokens: 4000
+  context_window: 32000
   max_interactions: 30
   time_limit_minutes: 60
+
+api:
+  admin_key: ${LINTIC_ADMIN_KEY}
+  secret_key: ${LINTIC_SECRET_KEY}
 
 prompts:
   - id: library-api
@@ -82,10 +246,12 @@ agent:
 ### 2. Set environment variables
 
 ```bash
-export LINTIC_API_KEY=your-provider-key      # LLM provider API key
 export LINTIC_ADMIN_KEY=your-admin-key       # protects POST /api/links
 export LINTIC_SECRET_KEY=your-signing-secret # signs assessment JWTs
+export OPENAI_API_KEY=your-provider-key      # if using openai-compatible
 ```
+
+If you are using Anthropic, Groq, or Cerebras instead, set the matching provider key and reference it from `lintic.yml`.
 
 ### 3. Start
 
@@ -96,6 +262,8 @@ docker compose up --build -d
 The app is available at `http://localhost:3300`. `./lintic.yml` is mounted read-only into the container and `./data` persists the SQLite database between restarts.
 
 **Health check:** `GET /health` returns `{"status":"ok"}`.
+
+Important: the checked-in `docker-compose.yml` currently forwards `LINTIC_API_KEY`, `LINTIC_ADMIN_KEY`, and `LINTIC_SECRET_KEY` into the container. If your `lintic.yml` references provider-specific variables such as `OPENAI_API_KEY`, add them to `docker-compose.yml` before deploying.
 
 ## Local PostgreSQL
 
@@ -145,7 +313,7 @@ psql postgres://lintic:lintic@localhost:5432/lintic -c "select session_id, role,
 
 ```bash
 # CLI
-npx lintic generate-link --prompt library-api --email candidate@example.com
+npx lintic generate-link --prompt library-api --email candidate@example.com --base-url http://localhost:3300
 
 # REST API
 curl -X POST http://localhost:3300/api/links \
