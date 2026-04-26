@@ -46,6 +46,18 @@ type AppState = 'setup' | 'active' | 'submitted';
 type SubmissionKind = 'manual' | 'expired';
 const ENABLE_DEV_REVIEW_SHORTCUT = import.meta.env.DEV;
 
+function getInitialIsDarkTheme(): boolean {
+  if (typeof window === 'undefined') {
+    return true;
+  }
+
+  const savedTheme = window.localStorage.getItem('theme');
+  if (savedTheme === 'dark') return true;
+  if (savedTheme === 'light') return false;
+
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
+}
+
 function getAssessmentLinkToken(location: Location): string | null {
   if (location.pathname !== '/assessment') {
     return null;
@@ -88,7 +100,7 @@ export function App() {
   const executorRef = useRef<ToolExecutor | null>(null);
   const terminalRef = useRef<TerminalHandle>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(getInitialIsDarkTheme);
   const [chatLoading, setChatLoading] = useState(false);
   const [submittingTask, setSubmittingTask] = useState(false);
   const [submittedStats, setSubmittedStats] = useState<SessionSummaryStats | null>(null);

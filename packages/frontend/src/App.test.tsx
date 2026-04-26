@@ -327,6 +327,16 @@ describe('App prompt display', () => {
     }));
   });
 
+  test('starts in light mode when the saved theme is light', async () => {
+    localStorage.setItem('theme', 'light');
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+    });
+  });
+
   test('opens prompt instructions in the IDE when a session starts and the top bar action is used', async () => {
     render(<App />);
 

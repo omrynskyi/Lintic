@@ -66,6 +66,7 @@ describe('AdminReviews', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Build API')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Unviewed \(1\)/ }));
     expect(screen.queryByText('What to do')).not.toBeInTheDocument();
     expect(screen.queryByText('Queue summary')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Stage for comparison')).toBeInTheDocument();
@@ -221,6 +222,7 @@ describe('AdminReviews', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Build API')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Unviewed \(1\)/ }));
     fireEvent.click(screen.getAllByLabelText('Stage for comparison')[0]!);
     fireEvent.click(screen.getByRole('button', { name: /Viewed \(1\)/ }));
     const secondCard = screen.getByText('second@example.com').closest('article');
@@ -228,10 +230,23 @@ describe('AdminReviews', () => {
     fireEvent.click(within(secondCard!).getByLabelText('Stage for comparison'));
 
     await waitFor(() => expect(screen.getByText('Analyze staged candidates')).toBeInTheDocument());
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: /Show evaluation for Prompt Quality - first@example.com/ }),
+    ).toBeInTheDocument());
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: /Show evaluation for Build API - first@example.com/ }),
+    ).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Show evaluation for Build API - first@example.com/ }));
+    await waitFor(() => expect(screen.getByText('Completed the main task')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Show evaluation for Prompt Quality - first@example.com/ }));
+    await waitFor(() => expect(screen.getByText('Very clear prompts')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Summary/ }));
     await waitFor(() => expect(screen.getByText('Strong overall candidate.')).toBeInTheDocument());
-    expect(screen.getByText('Promising, but less consistent.')).toBeInTheDocument();
-    expect(screen.getByText('LLM Scores')).toBeInTheDocument();
-    expect(screen.getAllByText('Prompt Quality').length).toBe(1);
+    fireEvent.click(screen.getByRole('button', { name: /Rubric/ }));
+    await waitFor(() => expect(screen.getByText('Solid quality')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Infrastructure/ }));
+    await waitFor(() => expect(screen.getByText('Good cache usage')).toBeInTheDocument());
+    expect(screen.getByText('Completed the main task')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/review/sess-1');
     expect(fetchMock).toHaveBeenCalledWith('/api/review/sess-2');
   });
@@ -316,7 +331,7 @@ describe('AdminReviews', () => {
               llm_evaluation: {
                 overall_summary: 'Now refreshed correctly.',
                 scores: [
-                  { dimension: 'prompt_quality', label: 'Prompt Quality', score: 8, rationale: 'Very clear prompts' },
+                  { dimension: 'prompt_quality', label: 'Prompt Quality', score: 8, rationale: 'Now refreshed correctly.' },
                 ],
                 acceptance_criteria_results: [],
                 rubric_scores: [],
@@ -342,10 +357,16 @@ describe('AdminReviews', () => {
     fireEvent.click(screen.getByLabelText('Stage for comparison'));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/review/sess-1'));
-    await waitFor(() => expect(screen.getByText('This candidate has not been analyzed yet.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/No LLM evaluation yet/i)).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /Comparison \(1\)/ }));
+    await waitFor(() => expect(screen.queryByText(/No LLM evaluation yet/i)).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /Comparison \(1\)/ }));
-    await waitFor(() => expect(screen.getByText('Now refreshed correctly.')).toBeInTheDocument());
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: /Show evaluation for Prompt Quality - candidate@example.com/ }),
+    ).toBeInTheDocument());
+    const refreshedScoreButton = screen.getByRole('button', { name: /Show evaluation for Prompt Quality - candidate@example.com/ });
+    fireEvent.click(refreshedScoreButton);
+    await waitFor(() => expect(within(refreshedScoreButton).getByText('Now refreshed correctly.')).toBeInTheDocument());
     expect(reviewFetchCount).toBe(2);
   });
 

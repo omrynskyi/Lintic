@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -42,6 +42,14 @@ interface SharedCompareSectionProps {
   candidateCount: number;
   defaultOpen?: boolean;
   children: React.ReactNode;
+}
+
+function comparisonScoreRowKey(promptId: string, dimension: string): string {
+  return `${promptId}:${dimension}`;
+}
+
+function comparisonMetricRowKey(promptId: string, group: string, label: string): string {
+  return `${promptId}:${group}:${label}`;
 }
 
 interface AdminReviewsProps {
@@ -168,7 +176,7 @@ function CollapsibleSection({
           }
           onToggle?.(nextOpen);
         }}
-        className="flex w-full items-center gap-3 py-2 text-left"
+        className="flex w-full items-center gap-3 px-4 py-2 text-left"
       >
         {open ? (
           <ChevronDown size={14} style={{ color: 'var(--color-text-dim)' }} />
@@ -205,8 +213,8 @@ function ReviewRowCard({
 }) {
   return (
     <article
-      className="cursor-pointer rounded-xl px-4 py-3"
-      style={{ background: 'var(--color-bg-panel)' }}
+      className="group flex w-full cursor-pointer flex-col rounded-xl border border-transparent px-4 py-3 transition-all duration-150 hover:border-[var(--color-surface-muted)] hover:bg-[var(--color-surface-subtle)]"
+      style={{ background: 'transparent' }}
       onDoubleClick={() => onOpenReview(review)}
     >
       <div className="min-w-0 flex-1">
@@ -311,14 +319,14 @@ function SharedCompareSection({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-3 py-1 text-left"
+        className="flex w-full items-center gap-3 px-4 py-1 text-left"
       >
         {open ? (
           <ChevronDown size={14} style={{ color: 'var(--color-text-dim)' }} />
         ) : (
           <ChevronRight size={14} style={{ color: 'var(--color-text-dim)' }} />
         )}
-        <div className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-main)' }}>
+        <div className="text-[12px] font-semibold" style={{ color: 'var(--color-text-main)' }}>
           {title}
         </div>
         <div className="text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
@@ -340,7 +348,10 @@ function CompareCandidateHeader({
   onToggleStage: (review: AdminReviewRow) => void;
 }) {
   return (
-    <section className="rounded-xl px-4 py-4" style={{ background: 'var(--color-bg-panel)' }}>
+    <section
+      className="rounded-xl border border-[var(--color-border-main)] px-4 py-4 shadow-sm"
+      style={{ background: 'var(--color-bg-panel)' }}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className="text-[13px] font-semibold" style={{ color: 'var(--color-text-main)' }}>
@@ -388,7 +399,10 @@ function ComparisonSectionCard({
   loading?: boolean;
 }) {
   return (
-    <section className="rounded-xl px-4 py-4" style={{ background: 'var(--color-bg-panel)' }}>
+    <section
+      className="rounded-xl border border-[var(--color-border-main)] px-4 py-4 shadow-sm"
+      style={{ background: 'var(--color-bg-panel)' }}
+    >
       {loading ? (
         <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
           <Loader size={12} className="animate-spin" />
@@ -406,6 +420,126 @@ function ComparisonSectionCard({
         </div>
       )}
     </section>
+  );
+}
+
+function ComparisonScoreCell({
+  review,
+  score,
+  open,
+  onToggle,
+}: {
+  review: AdminReviewRow;
+  score?: ReviewEvaluationResult['llm_evaluation']['scores'][number] | null;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  if (!score) {
+    return (
+      <div
+        className="rounded-xl border border-[var(--color-border-main)] px-3 py-3"
+        style={{ background: 'var(--color-bg-panel)' }}
+      >
+        <div className="text-[12px]" style={{ color: 'var(--color-text-dim)' }}>
+          No score available
+        </div>
+      </div>
+    );
+  }
+
+  const color = getTenPointColor(score.score);
+
+  return (
+    <button
+      type="button"
+      aria-label={`Show evaluation for ${score.label} - ${review.candidate_email}`}
+      onClick={onToggle}
+      className="group flex w-full flex-col rounded-xl border border-[var(--color-border-main)] px-3 py-3 text-left transition-colors hover:border-[var(--color-border-main)] hover:bg-[var(--color-surface-subtle)]"
+      style={{ background: open ? 'var(--color-surface-subtle)' : 'var(--color-bg-panel)' }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-dim)' }}>
+          Score
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[14px] font-bold tabular-nums" style={{ color }}>
+            {score.score.toFixed(1)}<span className="text-[10px] opacity-50">/10</span>
+          </span>
+          <ChevronRight
+            size={12}
+            style={{
+              color: 'var(--color-text-dimmest)',
+              transform: open ? 'rotate(90deg)' : 'none',
+              transition: 'transform 120ms ease',
+              opacity: 0.75,
+            }}
+          />
+        </div>
+      </div>
+      {open ? <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'var(--color-text-dim)' }}>{score.rationale}</div> : null}
+    </button>
+  );
+}
+
+function ComparisonPercentCell({
+  review,
+  metricLabel,
+  score,
+  open,
+  onToggle,
+  detailText,
+}: {
+  review: AdminReviewRow;
+  metricLabel?: string;
+  score?: number | null;
+  open: boolean;
+  onToggle: () => void;
+  detailText?: string | null;
+}) {
+  if (score == null) {
+    return (
+      <div
+        className="rounded-xl border border-[var(--color-border-main)] px-3 py-3"
+        style={{ background: 'var(--color-bg-panel)' }}
+      >
+        <div className="text-[12px]" style={{ color: 'var(--color-text-dim)' }}>
+          No score available
+        </div>
+      </div>
+    );
+  }
+
+  const color = getPercentColor(score);
+
+  return (
+    <button
+      type="button"
+      aria-label={`Show evaluation for ${metricLabel ?? 'score'} - ${review.candidate_email}`}
+      onClick={onToggle}
+      className="group flex w-full flex-col rounded-xl border border-[var(--color-border-main)] px-3 py-3 text-left transition-colors hover:border-[var(--color-border-main)] hover:bg-[var(--color-surface-subtle)]"
+      style={{ background: open ? 'var(--color-surface-subtle)' : 'var(--color-bg-panel)' }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[11px] font-medium" style={{ color: 'var(--color-text-dim)' }}>
+          Score
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[14px] font-bold tabular-nums" style={{ color }}>
+            {score}<span className="text-[10px] opacity-50">%</span>
+          </span>
+          <ChevronRight
+            size={12}
+            style={{
+              color: 'var(--color-text-dimmest)',
+              transform: open ? 'rotate(90deg)' : 'none',
+              transition: 'transform 120ms ease',
+              opacity: 0.75,
+            }}
+          />
+        </div>
+      </div>
+      {open && detailText ? <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'var(--color-text-dim)' }}>{detailText}</div> : null}
+    </button>
   );
 }
 
@@ -432,7 +566,7 @@ function SynchronizedCriterionRow({
         ) : (
           <ChevronRight size={13} style={{ color: 'var(--color-text-dim)' }} />
         )}
-        <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-dim)' }}>
+        <div className="text-[11px] font-semibold" style={{ color: 'var(--color-text-dim)' }}>
           {title}
         </div>
       </button>
@@ -498,7 +632,7 @@ function ComparisonLlmScoresCard({ detail }: { detail: ComparisonDetailState | u
           {result.llm_evaluation.scores.map((item) => {
             const color = getTenPointColor(item.score);
             return (
-              <div key={item.dimension} className="rounded-xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div key={item.dimension} className="rounded-xl px-3 py-3" style={{ background: 'var(--color-surface-subtle)' }}>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[12px] font-semibold" style={{ color: 'var(--color-text-main)' }}>
                     {item.label}
@@ -528,9 +662,9 @@ function ComparisonAcceptanceCriteriaCard({ detail }: { detail: ComparisonDetail
           {items.map((item) => {
             const color = getPercentColor(item.score);
             return (
-              <div key={item.criterion} className="rounded-xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div key={item.criterion} className="rounded-xl px-3 py-3" style={{ background: 'var(--color-surface-subtle)' }}>
                 <div className="flex items-center gap-3">
-                  <div className="h-[4px] w-16 shrink-0 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                  <div className="h-[4px] w-16 shrink-0 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-muted)' }}>
                     <div className="h-full rounded-full" style={{ width: `${item.score}%`, background: color }} />
                   </div>
                   <span className="flex-1 text-[12px] font-medium" style={{ color: 'var(--color-text-main)' }}>
@@ -561,7 +695,7 @@ function ComparisonRubricCard({ detail }: { detail: ComparisonDetailState | unde
           {items.map((item) => {
             const color = getTenPointColor(item.score);
             return (
-              <div key={item.question} className="rounded-xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div key={item.question} className="rounded-xl px-3 py-3" style={{ background: 'var(--color-surface-subtle)' }}>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[12px] font-medium" style={{ color: 'var(--color-text-main)' }}>
                     {item.question}
@@ -606,7 +740,7 @@ function ComparisonInfrastructureCard({ detail }: { detail: ComparisonDetailStat
                     {pct}%
                   </span>
                 </div>
-                <div className="h-[4px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                <div className="h-[4px] overflow-hidden rounded-full" style={{ background: 'var(--color-surface-muted)' }}>
                   <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
                 </div>
                 <div className="mt-1.5 text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
@@ -638,7 +772,7 @@ function ComparisonIterationsCard({
             {iterationCount} iteration{iterationCount === 1 ? '' : 's'}
           </div>
           {result.iterations.map((item) => (
-            <div key={`${review.session_id}-${item.index}`} className="rounded-xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div key={`${review.session_id}-${item.index}`} className="rounded-xl px-3 py-3" style={{ background: 'var(--color-surface-subtle)' }}>
               <div className="text-[12px] font-medium" style={{ color: 'var(--color-text-main)' }}>
                 Iteration {item.index + 1}
               </div>
@@ -669,6 +803,8 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
   const [comparisonOpenByPrompt, setComparisonOpenByPrompt] = useState<Record<string, boolean>>({});
   const [stagedByPrompt, setStagedByPrompt] = useState<Record<string, string[]>>(() => loadStagedSelections());
   const [comparisonDetailsBySession, setComparisonDetailsBySession] = useState<Record<string, ComparisonDetailState>>({});
+  const [comparisonScoreOpenByRow, setComparisonScoreOpenByRow] = useState<Record<string, boolean>>({});
+  const [comparisonMetricOpenByRow, setComparisonMetricOpenByRow] = useState<Record<string, boolean>>({});
   const [showArchived, setShowArchived] = useState(false);
 
   function updateReviewStatusLocally(sessionId: string, status: SessionReviewStatus) {
@@ -1041,29 +1177,29 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                     comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.scores.map((item) => item.dimension) ?? []
                   )),
                 ));
-                const acceptanceCriteria = Array.from(new Set(
+                const acceptanceCriteriaLabels = Array.from(new Set(
                   stagedRows.flatMap((review) => (
                     comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.acceptance_criteria_results?.map((item) => item.criterion) ?? []
                   )),
                 ));
-                const rubricQuestions = Array.from(new Set(
-                  stagedRows.flatMap((review) => (
-                    comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.rubric_scores?.map((item) => item.question) ?? []
-                  )),
+                const hasSummary = stagedRows.some((review) => Boolean(
+                  comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.overall_summary,
                 ));
-                const infrastructureKeys = [
-                  'caching_effectiveness',
-                  'error_handling_coverage',
-                  'scaling_awareness',
-                ] as const;
+                const hasAcceptanceCriteria = acceptanceCriteriaLabels.length > 0;
+                const hasRubric = stagedRows.some((review) => Boolean(
+                  comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.rubric_scores?.length,
+                ));
+                const hasInfrastructure = stagedRows.some((review) => Boolean(
+                  comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.infrastructure,
+                ));
 
-	            return (
+            return (
               <section
                 key={group.prompt_id}
-                className="overflow-hidden rounded-xl border px-4 py-4"
-                style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'transparent' }}
+                className="overflow-hidden rounded-xl"
+                style={{ background: 'var(--color-bg-panel)' }}
               >
-                <div className="border-b pb-4" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                <div className="px-4 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
                       <h3 className="text-[14px] font-semibold" style={{ color: 'var(--color-text-bold)' }}>
@@ -1083,13 +1219,18 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-4 pt-4">
+                <div className="flex flex-col pb-2">
                   {unviewedRows.length > 0 ? (
-                    <section>
-                      <div className="mb-2 text-[12px] font-semibold" style={{ color: 'var(--color-text-main)' }}>
-                        Unviewed ({unviewedRows.length})
-                      </div>
-                      <div className="space-y-3">
+                    <CollapsibleSection
+                      title="Unviewed"
+                      count={unviewedRows.length}
+                      onToggle={(nextOpen) => {
+                        if (nextOpen) {
+                          setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: true }));
+                        }
+                      }}
+                    >
+                      <div className="flex flex-col gap-1 px-4 pb-2">
                         {unviewedRows.map((review) => (
                           <ReviewRowCard
                             key={review.session_id}
@@ -1104,11 +1245,19 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                           />
                         ))}
                       </div>
-                    </section>
+                    </CollapsibleSection>
                   ) : null}
 
-                  <CollapsibleSection title="Viewed" count={viewedRows.length}>
-                    <div className="space-y-3">
+                  <CollapsibleSection
+                    title="Viewed"
+                    count={viewedRows.length}
+                    onToggle={(nextOpen) => {
+                      if (nextOpen) {
+                        setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: true }));
+                      }
+                    }}
+                  >
+                    <div className="flex flex-col gap-1 px-4 pb-2">
                       {viewedRows.map((review) => (
                         <ReviewRowCard
                           key={review.session_id}
@@ -1125,8 +1274,16 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                     </div>
                   </CollapsibleSection>
 
-                  <CollapsibleSection title="Reviewed" count={reviewedRows.length}>
-                    <div className="space-y-3">
+                  <CollapsibleSection
+                    title="Reviewed"
+                    count={reviewedRows.length}
+                    onToggle={(nextOpen) => {
+                      if (nextOpen) {
+                        setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: true }));
+                      }
+                    }}
+                  >
+                    <div className="flex flex-col gap-1 px-4 pb-2">
                       {reviewedRows.map((review) => (
                         <ReviewRowCard
                           key={review.session_id}
@@ -1147,7 +1304,7 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                     <CollapsibleSection
                       title="Comparison"
                       count={stagedCount}
-                      open={!!comparisonOpenByPrompt[group.prompt_id]}
+                      open={comparisonOpenByPrompt[group.prompt_id] ?? false}
                       onToggle={(nextOpen) => {
                         setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: nextOpen }));
                         if (nextOpen) {
@@ -1155,251 +1312,162 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                         }
                       }}
                     >
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={anyEvaluating}
-                          className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-medium disabled:opacity-40"
-                          style={{ background: 'rgba(56,135,206,0.1)', color: 'var(--color-brand)' }}
-                          onClick={() => { void analyzeStagedSessions(group.prompt_id, stagedIds); }}
-                        >
-                          {anyEvaluating ? (
-                            <Loader size={11} className="animate-spin" />
-                          ) : (
-                            <FlaskConical size={11} />
-                          )}
-                          Analyze staged candidates
-                        </button>
-	                      </div>
+                      <div className="px-4 pb-4 pt-2">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={anyEvaluating}
+                            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[11px] font-medium disabled:opacity-40"
+                            style={{ background: 'rgba(56,135,206,0.1)', color: 'var(--color-brand)' }}
+                            onClick={() => { void analyzeStagedSessions(group.prompt_id, stagedIds); }}
+                          >
+                            {anyEvaluating ? (
+                              <Loader size={11} className="animate-spin" />
+                            ) : (
+                              <FlaskConical size={11} />
+                            )}
+                            Analyze staged candidates
+                          </button>
+                        </div>
 
-	                      <div className="overflow-x-auto">
-	                        <div className="flex min-w-max flex-col gap-3">
-	                          <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-	                            {stagedRows.map((review) => (
-	                              <CompareCandidateHeader
-	                                key={review.session_id}
-                                review={review}
-                                onOpenReview={(row) => { void openReview(row); }}
-                                onToggleStage={toggleStage}
-                              />
-                            ))}
-                          </div>
-
-	                          <SharedCompareSection title="Summary" candidateCount={stagedCount}>
-	                            <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-	                              {stagedRows.map((review) => (
-	                                <ComparisonSummaryCard
-	                                  key={`summary-${review.session_id}`}
-                                  detail={comparisonDetailsBySession[review.session_id]}
+                        <div className="overflow-x-auto">
+                          <div className="flex min-w-max flex-col gap-3">
+                            <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                              {stagedRows.map((review) => (
+                                <CompareCandidateHeader
+                                  key={review.session_id}
+                                  review={review}
+                                  onOpenReview={(row) => { void openReview(row); }}
+                                  onToggleStage={toggleStage}
                                 />
                               ))}
                             </div>
-                          </SharedCompareSection>
+                            {llmDimensions.length === 0 ? (
+                              <div className="px-1 py-2 text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
+                                No LLM evaluation yet. Click Analyze staged candidates to generate score comparisons.
+                              </div>
+                            ) : (
+                              <div className="flex min-w-max flex-col gap-3">
+                                {llmDimensions.map((dimension) => {
+                                  const label = stagedRows
+                                    .map((review) => comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.scores.find((item) => item.dimension === dimension)?.label)
+                                    .find(Boolean) ?? dimension;
+                                  const rowKey = comparisonScoreRowKey(group.prompt_id, dimension);
 
-	                          <SharedCompareSection title="LLM Scores" candidateCount={stagedCount}>
-                                <div className="flex flex-col gap-3">
-                                  {llmDimensions.map((dimension) => (
-                                    <SynchronizedCriterionRow key={dimension} title={
-                                      stagedRows
-                                        .map((review) => comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.scores.find((item) => item.dimension === dimension)?.label)
-                                        .find(Boolean) ?? dimension
-                                    }>
-                                      <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                  return (
+                                    <Fragment key={dimension}>
+                                      <div className="px-1 pt-1 text-[12px] font-semibold leading-5" style={{ color: 'var(--color-text-main)' }}>
+                                        {label}
+                                      </div>
+                                      <div
+                                        className="grid gap-3"
+                                        style={{ gridTemplateColumns: comparisonGridTemplate }}
+                                      >
                                         {stagedRows.map((review) => {
                                           const detail = comparisonDetailsBySession[review.session_id];
-                                          const item = detail?.data?.evaluation?.result.llm_evaluation.scores.find((score) => score.dimension === dimension);
-                                          const color = item ? getTenPointColor(item.score) : 'var(--color-text-dim)';
+                                          const score = detail?.data?.evaluation?.result.llm_evaluation.scores.find((item) => item.dimension === dimension) ?? null;
                                           return (
-                                            <ComparisonSectionCard
-                                              key={`llm-${dimension}-${review.session_id}`}
-                                              loading={detail?.loading}
-                                              error={detail?.error}
-                                            >
-                                              {item ? (
-                                                <div>
-                                                  <div className="flex items-center justify-between gap-3">
-                                                    <span className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-dim)' }}>
-                                                      Score
-                                                    </span>
-                                                    <span className="text-[14px] font-bold tabular-nums" style={{ color }}>
-                                                      {item.score.toFixed(1)}<span className="text-[10px] opacity-50">/10</span>
-                                                    </span>
-                                                  </div>
-                                                  <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'var(--color-text-dim)' }}>
-                                                    {item.rationale}
-                                                  </div>
-                                                </div>
-                                              ) : null}
-                                            </ComparisonSectionCard>
+                                            <ComparisonScoreCell
+                                              key={`${review.session_id}:${dimension}`}
+                                              review={review}
+                                              score={score}
+                                              open={comparisonScoreOpenByRow[rowKey] ?? false}
+                                              onToggle={() => {
+                                                setComparisonScoreOpenByRow((prev) => ({
+                                                  ...prev,
+                                                  [rowKey]: !prev[rowKey],
+                                                }));
+                                              }}
+                                            />
                                           );
                                         })}
                                       </div>
-                                    </SynchronizedCriterionRow>
-                                  ))}
-                                </div>
-	                          </SharedCompareSection>
+                                    </Fragment>
+                                  );
+                                })}
+                              </div>
+                            )}
 
-	                          <SharedCompareSection title="Acceptance Criteria" candidateCount={stagedCount}>
-                                <div className="flex flex-col gap-3">
-                                  {acceptanceCriteria.map((criterion) => (
-                                    <SynchronizedCriterionRow key={criterion} title={criterion}>
-                                      <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-                                        {stagedRows.map((review) => {
-                                          const detail = comparisonDetailsBySession[review.session_id];
-                                          const item = detail?.data?.evaluation?.result.llm_evaluation.acceptance_criteria_results?.find((entry) => entry.criterion === criterion);
-                                          const color = item ? getPercentColor(item.score) : 'var(--color-text-dim)';
-                                          return (
-                                            <ComparisonSectionCard
-                                              key={`acceptance-${criterion}-${review.session_id}`}
-                                              loading={detail?.loading}
-                                              error={detail?.error}
-                                            >
-                                              {item ? (
-                                                <div>
-                                                  <div className="flex items-center gap-3">
-                                                    <div className="h-[4px] w-16 shrink-0 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                                                      <div className="h-full rounded-full" style={{ width: `${item.score}%`, background: color }} />
-                                                    </div>
-                                                    <span className="text-[13px] font-bold tabular-nums" style={{ color }}>
-                                                      {item.score}<span className="text-[10px] opacity-50">%</span>
-                                                    </span>
-                                                  </div>
-                                                  <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'var(--color-text-dim)' }}>
-                                                    {item.rationale}
-                                                  </div>
-                                                </div>
-                                              ) : null}
-                                            </ComparisonSectionCard>
-                                          );
-                                        })}
-                                      </div>
-                                    </SynchronizedCriterionRow>
-                                  ))}
-                                </div>
-	                          </SharedCompareSection>
+                            {hasSummary || hasAcceptanceCriteria || hasRubric || hasInfrastructure ? (
+                              <div className="flex min-w-max flex-col gap-5 pt-3">
+                                {hasSummary ? (
+                                  <SynchronizedCriterionRow title="Summary" defaultOpen={false}>
+                                    <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                      {stagedRows.map((review) => (
+                                        <ComparisonSummaryCard
+                                          key={`${review.session_id}:summary`}
+                                          detail={comparisonDetailsBySession[review.session_id]}
+                                        />
+                                      ))}
+                                    </div>
+                                  </SynchronizedCriterionRow>
+                                ) : null}
 
-	                          <SharedCompareSection title="Rubric Questions" candidateCount={stagedCount} defaultOpen={false}>
-                                <div className="flex flex-col gap-3">
-                                  {rubricQuestions.map((question) => (
-                                    <SynchronizedCriterionRow key={question} title={question} defaultOpen={false}>
-                                      <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-                                        {stagedRows.map((review) => {
-                                          const detail = comparisonDetailsBySession[review.session_id];
-                                          const item = detail?.data?.evaluation?.result.llm_evaluation.rubric_scores?.find((entry) => entry.question === question);
-                                          const color = item ? getTenPointColor(item.score) : 'var(--color-text-dim)';
-                                          return (
-                                            <ComparisonSectionCard
-                                              key={`rubric-${question}-${review.session_id}`}
-                                              loading={detail?.loading}
-                                              error={detail?.error}
-                                            >
-                                              {item ? (
-                                                <div>
-                                                  <div className="flex items-center justify-between gap-3">
-                                                    <span className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-dim)' }}>
-                                                      Score
-                                                    </span>
-                                                    <span className="text-[14px] font-bold tabular-nums" style={{ color }}>
-                                                      {item.score.toFixed(1)}<span className="text-[10px] opacity-50">/10</span>
-                                                    </span>
-                                                  </div>
-                                                  <div className="mt-2 text-[12px] leading-relaxed" style={{ color: 'var(--color-text-dim)' }}>
-                                                    {item.rationale}
-                                                  </div>
-                                                </div>
-                                              ) : null}
-                                            </ComparisonSectionCard>
-                                          );
-                                        })}
-                                      </div>
-                                    </SynchronizedCriterionRow>
-                                  ))}
-                                </div>
-	                          </SharedCompareSection>
-
-	                          <SharedCompareSection title="Infrastructure" candidateCount={stagedCount} defaultOpen={false}>
-                                <div className="flex flex-col gap-3">
-                                  {infrastructureKeys.map((metricKey) => (
-                                    <SynchronizedCriterionRow
-                                      key={metricKey}
-                                      title={
-                                        metricKey === 'caching_effectiveness'
-                                          ? 'Caching'
-                                          : metricKey === 'error_handling_coverage'
-                                            ? 'Errors'
-                                            : 'Scaling'
-                                      }
-                                      defaultOpen={false}
-                                    >
-                                      <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-                                        {stagedRows.map((review) => {
-                                          const detail = comparisonDetailsBySession[review.session_id];
-                                          const result = detail?.data?.evaluation?.result;
-                                          const item = result?.infrastructure[metricKey];
-                                          const pct = item ? Math.round(item.score * 100) : 0;
-                                          const color = item ? getScoreColor(item.score) : 'var(--color-text-dim)';
-                                          return (
-                                            <ComparisonSectionCard
-                                              key={`infra-${metricKey}-${review.session_id}`}
-                                              loading={detail?.loading}
-                                              error={detail?.error}
-                                            >
-                                              {item ? (
-                                                <div>
-                                                  <div className="mb-1.5 flex items-center justify-between gap-3">
-                                                    <span className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-dim)' }}>
-                                                      Score
-                                                    </span>
-                                                    <span className="text-[12px] font-bold tabular-nums" style={{ color }}>
-                                                      {pct}%
-                                                    </span>
-                                                  </div>
-                                                  <div className="h-[4px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                                                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
-                                                  </div>
-                                                  <div className="mt-1.5 text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
-                                                    {item.details}
-                                                  </div>
-                                                </div>
-                                              ) : null}
-                                            </ComparisonSectionCard>
-                                          );
-                                        })}
-                                      </div>
-                                    </SynchronizedCriterionRow>
-                                  ))}
-                                </div>
-	                          </SharedCompareSection>
-
-                          <SharedCompareSection title="Iteration Notes" candidateCount={stagedCount} defaultOpen={false}>
-                            <div className="flex flex-col gap-3">
-                              {Array.from({
-                                length: Math.max(
-                                  0,
-                                  ...stagedRows.map((review) => (
-                                    comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.iterations.length ?? 0
-                                  )),
-                                ),
-                              }).map((_, iterationIndex) => (
-                                <SynchronizedCriterionRow
-                                  key={`iteration-${iterationIndex}`}
-                                  title={`Iteration ${iterationIndex + 1}`}
-                                  defaultOpen={false}
-                                >
-                                  <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-                                    {stagedRows.map((review) => (
-                                      <ComparisonIterationRow
-                                        key={`iteration-${iterationIndex}-${review.session_id}`}
-                                        review={review}
-                                        detail={comparisonDetailsBySession[review.session_id]}
-                                        iterationIndex={iterationIndex}
-                                      />
-                                    ))}
+                                {hasAcceptanceCriteria ? (
+                                  <div className="flex flex-col gap-4">
+                                    {acceptanceCriteriaLabels.map((criterion) => {
+                                      const rowKey = comparisonMetricRowKey(group.prompt_id, 'acceptance', criterion);
+                                      return (
+                                        <div key={criterion} className="space-y-2">
+                                          <div className="px-1 text-[12px] font-semibold leading-5" style={{ color: 'var(--color-text-main)' }}>
+                                            {criterion}
+                                          </div>
+                                          <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                            {stagedRows.map((review) => {
+                                              const detail = comparisonDetailsBySession[review.session_id];
+                                              const item = detail?.data?.evaluation?.result.llm_evaluation.acceptance_criteria_results?.find((entry) => entry.criterion === criterion) ?? null;
+                                              return (
+                                                <ComparisonPercentCell
+                                                  key={`${review.session_id}:acceptance:${criterion}`}
+                                                  review={review}
+                                                  metricLabel={criterion}
+                                                  score={item?.score ?? null}
+                                                  open={comparisonMetricOpenByRow[rowKey] ?? false}
+                                                  onToggle={() => {
+                                                    setComparisonMetricOpenByRow((prev) => ({
+                                                      ...prev,
+                                                      [rowKey]: !prev[rowKey],
+                                                    }));
+                                                  }}
+                                                  detailText={item?.rationale ?? null}
+                                                />
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
-                                </SynchronizedCriterionRow>
-                              ))}
-                            </div>
-                          </SharedCompareSection>
+                                ) : null}
+
+                                {hasRubric ? (
+                                  <SynchronizedCriterionRow title="Rubric" defaultOpen={false}>
+                                    <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                      {stagedRows.map((review) => (
+                                        <ComparisonRubricCard
+                                          key={`${review.session_id}:rubric`}
+                                          detail={comparisonDetailsBySession[review.session_id]}
+                                        />
+                                      ))}
+                                    </div>
+                                  </SynchronizedCriterionRow>
+                                ) : null}
+
+                                {hasInfrastructure ? (
+                                  <SynchronizedCriterionRow title="Infrastructure" defaultOpen={false}>
+                                    <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                      {stagedRows.map((review) => (
+                                        <ComparisonInfrastructureCard
+                                          key={`${review.session_id}:infra`}
+                                          detail={comparisonDetailsBySession[review.session_id]}
+                                        />
+                                      ))}
+                                    </div>
+                                  </SynchronizedCriterionRow>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </CollapsibleSection>

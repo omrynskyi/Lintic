@@ -145,7 +145,7 @@ function InfraScoreRow({ metric }: { metric: InfraMetricScore }) {
         {metric.label}
       </span>
       <div className="flex flex-1 items-center gap-2">
-        <div className="h-[4px] flex-1 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+        <div className="h-[4px] flex-1 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-muted)' }}>
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
         </div>
         <span className="w-9 shrink-0 text-right text-[12px] font-bold tabular-nums" style={{ color }}>
@@ -164,7 +164,7 @@ function LlmScoreRow({ score }: { score: EvaluatorDimensionScore }) {
   const Icon = RUBRIC_ICONS[score.dimension] ?? BarChart2;
   const color = score.score >= 7 ? '#10B981' : score.score >= 4 ? '#F59E0B' : '#EF4444';
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
+    <div className="rounded-xl overflow-hidden" style={{ background: 'var(--color-surface-subtle)' }}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -192,13 +192,13 @@ function AcceptanceCriterionRow({ criterion }: { criterion: AcceptanceCriterionR
   const [open, setOpen] = useState(false);
   const color = criterion.score >= 80 ? '#10B981' : criterion.score >= 50 ? '#F59E0B' : '#EF4444';
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
+    <div className="rounded-xl overflow-hidden" style={{ background: 'var(--color-surface-subtle)' }}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
       >
-        <div className="h-[4px] w-16 shrink-0 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+        <div className="h-[4px] w-16 shrink-0 overflow-hidden rounded-full" style={{ background: 'var(--color-surface-muted)' }}>
           <div className="h-full rounded-full" style={{ width: `${criterion.score}%`, background: color }} />
         </div>
         <span className="flex-1 text-[12px] font-medium truncate" style={{ color: 'var(--color-text-main)' }}>
@@ -222,7 +222,7 @@ function RubricQuestionRow({ item }: { item: RubricQuestionScore }) {
   const [open, setOpen] = useState(false);
   const color = item.score >= 7 ? '#10B981' : item.score >= 4 ? '#F59E0B' : '#EF4444';
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
+    <div className="rounded-xl overflow-hidden" style={{ background: 'var(--color-surface-subtle)' }}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -354,7 +354,7 @@ function EvaluationPanel({ result, sessionId, apiBase }: {
         )}
 
         {/* Input */}
-        <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'var(--color-surface-subtle)', border: '1px solid var(--color-surface-muted)' }}>
           <input
             type="text"
             value={qaInput}
@@ -450,7 +450,7 @@ function EvaluationPanel({ result, sessionId, apiBase }: {
       {/* Infrastructure — hidden by default */}
       {showInfra ? (
         <CollapsibleSection icon={Database} label="Infrastructure" defaultOpen>
-          <div className="flex flex-col divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          <div className="flex flex-col divide-y" style={{ borderColor: 'var(--color-border-main)' }}>
             {infraScores.map((m) => <InfraScoreRow key={m.name} metric={m} />)}
           </div>
         </CollapsibleSection>
@@ -578,7 +578,7 @@ function SessionStatsStrip({ session }: { session: ReviewDataPayload['session'] 
               {stat.pct >= 0 && (
                 <div
                   className="mt-2 h-[3px] w-full overflow-hidden rounded-full"
-                  style={{ background: 'rgba(255,255,255,0.06)' }}
+                  style={{ background: 'var(--color-surface-muted)' }}
                 >
                   <div
                     className="h-full rounded-full transition-all duration-500"
@@ -709,7 +709,7 @@ function ToolGroup({
       className="rounded-xl overflow-hidden"
       style={{
         opacity: isPast ? 1 : 0.2,
-        background: isAnchor ? 'rgba(56,135,206,0.05)' : 'rgba(255,255,255,0.02)',
+        background: isAnchor ? 'rgba(56,135,206,0.05)' : 'var(--color-surface-subtle)',
       }}
     >
       {/* Collapsed header */}
@@ -764,7 +764,7 @@ function ToolGroup({
                   style={{
                     background: result
                       ? result.isError ? 'var(--color-status-error)' : 'var(--color-status-success)'
-                      : 'rgba(255,255,255,0.2)',
+                      : 'var(--color-surface-muted)',
                   }}
                 />
                 {/* Tool name */}
@@ -835,7 +835,7 @@ function AgentMessage({
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="flex h-5 w-5 items-center justify-center rounded-xl hover:bg-white/5 transition-colors"
+            className="flex h-5 w-5 items-center justify-center rounded-xl transition-colors hover:bg-[var(--color-surface-subtle)]"
             style={{ color: 'var(--color-text-dim)' }}
           >
             {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -1142,7 +1142,7 @@ export function ReviewDashboard({
               onClick={() => {
                 void handleReviewStatusChange(reviewStatus === 'reviewed' ? 'viewed' : 'reviewed');
               }}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-[var(--color-surface-subtle)] disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ color: 'var(--color-text-muted)' }}
             >
               {reviewStatus === 'reviewed' ? 'Mark Viewed' : 'Mark Reviewed'}
@@ -1152,7 +1152,7 @@ export function ReviewDashboard({
             type="button"
             onClick={() => { void handleAnalyzeSession(); }}
             disabled={evaluating}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-[var(--color-surface-subtle)] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ color: showEvaluation ? 'var(--color-brand)' : 'var(--color-text-muted)' }}
             title="Run LLM evaluation and compute infrastructure metrics"
           >
@@ -1166,7 +1166,7 @@ export function ReviewDashboard({
               label="Branch selector"
               role="listbox"
               widthClassName="w-auto"
-              triggerClassName="flex h-8 items-center justify-center px-2 py-1 text-left rounded-xl hover:bg-white/5 transition-colors"
+              triggerClassName="flex h-8 items-center justify-center rounded-xl px-2 py-1 text-left transition-colors hover:bg-[var(--color-surface-subtle)]"
               items={branchItems}
               trigger={(open) => (
                 <DropdownTriggerLabel
@@ -1183,7 +1183,7 @@ export function ReviewDashboard({
           <button
             type="button"
             onClick={() => triggerJsonDownload(`review-${sessionId}.json`, data)}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-white/5"
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-colors hover:bg-[var(--color-surface-subtle)]"
             style={{ color: 'var(--color-text-muted)' }}
           >
             <Download size={13} />
@@ -1192,7 +1192,7 @@ export function ReviewDashboard({
           <button
             type="button"
             onClick={onToggleTheme}
-            className="flex h-8 w-8 items-center justify-center rounded-xl transition-colors hover:bg-white/5"
+            className="flex h-8 w-8 items-center justify-center rounded-xl transition-colors hover:bg-[var(--color-surface-subtle)]"
             style={{ color: 'var(--color-text-dim)' }}
           >
             {isDark ? <Sun size={14} /> : <Moon size={14} />}
@@ -1302,7 +1302,7 @@ export function ReviewDashboard({
                       <div
                         key={block.id}
                         className="overflow-hidden rounded-xl border border-white/8"
-                        style={{ background: 'rgba(255,255,255,0.02)' }}
+                        style={{ background: 'var(--color-surface-subtle)' }}
                       >
                         <button
                           type="button"

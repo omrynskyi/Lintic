@@ -87,6 +87,150 @@
   --assessment-radius-pill: 16px;
 }
 
+:root {
+  color-scheme: light;
+
+  --color-brand: #3887ce;
+  --color-brand-yellow: #D97706;
+  --color-brand-green: #10B981;
+  --color-brand-green-dark: #064E3B;
+
+  --color-bg-app: #eff1f3;
+  --color-bg-panel: #FFFFFF;
+  --color-bg-sidebar: #EEF2F7;
+  --color-bg-code: #FFFFFF;
+  --color-bg-tab: #E5E7EB;
+  --color-bg-active-tab: #FFFFFF;
+  --color-bg-active-node: #F3F4F6;
+  --color-bg-hover-node: #EEF2F7;
+  --color-bg-input: #F8FAFC;
+  --color-bg-chat: #FFFFFF;
+  --color-bg-user-msg: #F3F4F6;
+  --color-bg-agent-msg: #FFFFFF;
+  --color-bg-usage-bar: #FFFFFF;
+  --color-bg-stop-btn: #FEE2E2;
+  --color-bg-send-btn: #111827;
+  --color-bg-tool-header: #F3F4F6;
+  --color-bg-tool-body: #FFFFFF;
+
+  --color-border-main: rgba(17, 24, 39, 0.10);
+  --color-border-muted: rgba(17, 24, 39, 0.05);
+  --color-border-accent: #2563EB;
+
+  --color-text-main: #1F2937;
+  --color-text-bold: #111827;
+  --color-text-muted: #4B5563;
+  --color-text-dim: #6B7280;
+  --color-text-dimmest: #9CA3AF;
+  --color-text-user-msg: #111827;
+  --color-text-tool-name: #B45309;
+
+  --color-status-success: #10B981;
+  --color-status-warning: #F59E0B;
+  --color-status-error: #EF4444;
+  --color-status-diff-add: #10B981;
+
+  --color-icon-file: #6B7280;
+  --color-icon-folder: #B45309;
+
+  --db-surface-canvas: #F5F7FA;
+  --db-surface-panel: #FFFFFF;
+  --db-surface-subtle: #F8FAFC;
+  --db-surface-elevated: #EEF2F7;
+  --db-surface-selection: rgba(56, 135, 206, 0.14);
+  --db-surface-selection-strong: rgba(56, 135, 206, 0.18);
+  --db-border-subtle: rgba(17, 24, 39, 0.05);
+  --db-border-default: rgba(17, 24, 39, 0.10);
+  --db-border-strong: rgba(17, 24, 39, 0.16);
+  --db-text-primary: #111827;
+  --db-text-secondary: #4B5563;
+  --db-text-tertiary: #6B7280;
+  --db-text-quiet: #9CA3AF;
+  --db-shadow-overlay: 0 18px 50px rgba(15, 23, 42, 0.12);
+  --db-ring-focus: #60a5fa;
+  --db-accent: #3887ce;
+  --db-accent-foreground: #f7fbff;
+  --db-danger-surface: rgba(239, 68, 68, 0.12);
+  --db-danger-text: #b91c1c;
+
+  --color-surface-hover: rgba(17, 24, 39, 0.045);
+  --color-surface-hover-strong: rgba(56, 135, 206, 0.12);
+  --color-surface-subtle: rgba(17, 24, 39, 0.03);
+  --color-surface-muted: rgba(17, 24, 39, 0.06);
+}
+
+html.dark {
+  color-scheme: dark;
+
+  --color-brand: #3887ce;
+  --color-brand-yellow: #D97706;
+  --color-brand-green: #10B981;
+  --color-brand-green-dark: #064E3B;
+
+  --color-bg-app: #0A0A0A;
+  --color-bg-panel: #141414;
+  --color-bg-sidebar: #0F0F0F;
+  --color-bg-code: #141414;
+  --color-bg-tab: #1A1A1A;
+  --color-bg-active-tab: #141414;
+  --color-bg-active-node: #1F1F1F;
+  --color-bg-hover-node: #1A1A1A;
+  --color-bg-input: #1A1A1A;
+  --color-bg-chat: #141414;
+  --color-bg-user-msg: #1A1A1A;
+  --color-bg-agent-msg: #141414;
+  --color-bg-usage-bar: #141414;
+  --color-bg-stop-btn: #450A0A;
+  --color-bg-send-btn: #FFFFFF;
+  --color-bg-tool-header: #1A1A1A;
+  --color-bg-tool-body: #0F0F0F;
+
+  --color-border-main: rgba(255, 255, 255, 0.05);
+  --color-border-muted: rgba(255, 255, 255, 0.03);
+  --color-border-accent: #D97706;
+
+  --color-text-main: #E5E5E5;
+  --color-text-bold: #FFFFFF;
+  --color-text-muted: #A3A3A3;
+  --color-text-dim: #737373;
+  --color-text-dimmest: #404040;
+  --color-text-user-msg: #F5F5F5;
+  --color-text-tool-name: #D97706;
+
+  --color-status-success: #10B981;
+  --color-status-warning: #F59E0B;
+  --color-status-error: #EF4444;
+  --color-status-diff-add: #10B981;
+
+  --color-icon-file: #A3A3A3;
+  --color-icon-folder: #D97706;
+
+  --db-surface-canvas: #121212;
+  --db-surface-panel: #171717;
+  --db-surface-subtle: #141414;
+  --db-surface-elevated: #1b1b1b;
+  --db-surface-selection: rgba(56, 135, 206, 0.14);
+  --db-surface-selection-strong: rgba(56, 135, 206, 0.18);
+  --db-border-subtle: rgba(255, 255, 255, 0.04);
+  --db-border-default: rgba(255, 255, 255, 0.07);
+  --db-border-strong: rgba(255, 255, 255, 0.12);
+  --db-text-primary: #f5f5f5;
+  --db-text-secondary: #a3a3a3;
+  --db-text-tertiary: #6b7280;
+  --db-text-quiet: #52525b;
+  --db-shadow-overlay: 0 18px 50px rgba(0, 0, 0, 0.38);
+  --db-ring-focus: #60a5fa;
+  --db-accent: #3887ce;
+  --db-accent-foreground: #f7fbff;
+  --db-danger-surface: rgba(127, 29, 29, 0.28);
+  --db-danger-text: #fca5a5;
+
+  --color-surface-hover: rgba(255, 255, 255, 0.04);
+  --color-surface-hover-strong: rgba(56, 135, 206, 0.10);
+  --color-surface-subtle: rgba(255, 255, 255, 0.03);
+  --color-surface-muted: rgba(255, 255, 255, 0.08);
+}
+
 @layer base {
   body {
     @apply bg-[var(--color-bg-app)] text-[var(--color-text-main)] antialiased;

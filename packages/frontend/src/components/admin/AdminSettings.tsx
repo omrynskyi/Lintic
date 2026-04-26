@@ -83,7 +83,7 @@ export function AdminSettings({ isDark, onToggleTheme }: AdminSettingsProps) {
               <button
                 type="button"
                 className="rounded-xl px-4 py-1.5 text-[12px]"
-                style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--color-status-error)' }}
+                style={{ background: 'var(--color-surface-subtle)', color: 'var(--color-status-error)' }}
                 onClick={() => { setAdminKey(''); setDraft(''); }}
               >
                 Clear
