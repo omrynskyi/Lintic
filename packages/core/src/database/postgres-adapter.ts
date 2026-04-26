@@ -629,6 +629,19 @@ export class PostgresAdapter implements DatabaseAdapter {
     );
   }
 
+  async pruneMessagesBeforeTurnSequence(
+    sessionId: string,
+    branchId: string,
+    conversationId: string,
+    turnSequence: number,
+  ): Promise<void> {
+    await this.initialize();
+    await this.pool.query(
+      'UPDATE messages SET rewound_at = $1 WHERE session_id = $2 AND branch_id = $3 AND conversation_id = $4 AND turn_sequence < $5',
+      [Date.now(), sessionId, branchId, conversationId, turnSequence],
+    );
+  }
+
   async getMessages(sessionId: string): Promise<StoredMessage[]> {
     const branch = await this.getMainBranch(sessionId);
     if (!branch) {

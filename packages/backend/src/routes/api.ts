@@ -33,6 +33,7 @@ import type {
   SessionStatus,
   SnapshotFile,
   ThinkingBlock,
+  TokenUsage,
   WorkspaceSection,
   WorkspaceSnapshotKind,
   MockPgPoolExport,
@@ -600,7 +601,10 @@ function parseWorkspaceKind(value: unknown): WorkspaceSnapshotKind | undefined {
 }
 
 function parseWorkspaceSection(value: unknown): WorkspaceSection | undefined {
-  return value === 'code' || value === 'database' || value === 'git' ? value : undefined;
+  if (value === 'git') {
+    return 'curl';
+  }
+  return value === 'code' || value === 'database' || value === 'curl' ? value : undefined;
 }
 
 function isSnapshotFileArray(value: unknown): value is SnapshotFile[] {
@@ -647,6 +651,77 @@ function truncateContextContent(content: string, maxChars = 12000): string {
     return content;
   }
   return `${content.slice(0, maxChars)}\n\n[Truncated for context length]`;
+}
+
+function stripMarkdownPreview(content: string): string {
+  return content
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*]\s+/gm, '')
+    .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
+    .replace(/[`*_>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function createPreview(content: string, maxChars = 180): string {
+  const normalized = stripMarkdownPreview(content);
+  if (!normalized) {
+    return '';
+  }
+  return normalized.length > maxChars ? `${normalized.slice(0, maxChars - 3).trimEnd()}...` : normalized;
+}
+
+function estimateTokenCountFromText(content: string): number {
+  const normalized = content.trim();
+  if (!normalized) {
+    return 0;
+  }
+  return Math.max(1, Math.ceil(normalized.length / 4));
+}
+
+function estimateTokenCountFromMessages(messages: Message[]): number {
+  return messages.reduce((sum, message) => {
+    const contentTokens = estimateTokenCountFromText(message.content ?? '');
+    const toolTokens = message.tool_results
+      ? estimateTokenCountFromText(JSON.stringify(message.tool_results))
+      : 0;
+    const callTokens = message.tool_calls
+      ? estimateTokenCountFromText(JSON.stringify(message.tool_calls))
+      : 0;
+    return sum + contentTokens + toolTokens + callTokens;
+  }, 0);
+}
+
+function countMeaningfulConversationMessages(storedMessages: StoredMessage[]): number {
+  return storedMessages.filter((message) => (
+    (message.role === 'user' || message.role === 'assistant') && message.content.trim().length > 0
+  )).length;
+}
+
+function summarizeAttachedItems(
+  attachments: Array<{ kind: 'file' | 'repo_map' | 'summary' | 'prior_conversation' }>,
+): string[] {
+  const counts = {
+    repoMap: 0,
+    files: 0,
+    summaries: 0,
+    priorChats: 0,
+  };
+
+  for (const attachment of attachments) {
+    if (attachment.kind === 'repo_map') counts.repoMap += 1;
+    if (attachment.kind === 'file') counts.files += 1;
+    if (attachment.kind === 'summary') counts.summaries += 1;
+    if (attachment.kind === 'prior_conversation') counts.priorChats += 1;
+  }
+
+  const parts: string[] = [];
+  if (counts.repoMap > 0) parts.push('repo map');
+  if (counts.files > 0) parts.push(`${counts.files} file${counts.files === 1 ? '' : 's'}`);
+  if (counts.summaries > 0) parts.push(`${counts.summaries} saved summar${counts.summaries === 1 ? 'y' : 'ies'}`);
+  if (counts.priorChats > 0) parts.push(`${counts.priorChats} chat histor${counts.priorChats === 1 ? 'y item' : 'y items'}`);
+  return parts;
 }
 
 function buildRepoMapContent(filesystem: Array<{ path: string }>, activePath?: string | null): string {
@@ -719,6 +794,108 @@ function buildConversationSummaryContent(
     lines.pop();
   }
   return lines.join('\n');
+}
+
+function buildConversationTranscriptForSummary(
+  conversation: ConversationSummary,
+  storedMessages: StoredMessage[],
+): string {
+  const history = buildHistory(storedMessages).filter((message) => message.role !== 'system');
+  const lines = [
+    `Conversation title: ${conversation.title}`,
+    `Updated: ${new Date(conversation.updated_at).toISOString()}`,
+    '',
+    'Transcript:',
+  ];
+
+  history.forEach((message, index) => {
+    if (message.role === 'tool') {
+      const toolNames = message.tool_results?.map((result) => result.name).filter(Boolean) ?? [];
+      lines.push(`${index + 1}. Tool results: ${toolNames.length > 0 ? toolNames.join(', ') : 'tool output'}`);
+      return;
+    }
+
+    const content = (message.content ?? '').replace(/\s+/g, ' ').trim();
+    if (!content) {
+      return;
+    }
+    const roleLabel =
+      message.role === 'user' ? 'User'
+      : message.role === 'assistant' ? 'Assistant'
+      : 'System';
+    lines.push(`${index + 1}. ${roleLabel}: ${content}`);
+  });
+
+  return lines.join('\n');
+}
+
+async function generateConversationSummaryWithLlm(
+  summaryAdapter: AgentAdapter,
+  conversation: ConversationSummary,
+  storedMessages: StoredMessage[],
+): Promise<{ content: string; usage: TokenUsage }> {
+  const transcript = buildConversationTranscriptForSummary(conversation, storedMessages);
+  const context: SessionContext = {
+    session_id: conversation.session_id,
+    history: [
+      {
+        role: 'system',
+        content: [
+          'You summarize a coding chat for later context reuse.',
+          'Write concise markdown with these sections in order:',
+          '1. Summary',
+          '2. Key Decisions',
+          '3. Important Files or Systems',
+          '4. Open Questions or Risks',
+          'Keep it specific to the transcript. Do not invent details. Do not call tools.',
+        ].join('\n'),
+      },
+      {
+        role: 'user',
+        content: transcript,
+      },
+    ],
+    constraints_remaining: {
+      tokens_remaining: 1800,
+      interactions_remaining: 1,
+      seconds_remaining: 60,
+    },
+  };
+
+  const response = await summaryAdapter.sendMessage(null, context);
+  if (response.tool_calls?.length || response.stop_reason === 'tool_use') {
+    throw new Error('Summary model attempted to call tools');
+  }
+  const content = response.content?.trim();
+  if (!content) {
+    throw new Error('Summary model returned empty content');
+  }
+  return { content, usage: response.usage };
+}
+
+async function ensureSummaryResourceForConversation(
+  db: DatabaseAdapter,
+  summaryAdapter: AgentAdapter,
+  sessionId: string,
+  branchId: string,
+  conversation: ConversationSummary,
+): Promise<{ resource: import('@lintic/core').ContextResource | null; storedMessages: StoredMessage[]; messageCount: number }> {
+  const storedMessages = await db.getBranchMessages(sessionId, branchId, conversation.id);
+  const messageCount = countMeaningfulConversationMessages(storedMessages);
+  if (messageCount === 0) {
+    return { resource: null, storedMessages, messageCount };
+  }
+
+  const generated = await generateConversationSummaryWithLlm(summaryAdapter, conversation, storedMessages);
+  const resource = await db.upsertContextResource({
+    session_id: sessionId,
+    branch_id: branchId,
+    kind: 'summary',
+    title: `Summary: ${conversation.title}`,
+    content: generated.content,
+    source_conversation_id: conversation.id,
+  });
+  return { resource, storedMessages, messageCount };
 }
 
 async function buildContextMessages(
@@ -831,68 +1008,19 @@ async function maybeRetitleConversationFromMessage(
   })) ?? conversation;
 }
 
-async function buildDefaultConversationAttachments(
-  db: DatabaseAdapter,
-  sessionId: string,
-  branchId: string,
-  sourceConversationId?: string,
-  activePath?: string,
-): Promise<Array<{
+function buildDefaultConversationAttachments(
+  _db: DatabaseAdapter,
+  _sessionId: string,
+  _branchId: string,
+  _sourceConversationId?: string,
+  _activePath?: string,
+): Array<{
   kind: 'file' | 'repo_map';
   label: string;
   path?: string;
   resource_id?: string;
-}>> {
-  const [resources, snapshot, sourceAttachments] = await Promise.all([
-    db.listContextResources(sessionId, branchId),
-    db.getWorkspaceSnapshot(sessionId, branchId, { kind: 'draft' }),
-    sourceConversationId
-      ? db.listConversationContextAttachments(sourceConversationId)
-      : Promise.resolve([]),
-  ]);
-
-  const nextAttachments: Array<{
-    kind: 'file' | 'repo_map';
-    label: string;
-    path?: string;
-    resource_id?: string;
-  }> = [];
-  const seenFilePaths = new Set<string>();
-  const repoMap = resources
-    .filter((resource) => resource.kind === 'repo_map')
-    .sort((a, b) => b.updated_at - a.updated_at)[0];
-
-  if (repoMap) {
-    nextAttachments.push({
-      kind: 'repo_map',
-      label: repoMap.title,
-      resource_id: repoMap.id,
-    });
-  }
-
-  const resolvedActivePath = activePath ?? snapshot?.active_path;
-  if (resolvedActivePath) {
-    seenFilePaths.add(resolvedActivePath);
-    nextAttachments.push({
-      kind: 'file',
-      label: resolvedActivePath,
-      path: resolvedActivePath,
-    });
-  }
-
-  for (const attachment of sourceAttachments) {
-    if (attachment.kind !== 'file' || !attachment.path || seenFilePaths.has(attachment.path)) {
-      continue;
-    }
-    seenFilePaths.add(attachment.path);
-    nextAttachments.push({
-      kind: 'file',
-      label: attachment.label,
-      path: attachment.path,
-    });
-  }
-
-  return nextAttachments;
+}> {
+  return [];
 }
 
 // ─── Router ───────────────────────────────────────────────────────────────────
@@ -1615,7 +1743,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'New chat',
     });
 
-    const defaultAttachments = await buildDefaultConversationAttachments(
+  const defaultAttachments = buildDefaultConversationAttachments(
       db,
       sessionId,
       branch.id,
@@ -1703,11 +1831,12 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const [attachments, resources, conversations, snapshot] = await Promise.all([
+    const [attachments, resources, conversations, snapshot, currentConversationMessages] = await Promise.all([
       db.listConversationContextAttachments(conversation.id),
       db.listContextResources(sessionId, branch.id),
       db.listConversations(sessionId, branch.id),
       db.getWorkspaceSnapshot(sessionId, branch.id, { kind: 'draft' }),
+      db.getBranchMessages(sessionId, branch.id, conversation.id),
     ]);
 
     const selectedResourceIds = new Set(attachments.map((attachment) => attachment.resource_id).filter(Boolean));
@@ -1716,6 +1845,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     );
     const selectedFilePaths = new Set(attachments.map((attachment) => attachment.path).filter(Boolean));
     const availableFilePaths = new Set<string>();
+    const conversationMessageCounts = new Map<string, number>();
     if (snapshot?.active_path) {
       availableFilePaths.add(snapshot.active_path);
     }
@@ -1723,33 +1853,142 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       availableFilePaths.add(path as string);
     }
 
+    conversationMessageCounts.set(conversation.id, countMeaningfulConversationMessages(currentConversationMessages));
+    const missingConversationStats = conversations.filter((entry) => entry.id !== conversation.id);
+    await Promise.all(missingConversationStats.map(async (entry) => {
+      const storedMessages = await db.getBranchMessages(sessionId, branch.id, entry.id);
+      conversationMessageCounts.set(entry.id, countMeaningfulConversationMessages(storedMessages));
+    }));
+
+    const conversationById = new Map(conversations.map((entry) => [entry.id, entry] as const));
+    const currentHistoryMessages = buildHistory(currentConversationMessages).filter((message) => message.role !== 'system');
+    const selectedContextMessages = await buildContextMessages(db, sessionId, branch.id, conversation.id);
+    const contextTokensEstimate = estimateTokenCountFromMessages(currentHistoryMessages) + estimateTokenCountFromMessages(selectedContextMessages);
+    for (const attachment of attachments) {
+      if (attachment.kind !== 'summary' || !attachment.resource_id) {
+        continue;
+      }
+      const resource = resources.find((candidate) => candidate.id === attachment.resource_id);
+      if (resource?.source_conversation_id) {
+        selectedConversationIds.add(resource.source_conversation_id);
+      }
+    }
+    const attachedItems = attachments.map((attachment) => {
+      if (attachment.kind === 'file') {
+        return {
+          id: attachment.id,
+          kind: attachment.kind,
+          title: attachment.label,
+          preview: attachment.path ?? '',
+          selected: true,
+          removable: true,
+          ...(attachment.path ? { path: attachment.path } : {}),
+        };
+      }
+
+      if ((attachment.kind === 'repo_map' || attachment.kind === 'summary') && attachment.resource_id) {
+        const resource = resources.find((candidate) => candidate.id === attachment.resource_id);
+        const sourceConversation = resource?.source_conversation_id
+          ? conversationById.get(resource.source_conversation_id)
+          : null;
+        return {
+          id: attachment.id,
+          kind: attachment.kind,
+          title: attachment.label,
+          preview: resource ? createPreview(resource.content) : '',
+          selected: true,
+          removable: true,
+          ...(attachment.resource_id ? { resource_id: attachment.resource_id } : {}),
+          ...(sourceConversation ? { source_conversation_title: sourceConversation.title } : {}),
+          ...(resource ? { updated_at: resource.updated_at } : {}),
+        };
+      }
+
+      const sourceConversation = attachment.source_conversation_id
+        ? conversationById.get(attachment.source_conversation_id)
+        : null;
+      return {
+        id: attachment.id,
+        kind: attachment.kind,
+        title: attachment.label,
+        preview: sourceConversation ? `From chat "${sourceConversation.title}"` : '',
+        selected: true,
+        removable: true,
+        ...(attachment.source_conversation_id ? { source_conversation_id: attachment.source_conversation_id } : {}),
+      };
+    });
+
+    const usageAttachedLabels = summarizeAttachedItems(attachments);
+    const conversationMessageCount = conversationMessageCounts.get(conversation.id) ?? 0;
+
     res.json({
       branch,
       conversation,
       conversations,
       attachments,
       resources,
+      attached_items: attachedItems,
+      usage_breakdown: {
+        context_usage_pct: Math.round((contextTokensEstimate / Math.max(session.constraint.context_window, 1)) * 100),
+        context_tokens_estimate: contextTokensEstimate,
+        context_window: session.constraint.context_window,
+        conversation_messages: conversationMessageCount,
+        attached_summary: usageAttachedLabels.length > 0 ? usageAttachedLabels.join(', ') : 'current chat only',
+        repo_map_attached: attachments.some((attachment) => attachment.kind === 'repo_map'),
+        file_count: attachments.filter((attachment) => attachment.kind === 'file').length,
+        summary_count: attachments.filter((attachment) => attachment.kind === 'summary').length,
+        prior_chat_count: attachments.filter((attachment) => attachment.kind === 'prior_conversation').length,
+        warnings: snapshot ? [] : ['No workspace snapshot is available yet.'],
+      },
       available: {
         files: [...availableFilePaths].map((path) => ({
           path,
           label: path,
           selected: selectedFilePaths.has(path),
         })),
-        resources: resources.map((resource) => ({
-          id: resource.id,
-          kind: resource.kind,
-          title: resource.title,
-          source_conversation_id: resource.source_conversation_id ?? null,
-          selected: selectedResourceIds.has(resource.id),
-        })),
+        resources: resources.map((resource) => {
+          const sourceConversation = resource.source_conversation_id
+            ? conversationById.get(resource.source_conversation_id)
+            : null;
+          const sourceMessageCount = sourceConversation
+            ? (conversationMessageCounts.get(sourceConversation.id) ?? 0)
+            : 0;
+          return {
+            id: resource.id,
+            kind: resource.kind,
+            title: resource.title,
+            source_conversation_id: resource.source_conversation_id ?? null,
+            source_conversation_title: sourceConversation?.title ?? null,
+            updated_at: resource.updated_at,
+            selected: selectedResourceIds.has(resource.id),
+            preview: createPreview(resource.content),
+            message_count: sourceMessageCount,
+            empty: sourceConversation ? sourceMessageCount === 0 : resource.content.trim().length === 0,
+          };
+        }),
         prior_conversations: conversations
           .filter((entry) => entry.id !== conversation.id)
-          .map((entry) => ({
-            id: entry.id,
-            title: entry.title,
-            updated_at: entry.updated_at,
-            selected: selectedConversationIds.has(entry.id),
-          })),
+          .map((entry) => {
+            const summaryResource = resources
+              .filter((resource) => resource.kind === 'summary' && resource.source_conversation_id === entry.id)
+              .sort((left, right) => right.updated_at - left.updated_at)[0];
+            const messageCount = conversationMessageCounts.get(entry.id) ?? 0;
+            return {
+              id: entry.id,
+              title: entry.title,
+              updated_at: entry.updated_at,
+              selected: selectedConversationIds.has(entry.id),
+              active: entry.id === conversation.id,
+              message_count: messageCount,
+              empty: messageCount === 0,
+              has_summary: !!summaryResource,
+              summary_resource_id: summaryResource?.id ?? null,
+              preview: summaryResource ? createPreview(summaryResource.content) : '',
+              descriptor: messageCount === 0
+                ? 'empty'
+                : `${messageCount} message${messageCount === 1 ? '' : 's'}${summaryResource ? ' • has summary' : ''}`,
+            };
+          }),
       },
     });
   }));
@@ -1829,7 +2068,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
 
   router.post('/sessions/:id/context/summary', requireToken(db), asyncRoute(async (req, res) => {
     const sessionId = req.params['id'] as string;
-    const body = req.body as { branch_id?: unknown; conversation_id?: unknown };
+    const body = req.body as { branch_id?: unknown; conversation_id?: unknown; agent_config?: unknown };
     const session = await db.getSession(sessionId);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
@@ -1857,17 +2096,23 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
 
-    const storedMessages = await db.getBranchMessages(sessionId, branch.id, conversation.id);
-    const resource = await db.upsertContextResource({
-      session_id: sessionId,
-      branch_id: branch.id,
-      kind: 'summary',
-      title: `Summary: ${conversation.title}`,
-      content: buildConversationSummaryContent(conversation, storedMessages),
-      source_conversation_id: conversation.id,
-    });
+    const summaryAdapter = await resolveAdapter(adapter, body.agent_config);
+    const ensured = await ensureSummaryResourceForConversation(db, summaryAdapter, sessionId, branch.id, conversation);
+    if (!ensured.resource) {
+      res.status(400).json({
+        error: 'No chat content to summarize yet',
+        code: 'empty_chat',
+      });
+      return;
+    }
 
-    res.status(201).json({ resource });
+    res.status(201).json({
+      resource: ensured.resource,
+      source_conversation_title: conversation.title,
+      preview: createPreview(ensured.resource.content),
+      message_count: ensured.messageCount,
+      empty: false,
+    });
   }));
 
   router.put('/sessions/:id/workspace', requireToken(db), asyncRoute(async (req, res) => {
@@ -1921,7 +2166,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       return;
     }
     if (body.workspace_section !== undefined && !parseWorkspaceSection(body.workspace_section)) {
-      res.status(400).json({ error: 'workspace_section must be code, database, or git' });
+      res.status(400).json({ error: 'workspace_section must be code, database, or curl' });
       return;
     }
 
@@ -2014,6 +2259,47 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
     if (!conversation) return;
 
     await db.rewindMessages(sessionId, branch.id, conversation.id, body.turn_sequence);
+    res.json({ ok: true });
+  }));
+
+  // POST /api/sessions/:id/prune — soft-hide messages before a turn sequence
+  router.post('/sessions/:id/prune', requireToken(db), asyncRoute(async (req, res) => {
+    const sessionId = req.params['id'] as string;
+    const body = req.body as { branch_id?: unknown; conversation_id?: unknown; turn_sequence?: unknown };
+
+    if (typeof body.turn_sequence !== 'number' || !Number.isInteger(body.turn_sequence) || body.turn_sequence < 1) {
+      res.status(400).json({ error: 'turn_sequence must be a positive integer' });
+      return;
+    }
+
+    const session = await db.getSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const branch = await resolveBranchOrRespond(
+      db,
+      res,
+      sessionId,
+      typeof body.branch_id === 'string' ? body.branch_id : undefined,
+    );
+    if (!branch) {
+      return;
+    }
+
+    const conversation = await resolveConversationOrRespond(
+      db,
+      res,
+      sessionId,
+      branch.id,
+      typeof body.conversation_id === 'string' ? body.conversation_id : undefined,
+    );
+    if (!conversation) {
+      return;
+    }
+
+    await db.pruneMessagesBeforeTurnSequence(sessionId, branch.id, conversation.id, body.turn_sequence);
     res.json({ ok: true });
   }));
 

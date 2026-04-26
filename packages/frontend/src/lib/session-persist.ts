@@ -25,7 +25,7 @@ export interface PersistedBranchSummary {
 
 export interface RestoredWorkspaceState {
   activePath?: string;
-  workspaceSection?: 'code' | 'database' | 'git';
+  workspaceSection?: 'code' | 'database' | 'curl' | 'git';
 }
 
 export interface RestoredConstraints {
@@ -33,6 +33,7 @@ export interface RestoredConstraints {
   interactionsRemaining: number;
   secondsRemaining: number;
   maxTokens: number;
+  contextWindow?: number;
   maxInteractions: number;
   timeLimitSeconds: number;
 }
@@ -134,6 +135,7 @@ export async function validateSession(
         interactions_used: number;
         constraint: {
           max_session_tokens: number;
+          context_window: number;
           max_interactions: number;
           time_limit_minutes: number;
         };
@@ -195,6 +197,7 @@ export async function validateSession(
       interactionsRemaining: data.constraints_remaining.interactions_remaining,
       secondsRemaining: data.constraints_remaining.seconds_remaining,
       maxTokens: data.session.constraint.max_session_tokens,
+      contextWindow: data.session.constraint.context_window,
       maxInteractions: data.session.constraint.max_interactions,
       timeLimitSeconds: data.session.constraint.time_limit_minutes * 60,
       },
@@ -225,7 +228,7 @@ export async function restoreFiles(
           filesystem: Array<{ path: string; encoding: 'utf-8' | 'base64'; content: string }>;
           mock_pg: unknown[];
           active_path?: string;
-          workspace_section?: 'code' | 'database' | 'git';
+          workspace_section?: 'code' | 'database' | 'curl' | 'git';
         } | null;
       };
       if (data.snapshot) {

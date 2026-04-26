@@ -456,6 +456,15 @@ class FakeDb implements DatabaseAdapter {
     return Promise.resolve();
   }
 
+  pruneMessagesBeforeTurnSequence(
+    _sessionId: string,
+    _branchId: string,
+    _conversationId: string,
+    _turnSequence: number,
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
   getMessages(sessionId: string): Promise<StoredMessage[]> {
     return this.getBranchMessages(sessionId, 'main');
   }

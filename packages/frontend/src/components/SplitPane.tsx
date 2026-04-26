@@ -67,15 +67,15 @@ export function SplitPane({
       {/* First pane */}
       <div
         className="min-w-0 min-h-0 overflow-hidden rounded-[var(--assessment-radius-shell)] shadow-lg bg-[var(--color-bg-code)]"
-        style={{ flexBasis: `${leftPct}%`, flexShrink: 0, flexGrow: 0 }}
+        style={{ flexBasis: `${leftPct}%`, flexShrink: 0, flexGrow: 0, boxShadow: 'var(--assessment-shadow-panel)' }}
       >
         {left}
       </div>
 
       {/* Second pane — resize handle sits on its leading edge */}
-      <div className="relative min-w-0 min-h-0 flex-1 overflow-hidden rounded-[var(--assessment-radius-shell)] shadow-lg bg-[var(--color-bg-panel)]">
+      <div className="relative min-w-0 min-h-0 flex-1 overflow-hidden rounded-[var(--assessment-radius-shell)] bg-[var(--color-bg-panel)]" style={{ boxShadow: 'var(--assessment-shadow-panel)' }}>
         <div
-          className={`absolute z-50 transition-colors hover:bg-white/10 ${
+          className={`absolute z-50 transition-colors hover:bg-[var(--color-surface-muted)] ${
             orientation === 'horizontal'
               ? '-left-[3px] top-0 bottom-0 w-[6px] cursor-col-resize'
               : '-top-[3px] left-0 right-0 h-[6px] cursor-row-resize'

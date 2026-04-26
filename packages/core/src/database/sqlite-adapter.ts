@@ -674,6 +674,18 @@ export class SQLiteAdapter implements DatabaseAdapter {
     return Promise.resolve();
   }
 
+  pruneMessagesBeforeTurnSequence(
+    sessionId: string,
+    branchId: string,
+    conversationId: string,
+    turnSequence: number,
+  ): Promise<void> {
+    this.db.prepare(
+      'UPDATE messages SET rewound_at = ? WHERE session_id = ? AND branch_id = ? AND conversation_id = ? AND turn_sequence < ?',
+    ).run(Date.now(), sessionId, branchId, conversationId, turnSequence);
+    return Promise.resolve();
+  }
+
   getMessages(sessionId: string): Promise<StoredMessage[]> {
     return this.getMainBranch(sessionId).then((branch) => {
       if (!branch) {

@@ -34,7 +34,7 @@ export function TabBar({ tabs, activeTab, onTabSelect, onTabClose }: TabBarProps
               className={`flex items-center gap-2 px-4 py-2 cursor-pointer text-[13px] shrink-0 rounded-xl transition-all group ${
                 isActive 
                   ? 'bg-[var(--color-bg-tab)] text-[var(--color-text-bold)]' 
-                  : 'text-[var(--color-text-dim)] hover:bg-white/5'
+                  : 'text-[var(--color-text-dim)] hover:bg-[var(--color-surface-subtle)]'
               }`}
             >
               <File 
@@ -45,7 +45,7 @@ export function TabBar({ tabs, activeTab, onTabSelect, onTabClose }: TabBarProps
               <button
                 type="button"
                 aria-label={`Close ${tab}`}
-                className={`ml-1 transition-opacity p-0.5 hover:bg-white/10 rounded ${
+                className={`ml-1 transition-opacity p-0.5 hover:bg-[var(--color-surface-muted)] rounded ${
                   isActive ? 'opacity-40 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'
                 }`}
                 onClick={(e) => {

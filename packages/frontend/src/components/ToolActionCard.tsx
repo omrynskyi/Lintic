@@ -91,18 +91,18 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
         type="button"
         data-testid="tool-action-toggle"
         onClick={() => setOpen((v) => !v)}
-        className="group w-full flex items-center justify-between py-1 transition-colors"
+        className="group w-full flex items-center justify-between rounded-[var(--assessment-radius-control)] px-2 py-1 transition-colors hover:bg-[var(--color-surface-subtle)]"
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="text-white/20 group-hover:text-white/40 flex items-center shrink-0 transition-colors">
+          <span className="flex items-center shrink-0 transition-colors text-[var(--color-text-dim)] group-hover:text-[var(--color-text-main)]">
             {getIcon()}
           </span>
           <div className="flex items-center gap-2 truncate">
-            <span className="text-[12px] font-bold text-white/70 group-hover:text-white tracking-tight shrink-0 transition-colors">
+            <span className="text-[12px] font-bold tracking-tight shrink-0 transition-colors text-[var(--color-text-main)] group-hover:text-[var(--color-text-bold)]">
               {displayName}:
             </span>
             {mainParam && (
-              <span className="text-[12px] text-white/30 truncate font-medium tracking-tight group-hover:text-white/40">
+              <span className="text-[12px] truncate font-medium tracking-tight text-[var(--color-text-dim)] group-hover:text-[var(--color-text-main)]">
                 {mainParam}
               </span>
             )}
@@ -119,7 +119,7 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
           )}
           <ChevronDown 
             size={13} 
-            className={`transition-transform duration-300 text-white/10 group-hover:text-white/30 ${open ? 'rotate-180' : ''}`} 
+            className={`transition-transform duration-300 text-[var(--color-text-dimmest)] group-hover:text-[var(--color-text-dim)] ${open ? 'rotate-180' : ''}`} 
           />
         </div>
       </button>
@@ -135,16 +135,17 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
           >
             <div
               data-testid="tool-action-body"
-              className="pl-6 pr-2 pb-3 space-y-3 opacity-70"
+              className="mt-1 rounded-[var(--assessment-radius-control)] px-4 py-3 space-y-3"
+              style={{ background: 'var(--color-surface-subtle)' }}
             >
               {/* Detailed Input */}
               <div className="space-y-2">
                 {Object.entries(call.input).map(([k, v]) => (
                   <div key={k} className="space-y-1">
-                    <span className="text-[9px] font-bold tracking-widest text-white/10 px-0.5 uppercase">
+                    <span className="px-0.5 text-[9px] font-bold tracking-widest uppercase text-[var(--color-text-dimmest)]">
                       {k}
                     </span>
-                    <div className="max-w-full overflow-x-auto px-1 font-mono text-[11px] text-white/50 leading-relaxed whitespace-pre">
+                    <div className="max-w-full overflow-x-auto px-1 font-mono text-[11px] leading-relaxed whitespace-pre text-[var(--color-text-muted)]">
                       {typeof v === 'string' ? v : JSON.stringify(v, null, 2)}
                     </div>
                   </div>
@@ -153,8 +154,8 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
 
               {/* Result Output */}
               {result !== undefined && (
-                <div className="pt-3 border-t border-white/5">
-                  <span className="text-[9px] font-bold tracking-widest text-white/10 block mb-1.5 px-0.5 uppercase">
+                <div className="pt-3" style={{ borderTop: '1px solid var(--color-border-main)' }}>
+                  <span className="block mb-1.5 px-0.5 text-[9px] font-bold tracking-widest uppercase text-[var(--color-text-dimmest)]">
                     Output
                   </span>
                   <div className="px-1">
@@ -198,7 +199,8 @@ export function ToolActionCard({ action }: { action: LocalToolAction | LocalTool
           {callIndex === 0 && description && (
             <div
               data-testid="tool-action-description"
-              className="mb-1 px-5 text-[12px] text-white/45 leading-relaxed"
+              className="mb-1 px-5 text-[12px] leading-relaxed"
+              style={{ color: 'var(--color-text-dim)' }}
             >
               {description}
             </div>
@@ -216,7 +218,7 @@ export function ToolActionCard({ action }: { action: LocalToolAction | LocalTool
           onClick={() => setShowAll(!showAll)}
           className="group w-full flex items-center py-1 transition-colors"
         >
-          <span className="text-[12px] text-white/20 group-hover:text-white/40 pl-5">
+          <span className="pl-5 text-[12px] text-[var(--color-text-dim)] group-hover:text-[var(--color-text-main)]">
             {showAll ? '— show less' : `+ ${allCalls.length - limit} more tool uses`}
           </span>
         </button>

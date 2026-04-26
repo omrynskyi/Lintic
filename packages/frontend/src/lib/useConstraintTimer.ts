@@ -5,6 +5,7 @@ export interface ConstraintState {
   tokensRemaining: number;
   interactionsRemaining: number;
   maxTokens: number;
+  contextWindow?: number;
   maxInteractions: number;
   timeLimitSeconds: number;
 }

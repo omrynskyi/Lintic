@@ -59,10 +59,11 @@ export const TOOLS: ToolDefinition[] = [
   },
   {
     name: 'read_terminal_output',
-    description: 'Read the latest captured terminal output for a running or completed process.',
+    description: 'Read captured terminal output for a running or completed process, optionally from a character offset.',
     parameters: {
       process_id: { type: 'string', description: 'Process id returned by run_command.' },
-      max_chars: { type: 'number', description: 'Maximum number of trailing characters to return.' },
+      offset: { type: 'number', description: 'Character offset from the start of the captured output. Use 0 to read from the beginning.' },
+      max_chars: { type: 'number', description: 'Maximum number of characters to return from the chosen offset.' },
     },
     required: ['process_id'],
   },

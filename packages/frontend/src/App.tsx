@@ -5,6 +5,7 @@ import { TopBar } from './components/TopBar.js';
 import { SplitPane } from './components/SplitPane.js';
 import { IdePanel } from './components/IdePanel.js';
 import { DatabasePanel } from './components/DatabasePanel.js';
+import { CurlPanel } from './components/CurlPanel.js';
 import { ChatPanel } from './components/ChatPanel.js';
 import type { AgentConfig, AgentMode } from './components/ChatPanel.js';
 import { DevSetup } from './components/DevSetup.js';
@@ -44,7 +45,6 @@ import { AssessmentSubmittedModal } from './components/AssessmentSubmittedModal.
 
 type AppState = 'setup' | 'active' | 'submitted';
 type SubmissionKind = 'manual' | 'expired';
-const ENABLE_DEV_REVIEW_SHORTCUT = import.meta.env.DEV;
 
 function getInitialIsDarkTheme(): boolean {
   if (typeof window === 'undefined') {
@@ -73,7 +73,20 @@ function generateToastId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function normalizeWorkspaceSection(section: string | null | undefined): WorkspaceSection | null {
+  if (section === 'code' || section === 'database' || section === 'curl') {
+    return section;
+  }
+  if (section === 'git') {
+    return 'curl';
+  }
+  return null;
+}
+
 export function App() {
+  const [viewportWidth, setViewportWidth] = useState<number>(() =>
+    typeof window === 'undefined' ? 1440 : window.innerWidth,
+  );
   const [assessmentToken, setAssessmentToken] = useState<string | null>(() =>
     typeof window === 'undefined' ? null : getAssessmentLinkToken(window.location),
   );
@@ -117,8 +130,9 @@ export function App() {
     if (!restored) {
       return;
     }
-    if (restored.workspaceSection) {
-      setActiveWorkspaceSection(restored.workspaceSection);
+    const workspaceSection = normalizeWorkspaceSection(restored.workspaceSection);
+    if (workspaceSection) {
+      setActiveWorkspaceSection(workspaceSection);
     }
     if (restored.activePath) {
       setFileToOpen(`${restored.activePath}-${Date.now()}`);
@@ -168,6 +182,16 @@ export function App() {
   }, [isDark]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
     const handlePopState = () => {
       setAssessmentToken(getAssessmentLinkToken(window.location));
       setReviewSessionId(getReviewSessionId(window.location.pathname));
@@ -192,6 +216,7 @@ export function App() {
       tokensRemaining: 50000,
       interactionsRemaining: 30,
       maxTokens: 50000,
+      contextWindow: 32000,
       maxInteractions: 30,
       timeLimitSeconds: 3600,
     },
@@ -419,6 +444,23 @@ export function App() {
     applyRestoredWorkspaceState(restored);
   }, [activeBranchId, applyRestoredWorkspaceState, sessionId, sessionToken]);
 
+  const handlePrune = useCallback(async (turnSequence: number) => {
+    if (!sessionId || !sessionToken || !activeBranchId) return;
+
+    const res = await fetch(`/api/sessions/${sessionId}/prune`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${sessionToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ branch_id: activeBranchId, turn_sequence: turnSequence }),
+    });
+    if (!res.ok) {
+      throw new Error(`Prune failed: ${res.status}`);
+    }
+    addToast('Pruned earlier messages from the active chat');
+  }, [activeBranchId, addToast, sessionId, sessionToken]);
+
   const handleCreateBranch = useCallback(async (name: string, turnSequence: number, conversationId?: string) => {
     if (!sessionId || !sessionToken || !activeBranchId) {
       return;
@@ -470,13 +512,6 @@ export function App() {
     const running = executorRef.current?.getRunningProcessIds() ?? [];
     executorRef.current?.stopProcesses(running);
   }, []);
-
-  const handleOpenReviewDebug = useCallback(() => {
-    if (!sessionId) {
-      return;
-    }
-    window.open(`/review/${sessionId}`, '_blank', 'noopener,noreferrer');
-  }, [sessionId]);
 
   const handleViewPrompt = useCallback(async () => {
     if (!activePrompt) return;
@@ -707,6 +742,10 @@ export function App() {
     );
   }
 
+  const compactAssessmentHeader = viewportWidth < 1500;
+  const narrowAssessmentHeader = viewportWidth < 800;
+  const stackedAssessmentLayout = viewportWidth < 1380;
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[var(--color-bg-app)] p-[5px] gap-[5px]">
       <TopBar
@@ -714,22 +753,32 @@ export function App() {
         tokensRemaining={constraints.tokensRemaining}
         interactionsRemaining={constraints.interactionsRemaining}
         maxTokens={constraints.maxTokens}
+        contextWindow={constraints.contextWindow}
         maxInteractions={constraints.maxInteractions}
         isDark={isDark}
-        onToggleTheme={() => setIsDark(!isDark)}
         onViewPrompt={activePrompt ? handleViewPrompt : undefined}
-        onOpenReviewDebug={ENABLE_DEV_REVIEW_SHORTCUT && sessionId ? handleOpenReviewDebug : undefined}
         onSubmitTask={sessionId ? handleOpenSubmitConfirmation : undefined}
         submitDisabled={!sessionId || chatLoading || submittingTask || constraints.secondsRemaining <= 0}
         submittingTask={submittingTask}
         showAutoSubmitWarning={constraints.secondsRemaining > 0 && constraints.secondsRemaining <= 300}
+        compact={compactAssessmentHeader}
+        narrow={narrowAssessmentHeader}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 gap-[5px]">
-        <Sidebar activeSection={activeWorkspaceSection} onSelect={setActiveWorkspaceSection} />
+        <Sidebar
+          activeSection={activeWorkspaceSection}
+          onSelect={setActiveWorkspaceSection}
+          isDark={isDark}
+          onToggleTheme={() => setIsDark(!isDark)}
+        />
         
         <div className="min-h-0 min-w-0 flex-1">
           <SplitPane
+            orientation={stackedAssessmentLayout ? 'vertical' : 'horizontal'}
+            initialPct={stackedAssessmentLayout ? 48 : 50}
+            minPct={stackedAssessmentLayout ? 30 : 20}
+            maxPct={stackedAssessmentLayout ? 70 : 80}
             left={
               <div className="h-full">
                 <div className={activeWorkspaceSection === 'code' ? 'h-full' : 'hidden'}>
@@ -742,13 +791,8 @@ export function App() {
                 <div className={activeWorkspaceSection === 'database' ? 'h-full' : 'hidden'}>
                   <DatabasePanel onOpenSetupFile={handleOpenWorkspaceFile} />
                 </div>
-                <div
-                  className={activeWorkspaceSection === 'git' ? 'h-full' : 'hidden'}
-                  style={{ background: 'var(--color-bg-code)', color: 'var(--color-text-dim)' }}
-                >
-                  <div className="flex h-full items-center justify-center px-6 text-sm">
-                    Git tools are not available yet.
-                  </div>
+                <div className={activeWorkspaceSection === 'curl' ? 'h-full' : 'hidden'}>
+                  <CurlPanel />
                 </div>
               </div>
             }
@@ -770,6 +814,8 @@ export function App() {
                 onSaveCheckpoint={handleSaveCheckpoint}
                 onCreateBranch={handleCreateBranch}
                 onRewind={handleRewind}
+                onPrune={handlePrune}
+                onToast={addToast}
                 activeFilePath={activeFilePath}
                 onTurnComplete={(turnSequence) => {
                   void snapshotWorkspace('turn', { turnSequence });

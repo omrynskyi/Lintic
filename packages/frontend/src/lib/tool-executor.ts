@@ -63,7 +63,7 @@ export class ToolExecutor {
       case 'run_command':
         return this.handleRunCommand(input as { command: string });
       case 'read_terminal_output':
-        return this.handleReadTerminalOutput(input as { process_id: string; max_chars?: number });
+        return this.handleReadTerminalOutput(input as { process_id: string; offset?: number; max_chars?: number });
       case 'list_processes':
         return this.handleListProcesses();
       case 'kill_process':
@@ -135,14 +135,7 @@ export class ToolExecutor {
   }
 
   private async handleRunCommand({ command }: { command: string }): Promise<string> {
-    const [cmd, ...args] = command.split(' ');
-    const process = await this.wc.spawn(cmd!, args, {
-      env: {
-        TERM: 'dumb',
-        NO_COLOR: '1',
-        FORCE_COLOR: '0',
-      }
-    });
+    const process = await this.spawnCommand(command);
 
     const processId = `proc-${this.nextProcessId++}`;
     const tracked: RunningProcess = {
@@ -178,8 +171,25 @@ export class ToolExecutor {
     });
   }
 
+  private async spawnCommand(command: string) {
+    const spawnOptions = {
+      env: {
+        TERM: 'dumb',
+        NO_COLOR: '1',
+        FORCE_COLOR: '0',
+      }
+    } as const;
+
+    try {
+      return await this.wc.spawn('sh', ['-lc', command], spawnOptions);
+    } catch {
+      const [cmd, ...args] = command.split(' ');
+      return this.wc.spawn(cmd!, args, spawnOptions);
+    }
+  }
+
   private handleReadTerminalOutput(
-    { process_id, max_chars = DEFAULT_OUTPUT_CHARS }: { process_id: string; max_chars?: number },
+    { process_id, offset, max_chars = DEFAULT_OUTPUT_CHARS }: { process_id: string; offset?: number; max_chars?: number },
   ): Promise<string> {
     const tracked = this.processes.get(process_id);
     if (!tracked) {
@@ -187,12 +197,22 @@ export class ToolExecutor {
     }
 
     const sliceLength = Math.max(1, Math.floor(max_chars));
+    const sliceOffset = offset === undefined
+      ? Math.max(0, tracked.output.length - sliceLength)
+      : Math.max(0, Math.floor(offset));
+    const rawOutput = tracked.output.slice(sliceOffset, sliceOffset + sliceLength);
+    const output = this.formatTerminalOutput(tracked, sliceOffset, sliceLength, rawOutput);
     return Promise.resolve().then(() => JSON.stringify({
       process_id,
       command: tracked.command,
       status: tracked.status,
       exit_code: tracked.exitCode,
-      output: this.formatTerminalOutput(tracked, sliceLength),
+      offset: sliceOffset,
+      max_chars: sliceLength,
+      total_chars: tracked.output.length,
+      returned_chars: rawOutput.length,
+      has_more: sliceOffset + rawOutput.length < tracked.output.length,
+      output,
     }));
   }
 
@@ -253,10 +273,19 @@ export class ToolExecutor {
     streamOwner.output = this.cleanOutput(streamOwner.output);
   }
 
-  private formatTerminalOutput(tracked: RunningProcess, sliceLength: number): string {
-    const trimmedOutput = tracked.output.slice(-sliceLength);
-    if (trimmedOutput) {
-      return trimmedOutput;
+  private formatTerminalOutput(
+    tracked: RunningProcess,
+    offset: number,
+    sliceLength: number,
+    trimmedOutput?: string,
+  ): string {
+    const outputSlice = trimmedOutput ?? tracked.output.slice(offset, offset + sliceLength);
+    if (outputSlice) {
+      return outputSlice;
+    }
+
+    if (tracked.output.length > 0) {
+      return `No terminal output available at offset ${offset}. Captured output length is ${tracked.output.length} characters.`;
     }
 
     if (tracked.status === 'running') {

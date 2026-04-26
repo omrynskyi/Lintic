@@ -109,13 +109,13 @@ describe('ToolExecutor', () => {
       expect(result.is_error).toBe(false);
       expect(result.output).toContain('"process_id":"proc-1"');
       expect(result.output).toContain('"status":"running"');
-      expect(mockWc.spawn).toHaveBeenCalledWith('npm', ['run', 'build'], commandEnv);
+      expect(mockWc.spawn).toHaveBeenCalledWith('sh', ['-lc', 'npm run build'], commandEnv);
     });
 
-    test('splits command on whitespace for spawn args', async () => {
+    test('passes chained shell commands through the shell wrapper', async () => {
       mockWc.spawn.mockResolvedValue(makeProcess(''));
-      await executor.execute(toolCall({ name: 'run_command', input: { command: 'node index.js --port 3000' } }));
-      expect(mockWc.spawn).toHaveBeenCalledWith('node', ['index.js', '--port', '3000'], commandEnv);
+      await executor.execute(toolCall({ name: 'run_command', input: { command: 'npm init -y && npm install express' } }));
+      expect(mockWc.spawn).toHaveBeenCalledWith('sh', ['-lc', 'npm init -y && npm install express'], commandEnv);
     });
 
     test('list_processes and read_terminal_output expose running command state', async () => {
@@ -131,6 +131,22 @@ describe('ToolExecutor', () => {
       );
       expect(outputResult.output).toContain('"process_id":"proc-1"');
       expect(outputResult.output).toContain('server booted');
+    });
+
+    test('read_terminal_output can page from an explicit offset', async () => {
+      mockWc.spawn.mockResolvedValue(makeProcess('abcdefghij'));
+      await executor.execute(toolCall({ name: 'run_command', input: { command: 'node server.js' } }));
+
+      const outputResult = await executor.execute(
+        toolCall({ name: 'read_terminal_output', input: { process_id: 'proc-1', offset: 2, max_chars: 4 } }),
+      );
+
+      expect(outputResult.output).toContain('"process_id":"proc-1"');
+      expect(outputResult.output).toContain('"offset":2');
+      expect(outputResult.output).toContain('"max_chars":4');
+      expect(outputResult.output).toContain('"returned_chars":4');
+      expect(outputResult.output).toContain('"has_more":true');
+      expect(outputResult.output).toContain('"output":"cdef"');
     });
 
     test('read_terminal_output includes stderr/stdout after a failed process exits', async () => {

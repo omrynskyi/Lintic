@@ -207,7 +207,7 @@ export interface ContextResource {
   source_conversation_id?: string;
 }
 
-export type WorkspaceSection = 'code' | 'database' | 'git';
+export type WorkspaceSection = 'code' | 'database' | 'curl';
 
 export type SnapshotEncoding = 'utf-8' | 'base64';
 

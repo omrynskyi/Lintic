@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { marked, Renderer } from 'marked';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
@@ -41,6 +41,7 @@ export interface ChatMessage {
 export interface ChatConstraints {
   tokensRemaining: number;
   maxTokens: number;
+  contextWindow?: number;
   interactionsRemaining: number;
   maxInteractions: number;
 }
@@ -85,7 +86,12 @@ interface ContextCandidateResource {
   kind: 'repo_map' | 'summary';
   title: string;
   source_conversation_id: string | null;
+  source_conversation_title?: string | null;
+  updated_at?: number;
   selected: boolean;
+  preview?: string;
+  message_count?: number;
+  empty?: boolean;
 }
 
 interface ContextCandidateConversation {
@@ -93,6 +99,26 @@ interface ContextCandidateConversation {
   title: string;
   updated_at: number;
   selected: boolean;
+  active?: boolean;
+  message_count?: number;
+  empty?: boolean;
+  has_summary?: boolean;
+  summary_resource_id?: string | null;
+  preview?: string;
+  descriptor?: string;
+}
+
+interface ContextUsageBreakdown {
+  context_usage_pct: number;
+  context_tokens_estimate: number;
+  context_window: number;
+  conversation_messages: number;
+  attached_summary: string;
+  repo_map_attached: boolean;
+  file_count: number;
+  summary_count: number;
+  prior_chat_count: number;
+  warnings: string[];
 }
 
 /** Minimal agent config shape forwarded to the backend for per-request adapter creation. */
@@ -191,6 +217,8 @@ interface ChatPanelProps {
   onTurnComplete?: (turnSequence: number) => void;
   activeFilePath?: string | null;
   onRewind?: (turnSequence: number, mode: 'code' | 'both') => Promise<void>;
+  onPrune?: (turnSequence: number) => Promise<void>;
+  onToast?: (message: string) => void;
 }
 
 function generateId() {
@@ -463,7 +491,7 @@ function AssistantGroup({
     <div className="flex min-w-0 flex-col gap-1.5 py-1">
       {hasThinking ? (
         <div className="px-1">
-          <div className="inline-flex rounded-full bg-white/5 p-1">
+          <div className="inline-flex rounded-full p-1" style={{ background: 'var(--color-surface-subtle)' }}>
             {([
               ['response', 'Response'],
               ['thinking', 'Thinking'],
@@ -477,8 +505,8 @@ function AssistantGroup({
                   onClick={() => setActiveTab(tabId)}
                   className="rounded-[var(--assessment-radius-pill)] px-3 py-1.5 text-[12px] font-semibold transition-colors"
                   style={{
-                    background: isActive ? '#FFFFFF' : 'transparent',
-                    color: isActive ? '#000000' : 'rgba(255,255,255,0.6)',
+                    background: isActive ? 'var(--color-bg-send-btn)' : 'transparent',
+                    color: isActive ? 'var(--color-text-on-send-btn)' : 'var(--color-text-dim)',
                   }}
                 >
                   {label}
@@ -561,6 +589,8 @@ export function ChatPanel({
   onTurnComplete,
   activeFilePath,
   onRewind,
+  onPrune,
+  onToast,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -583,6 +613,9 @@ export function ChatPanel({
   const [contextFiles, setContextFiles] = useState<ContextCandidateFile[]>([]);
   const [contextResourceCandidates, setContextResourceCandidates] = useState<ContextCandidateResource[]>([]);
   const [priorConversationCandidates, setPriorConversationCandidates] = useState<ContextCandidateConversation[]>([]);
+  const [contextUsageBreakdown, setContextUsageBreakdown] = useState<ContextUsageBreakdown | null>(null);
+  const [contextDetailsOpen, setContextDetailsOpen] = useState(false);
+  const [expandedResourceIds, setExpandedResourceIds] = useState<string[]>([]);
 
   const exhausted =
     timeExpired
@@ -651,9 +684,7 @@ export function ChatPanel({
           });
 
         setMessages((prev) => mergeMessages(prev, loadedMessages));
-        if (data.conversations) {
-          setConversations(data.conversations);
-        }
+        setConversations(data.conversations ?? []);
         if (data.active_conversation_id) {
           setActiveConversationId(data.active_conversation_id);
         }
@@ -734,6 +765,9 @@ export function ChatPanel({
     setContextFiles([]);
     setContextResourceCandidates([]);
     setPriorConversationCandidates([]);
+    setContextUsageBreakdown(null);
+    setContextDetailsOpen(false);
+    setExpandedResourceIds([]);
 
     if (!sessionId || !activeBranchId) {
       return;
@@ -753,7 +787,7 @@ export function ChatPanel({
           conversations: ConversationSummary[];
           active_conversation_id: string | null;
         };
-        setConversations(data.conversations);
+        setConversations(data.conversations ?? []);
         setActiveConversationId(data.active_conversation_id);
       } catch {
         // Ignore load errors.
@@ -783,17 +817,19 @@ export function ChatPanel({
       conversations: ConversationSummary[];
       attachments: ContextAttachment[];
       resources: ContextResource[];
+      usage_breakdown: ContextUsageBreakdown;
       available: {
         files: ContextCandidateFile[];
         resources: ContextCandidateResource[];
         prior_conversations: ContextCandidateConversation[];
       };
     };
-    setConversations(data.conversations);
-    setContextAttachments(data.attachments);
-    setContextFiles(data.available.files);
-    setContextResourceCandidates(data.available.resources);
-    setPriorConversationCandidates(data.available.prior_conversations);
+    setConversations(data.conversations ?? []);
+    setContextAttachments(data.attachments ?? []);
+    setContextFiles(data.available?.files ?? []);
+    setContextResourceCandidates(data.available?.resources ?? []);
+    setPriorConversationCandidates(data.available?.prior_conversations ?? []);
+    setContextUsageBreakdown(data.usage_breakdown ?? null);
   }, [activeBranchId, apiBase, sessionId, sessionToken]);
 
   useEffect(() => {
@@ -883,7 +919,7 @@ export function ChatPanel({
         conversations: ConversationSummary[];
         active_conversation_id: string;
       };
-      setConversations(data.conversations);
+      setConversations(data.conversations ?? []);
       setActiveConversationId(data.active_conversation_id);
       setMessages([]);
       setInput('');
@@ -916,6 +952,10 @@ export function ChatPanel({
     })));
   }, [activeConversationId, contextAttachments, persistAttachments]);
 
+  const handleDetachContext = useCallback(async () => {
+    await persistAttachments([]);
+  }, [persistAttachments]);
+
   const handleToggleResourceContext = useCallback(async (candidate: ContextCandidateResource) => {
     const exists = contextAttachments.some((attachment) => attachment.resource_id === candidate.id);
     const nextAttachments = exists
@@ -937,30 +977,10 @@ export function ChatPanel({
     })));
   }, [activeConversationId, contextAttachments, persistAttachments]);
 
-  const handleTogglePriorConversation = useCallback(async (candidate: ContextCandidateConversation) => {
-    const exists = contextAttachments.some((attachment) => (
-      attachment.kind === 'prior_conversation' && attachment.source_conversation_id === candidate.id
-    ));
-    const nextAttachments = exists
-      ? contextAttachments.filter((attachment) => !(
-          attachment.kind === 'prior_conversation' && attachment.source_conversation_id === candidate.id
-        ))
-      : [...contextAttachments, {
-          id: generateId(),
-          conversation_id: activeConversationId ?? '',
-          kind: 'prior_conversation' as const,
-          label: candidate.title,
-          source_conversation_id: candidate.id,
-          created_at: Date.now(),
-        }];
-    await persistAttachments(nextAttachments.map((attachment) => ({
-      kind: attachment.kind,
-      label: attachment.label,
-      ...(attachment.path ? { path: attachment.path } : {}),
-      ...(attachment.resource_id ? { resource_id: attachment.resource_id } : {}),
-      ...(attachment.source_conversation_id ? { source_conversation_id: attachment.source_conversation_id } : {}),
-    })));
-  }, [activeConversationId, contextAttachments, persistAttachments]);
+  const handleOpenConversation = useCallback((conversationId: string) => {
+    setActiveConversationId(conversationId);
+    setMessages([]);
+  }, []);
 
   const handleGenerateRepoMap = useCallback(async () => {
     if (!sessionId || !activeBranchId) {
@@ -1006,18 +1026,25 @@ export function ChatPanel({
         body: JSON.stringify({
           branch_id: activeBranchId,
           conversation_id: activeConversationId,
+          ...(agentConfig ? { agent_config: agentConfig } : {}),
         }),
       });
+      const data = await res.json() as {
+        error?: string;
+        code?: string;
+        source_conversation_title?: string;
+      };
       if (!res.ok) {
-        throw new Error(`Failed to summarize chat (${res.status})`);
+        throw new Error(data.error ?? `Failed to summarize chat (${res.status})`);
       }
       await loadContextState(activeConversationId);
+      onToast?.(`Saved summary for "${data.source_conversation_title ?? 'current chat'}"`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to summarize chat');
     } finally {
       setContextBusy(false);
     }
-  }, [activeBranchId, activeConversationId, apiBase, loadContextState, sessionId, sessionToken]);
+  }, [activeBranchId, activeConversationId, apiBase, loadContextState, onToast, sessionId, sessionToken]);
 
   const sendMessage = useCallback(async (overrideText?: string, overrideMode?: AgentMode) => {
     const text = (overrideText ?? input).trim();
@@ -1199,15 +1226,18 @@ export function ChatPanel({
     }
   }
 
-  const tokenPct =
+  const totalTokenPct =
     constraints.maxTokens > 0
       ? (constraints.tokensRemaining / constraints.maxTokens) * 100
       : 0;
-  const isLowTokens = tokenPct < 20;
-  const tokenUsagePct = Math.max(0, Math.min(100, 100 - tokenPct));
+  const contextUsagePct = Math.max(
+    0,
+    Math.min(100, contextUsageBreakdown?.context_usage_pct ?? 0),
+  );
+  const isLowTokens = totalTokenPct < 20;
   const tokenRingRadius = 8;
   const tokenRingCircumference = 2 * Math.PI * tokenRingRadius;
-  const tokenRingOffset = tokenRingCircumference - (tokenUsagePct / 100) * tokenRingCircumference;
+  const tokenRingOffset = tokenRingCircumference - (contextUsagePct / 100) * tokenRingCircumference;
   const selectedBranch = branches.find((branch) => branch.id === activeBranchId) ?? branches[0] ?? null;
   const branchItems = branches.map((branch) => ({
     value: branch.id,
@@ -1216,6 +1246,31 @@ export function ChatPanel({
     onSelect: () => onBranchChange?.(branch.id),
   }));
   const thinkingSupported = supportsThinkingDisplay(agentConfig, modelLabel);
+  const currentChatMessageCount = useMemo(
+    () => messages.filter((message) => message.role === 'user' || message.role === 'assistant').length,
+    [messages],
+  );
+  const canSaveSummary = !!activeConversationId && currentChatMessageCount > 0 && !contextBusy;
+  const selectedFileCount = contextFiles.filter((candidate) => candidate.selected).length;
+  const selectedSummaryCount = contextResourceCandidates.filter((candidate) => candidate.selected && candidate.kind === 'summary').length;
+  const repoMapSelected = contextResourceCandidates.some((candidate) => candidate.selected && candidate.kind === 'repo_map');
+  const selectedParts = [
+    repoMapSelected ? 'repo map' : null,
+    selectedFileCount > 0 ? `${selectedFileCount} file${selectedFileCount === 1 ? '' : 's'}` : null,
+    selectedSummaryCount > 0 ? `${selectedSummaryCount} saved summar${selectedSummaryCount === 1 ? 'y' : 'ies'}` : null,
+  ].filter(Boolean);
+  const attachedSummaryLine = selectedParts.length > 0 ? selectedParts.join(', ') : 'current chat only';
+  const highUsageReason = selectedSummaryCount > 1
+    ? `${selectedSummaryCount} summaries attached`
+    : selectedFileCount > 0
+      ? `Attached file${selectedFileCount > 1 ? 's' : ''}: ${selectedFileCount}`
+      : 'Mostly from current chat history';
+  const activeConversationTitle = (conversations ?? []).find((conversation) => conversation.id === activeConversationId)?.title ?? 'Current chat';
+  const toggleExpandedResource = useCallback((id: string) => {
+    setExpandedResourceIds((current) => current.includes(id)
+      ? current.filter((candidate) => candidate !== id)
+      : [...current, id]);
+  }, []);
 
   return (
     <div className="flex min-w-0 flex-col h-full overflow-hidden" style={{ background: 'var(--color-bg-chat)' }}>
@@ -1249,7 +1304,7 @@ export function ChatPanel({
             
             if (isUser) {
               const msg = group.messages[0]!;
-              const canRewind = !!onRewind && typeof msg.turnSequence === 'number';
+              const canRewind = (!!onRewind || !!onPrune) && typeof msg.turnSequence === 'number';
               const isRewindOpen = rewindPopoverFor === msg.id;
 
               return (
@@ -1266,7 +1321,7 @@ export function ChatPanel({
                       <button
                         type="button"
                         onClick={() => setRewindPopoverFor(isRewindOpen ? null : msg.id)}
-                        className="flex items-center justify-center rounded-full w-7 h-7 opacity-0 group-hover/msg:opacity-100 transition-opacity hover:bg-white/10"
+                        className="flex items-center justify-center rounded-full w-7 h-7 opacity-0 group-hover/msg:opacity-100 transition-opacity hover:bg-[var(--color-surface-muted)]"
                         style={{ color: 'var(--color-text-dim)' }}
                         title="Rewind to here"
                         data-testid="rewind-button"
@@ -1275,37 +1330,68 @@ export function ChatPanel({
                       </button>
                       {isRewindOpen && (
                         <div
-                          className="absolute right-0 top-full mt-1 z-50 flex flex-col overflow-hidden rounded-[var(--assessment-radius-control)] border border-white/10 shadow-2xl"
-                          style={{ background: 'rgba(19,19,20,0.98)', backdropFilter: 'blur(10px)', minWidth: '180px' }}
+                          className="absolute right-0 top-full mt-1 z-50 flex flex-col overflow-hidden rounded-[var(--assessment-radius-control)] shadow-2xl"
+                          style={{
+                            background: 'var(--color-bg-panel)',
+                            border: '1px solid var(--color-border-main)',
+                            backdropFilter: 'blur(10px)',
+                            minWidth: '180px',
+                            boxShadow: 'var(--assessment-shadow-soft)',
+                          }}
                         >
-                          <button
-                            type="button"
-                            onClick={() => { void (async () => {
-                              setRewindPopoverFor(null);
-                              const ts = msg.turnSequence as number;
-                              await onRewind!(ts, 'both');
-                              setMessages((prev) => prev.filter((m) => {
-                                if (m.turnSequence === null || m.turnSequence === undefined) return false;
-                                return (m.turnSequence as number) <= ts;
-                              }));
-                              setInput(msg.content);
-                            })(); }}
-                            className="px-4 py-2.5 text-left text-[12px] transition hover:bg-white/8"
-                            style={{ color: 'var(--color-text-main)' }}
-                          >
-                            Rewind code + conversation
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRewindPopoverFor(null);
-                              void onRewind!(msg.turnSequence as number, 'code');
-                            }}
-                            className="px-4 py-2.5 text-left text-[12px] transition hover:bg-white/8 border-t border-white/8"
-                            style={{ color: 'var(--color-text-dim)' }}
-                          >
-                            Rewind code only
-                          </button>
+                          {onRewind ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => { void (async () => {
+                                  setRewindPopoverFor(null);
+                                  const ts = msg.turnSequence as number;
+                                  await onRewind(ts, 'both');
+                                  setMessages((prev) => prev.filter((m) => {
+                                    if (m.turnSequence === null || m.turnSequence === undefined) return false;
+                                    return (m.turnSequence as number) <= ts;
+                                  }));
+                                  setInput(msg.content);
+                                })(); }}
+                                className="px-4 py-2.5 text-left text-[12px] transition hover:bg-[var(--color-surface-subtle)]"
+                                style={{ color: 'var(--color-text-main)' }}
+                              >
+                                Rewind code + conversation
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRewindPopoverFor(null);
+                                  void onRewind(msg.turnSequence as number, 'code');
+                                }}
+                                className="px-4 py-2.5 text-left text-[12px] transition hover:bg-[var(--color-surface-subtle)]"
+                                style={{ color: 'var(--color-text-dim)', borderTop: '1px solid var(--color-border-main)' }}
+                              >
+                                Rewind code only
+                              </button>
+                            </>
+                          ) : null}
+                          {onPrune ? (
+                            <button
+                              type="button"
+                              onClick={() => { void (async () => {
+                                setRewindPopoverFor(null);
+                                const ts = msg.turnSequence as number;
+                                await onPrune(ts);
+                                setMessages((prev) => prev.filter((m) => {
+                                  if (m.turnSequence === null || m.turnSequence === undefined) return true;
+                                  return (m.turnSequence as number) >= ts;
+                                }));
+                              })(); }}
+                              className="px-4 py-2.5 text-left text-[12px] transition hover:bg-[var(--color-surface-subtle)]"
+                              style={{
+                                color: 'var(--color-text-dim)',
+                                ...(onRewind ? { borderTop: '1px solid var(--color-border-main)' } : {}),
+                              }}
+                            >
+                              Prune earlier messages
+                            </button>
+                          ) : null}
                         </div>
                       )}
                     </div>
@@ -1333,11 +1419,11 @@ export function ChatPanel({
                 className="flex max-w-[320px] flex-col gap-3 rounded-[var(--assessment-radius-shell)] px-4 py-4"
                 style={{ background: 'var(--color-bg-agent-msg)', opacity: 0.72 }}
               >
-                <div className="inline-flex w-fit rounded-full bg-white/5 p-1">
+                <div className="inline-flex w-fit rounded-full p-1" style={{ background: 'var(--color-surface-subtle)' }}>
                   <button
                     type="button"
                     className="rounded-[var(--assessment-radius-pill)] px-3 py-1.5 text-[12px] font-semibold"
-                    style={{ background: 'transparent', color: 'rgba(255,255,255,0.45)' }}
+                    style={{ background: 'transparent', color: 'var(--color-text-dim)' }}
                     disabled
                   >
                     Response
@@ -1345,7 +1431,7 @@ export function ChatPanel({
                   <button
                     type="button"
                     className="rounded-[var(--assessment-radius-pill)] px-3 py-1.5 text-[12px] font-semibold"
-                    style={{ background: '#FFFFFF', color: '#000000' }}
+                    style={{ background: 'var(--color-bg-send-btn)', color: 'var(--color-text-on-send-btn)' }}
                     disabled
                   >
                     Thinking
@@ -1386,7 +1472,7 @@ export function ChatPanel({
           className="flex flex-col gap-5 rounded-[var(--assessment-radius-shell)] border-none px-5 pt-5 pb-3"
           style={{
             background: 'var(--color-bg-input)',
-            boxShadow: '0 8px 30px rgba(0,0,0,0.2)'
+            boxShadow: 'var(--assessment-shadow-panel)',
           }}
         >
           <textarea
@@ -1415,17 +1501,17 @@ export function ChatPanel({
             data-testid="chat-input"
           />
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
+          <div className="flex flex-col gap-3 min-[900px]:flex-row min-[900px]:items-center min-[900px]:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-3 min-[900px]:gap-6">
               {/* Model Dropdown Mock */}
               <div
-                className="flex items-center gap-2 text-[13px] font-medium opacity-60 cursor-pointer hover:opacity-100 transition-opacity"
+                className="flex min-w-0 items-center gap-2 text-[13px] font-medium opacity-60 cursor-pointer transition-opacity hover:opacity-100"
                 style={{ color: 'var(--color-text-main)' }}
               >
-                <span>{agentConfig?.model || modelLabel || 'Configured model'}</span>
+                <span className="truncate">{agentConfig?.model || modelLabel || 'Configured model'}</span>
                 <ChevronDown size={14} />
               </div>
-              <div className="flex items-center rounded-full bg-white/5 p-1">
+              <div className="flex items-center rounded-full p-1" style={{ background: 'var(--color-surface-subtle)' }}>
                 {(['build', 'plan'] as const).map((option) => {
                   const active = mode === option;
                   return (
@@ -1437,8 +1523,8 @@ export function ChatPanel({
                       disabled={loading}
                       className="rounded-[var(--assessment-radius-pill)] px-3 py-1.5 text-[12px] font-semibold transition-colors"
                       style={{
-                        background: active ? '#FFFFFF' : 'transparent',
-                        color: active ? '#000000' : 'rgba(255,255,255,0.6)',
+                        background: active ? 'var(--color-bg-send-btn)' : 'transparent',
+                        color: active ? 'var(--color-text-on-send-btn)' : 'var(--color-text-dim)',
                         cursor: loading ? 'not-allowed' : 'pointer',
                         opacity: loading ? 0.6 : 1,
                       }}
@@ -1450,7 +1536,7 @@ export function ChatPanel({
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex w-full items-center justify-end gap-3 min-[900px]:w-auto">
               {latestPlanPath && onApprovePlan && !loading ? (
                 <button
                   type="button"
@@ -1459,7 +1545,7 @@ export function ChatPanel({
                   className="flex items-center justify-center rounded-[var(--assessment-radius-pill)] px-3 py-1.5 text-[12px] font-semibold transition-all hover:scale-[1.03]"
                   style={{
                     background: 'rgba(16,185,129,0.15)',
-                    color: '#6EE7B7',
+                    color: 'var(--color-brand-green)',
                   }}
                 >
                   Approve plan
@@ -1481,8 +1567,8 @@ export function ChatPanel({
                   type="button"
                   className="flex items-center justify-center gap-2 rounded-[var(--assessment-radius-pill)] px-3 py-1.5 text-[12px] font-semibold transition-all hover:scale-[1.05]"
                   style={{
-                    background: exhausted || !input.trim() ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
-                    color: exhausted || !input.trim() ? 'rgba(255,255,255,0.2)' : '#000000',
+                    background: exhausted || !input.trim() ? 'var(--color-surface-subtle)' : 'var(--color-bg-send-btn)',
+                    color: exhausted || !input.trim() ? 'var(--color-text-dimmest)' : 'var(--color-text-on-send-btn)',
                     cursor: exhausted || !input.trim() ? 'not-allowed' : 'pointer',
                   }}
                   onClick={() => void sendMessage()}
@@ -1501,7 +1587,7 @@ export function ChatPanel({
 
       {/* Usage Bar */}
       <div 
-        className="shrink-0 flex h-12 items-center justify-between gap-4 px-5 border-none"
+        className="shrink-0 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-2 border-none"
         style={{ 
           background: 'transparent'
         }}
@@ -1610,8 +1696,8 @@ export function ChatPanel({
             <div
               className="chat-token-indicator"
               data-testid="token-context-indicator"
-              aria-label={`Context: ${Math.round(tokenUsagePct)}% tokens used`}
-              title={`Context: ${Math.round(tokenUsagePct)}% tokens used`}
+              aria-label={`Context window: ${Math.round(contextUsagePct)}% used`}
+              title={`Context window: ${Math.round(contextUsagePct)}% used`}
             >
               <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
                 <circle
@@ -1649,87 +1735,144 @@ export function ChatPanel({
 
           {contextPanelOpen ? (
             <div
-              className="absolute bottom-[calc(100%+12px)] right-0 z-30 flex w-[320px] max-w-[min(92vw,320px)] flex-col overflow-hidden rounded-[22px] border border-white/10 p-0 shadow-2xl"
+              className="absolute bottom-[calc(100%+12px)] right-0 z-30 flex w-[360px] max-h-[min(78vh,calc(100vh-96px))] max-w-[min(94vw,360px)] flex-col overflow-hidden rounded-[22px] border border-white/10 p-0 shadow-2xl"
               style={{ background: 'rgba(19,19,20,0.98)', backdropFilter: 'blur(10px)' }}
               data-testid="context-panel"
             >
-              <div className="border-b border-white/8 px-4 py-3">
-                <div>
+              <div className="shrink-0 border-b border-white/8 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
                   <div className="text-[12px] font-medium" style={{ color: 'var(--color-text-main)' }}>
                     Context
                   </div>
-                  <div className="text-[11px] opacity-60" style={{ color: 'var(--color-text-dim)' }}>
-                    {Math.round(tokenUsagePct)}% of window in use
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setContextDetailsOpen((current) => !current)}
+                    className="text-[11px] transition-opacity hover:opacity-100"
+                    style={{ color: 'var(--color-text-dim)', opacity: 0.8 }}
+                  >
+                    {contextDetailsOpen ? 'Hide details' : 'View details'}
+                  </button>
                 </div>
+                <div className="mt-1 text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
+                  Context window: {Math.round(contextUsagePct)}% used
+                </div>
+                <div className="mt-1 text-[11px] opacity-80" style={{ color: 'var(--color-text-dim)' }}>
+                  Using: {attachedSummaryLine}
+                </div>
+                {contextUsagePct >= 70 ? (
+                  <div className="mt-2 text-[11px] opacity-70" style={{ color: 'var(--color-text-dim)' }}>
+                    High usage reason: {highUsageReason}
+                  </div>
+                ) : null}
+                {contextDetailsOpen ? (
+                  <div
+                    className="mt-3 rounded-2xl border border-white/8 px-3 py-3 text-[11px] leading-5"
+                    style={{ color: 'var(--color-text-dim)', background: 'var(--color-surface-subtle)' }}
+                  >
+                    <div>Active chat: {activeConversationTitle}</div>
+                    <div>Estimated context tokens: {(contextUsageBreakdown?.context_tokens_estimate ?? 0).toLocaleString()} / {(contextUsageBreakdown?.context_window ?? constraints.contextWindow ?? 0).toLocaleString()}</div>
+                    <div>Messages in current chat: {contextUsageBreakdown?.conversation_messages ?? currentChatMessageCount}</div>
+                    <div>Repo map attached: {repoMapSelected ? 'yes' : 'no'}</div>
+                    <div>Attached files: {selectedFileCount}</div>
+                    <div>Attached summaries: {selectedSummaryCount}</div>
+                    <div>Attached chat history items: {contextUsageBreakdown?.prior_chat_count ?? 0}</div>
+                    {contextUsageBreakdown?.warnings?.map((warning) => (
+                      <div key={warning} style={{ color: 'var(--color-status-error)' }}>{warning}</div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
-              <div className="max-h-[68vh] overflow-y-auto px-4 py-3">
-                <div className="mb-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleCreateConversation()}
-                    disabled={contextBusy || loading}
-                    className="inline-flex items-center gap-1.5 rounded-[var(--assessment-radius-control)] bg-white/10 px-3 py-1.5 text-[12px] font-medium transition hover:bg-white/15 disabled:opacity-40"
-                    style={{ color: 'var(--color-text-main)' }}
-                    data-testid="new-chat-button"
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                <div className="mb-5">
+                  <div className="mb-2 flex items-center gap-2 text-[11px] font-medium" style={{ color: 'var(--color-text-dim)' }}>
+                    <MessageSquare size={11} />
+                    Current chat
+                  </div>
+                  <div
+                    className="rounded-2xl border border-white/8 px-3 py-3"
+                    style={{ background: 'var(--color-surface-subtle)' }}
                   >
-                    <Plus size={13} />
-                    New chat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCreateConversation()}
-                    disabled={contextBusy || loading}
-                    className="inline-flex items-center gap-1.5 rounded-[var(--assessment-radius-control)] bg-white/6 px-3 py-1.5 text-[12px] font-medium transition hover:bg-white/10 disabled:opacity-40"
-                    style={{ color: 'var(--color-text-dim)' }}
-                    data-testid="clear-chat-button"
-                  >
-                    <X size={13} />
-                    Clear
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleGenerateRepoMap()}
-                    disabled={contextBusy}
-                    className="inline-flex items-center gap-1.5 rounded-[var(--assessment-radius-control)] bg-white/6 px-3 py-1.5 text-[12px] font-medium transition hover:bg-white/10 disabled:opacity-40"
-                    style={{ color: 'var(--color-text-dim)' }}
-                    data-testid="generate-repo-map-button"
-                  >
-                    <FolderTree size={13} />
-                    Refresh repo map
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleGenerateSummary()}
-                    disabled={contextBusy || !activeConversationId}
-                    className="inline-flex items-center gap-1.5 rounded-[var(--assessment-radius-control)] bg-white/6 px-3 py-1.5 text-[12px] font-medium transition hover:bg-white/10 disabled:opacity-40"
-                    style={{ color: 'var(--color-text-dim)' }}
-                    data-testid="generate-summary-button"
-                  >
-                    <RefreshCw size={13} className={contextBusy ? 'animate-spin' : ''} />
-                    Summarize chat
-                  </button>
+                    <div className="text-[12px]" style={{ color: 'var(--color-text-main)' }}>{activeConversationTitle}</div>
+                    <div className="mt-1 text-[11px] opacity-70" style={{ color: 'var(--color-text-dim)' }}>
+                      {currentChatMessageCount} messages in this chat
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateConversation()}
+                        disabled={contextBusy || loading}
+                        className="inline-flex items-center gap-1.5 rounded-[var(--assessment-radius-control)] px-3 py-1.5 text-[12px] font-medium transition hover:bg-[var(--color-surface-hover)] disabled:opacity-40"
+                        style={{ color: 'var(--color-text-main)', background: 'var(--color-surface-muted)' }}
+                        data-testid="new-chat-button"
+                      >
+                        <Plus size={13} />
+                        New chat
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDetachContext()}
+                        disabled={contextBusy || contextAttachments.length === 0}
+                        className="inline-flex items-center gap-1.5 rounded-[var(--assessment-radius-control)] px-3 py-1.5 text-[12px] font-medium transition hover:bg-[var(--color-surface-hover)] disabled:opacity-40"
+                        style={{ color: 'var(--color-text-dim)', background: 'var(--color-surface-subtle)' }}
+                        data-testid="clear-chat-button"
+                      >
+                        <X size={13} />
+                        Detach context
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateRepoMap()}
+                        disabled={contextBusy}
+                        className="inline-flex items-center gap-1.5 rounded-[var(--assessment-radius-control)] px-3 py-1.5 text-[12px] font-medium transition hover:bg-[var(--color-surface-hover)] disabled:opacity-40"
+                        style={{ color: 'var(--color-text-dim)', background: 'var(--color-surface-subtle)' }}
+                        data-testid="generate-repo-map-button"
+                      >
+                        <FolderTree size={13} />
+                        Update repo map
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateSummary()}
+                        disabled={!canSaveSummary}
+                        className="inline-flex items-center gap-1.5 rounded-[var(--assessment-radius-control)] px-3 py-1.5 text-[12px] font-medium transition hover:bg-[var(--color-surface-hover)] disabled:opacity-40"
+                        style={{ color: 'var(--color-text-dim)', background: 'var(--color-surface-subtle)' }}
+                        data-testid="generate-summary-button"
+                      >
+                        <RefreshCw size={13} className={contextBusy ? 'animate-spin' : ''} />
+                        Save chat summary
+                      </button>
+                    </div>
+                    <div className="mt-3 text-[11px] opacity-75" style={{ color: 'var(--color-text-dim)' }}>
+                      {canSaveSummary
+                        ? 'Save chat summary creates a reusable summary of this chat for later.'
+                        : 'No chat content to summarize yet.'}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="mb-4">
+                <div className="mb-5">
                   <div className="mb-2 flex items-center gap-2 text-[11px] font-medium" style={{ color: 'var(--color-text-dim)' }}>
                     <FileText size={11} />
-                    File context
+                    Files
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     {contextFiles.length > 0 ? contextFiles.map((candidate) => (
                       <button
                         key={candidate.path}
                         type="button"
                         onClick={() => void handleToggleFileContext(candidate)}
                         disabled={contextBusy}
-                        className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left transition hover:bg-white/6 disabled:opacity-40"
-                        style={{ color: 'var(--color-text-main)' }}
+                        className="flex w-full items-center justify-between px-1 py-2 text-left transition hover:opacity-100 disabled:opacity-40"
                         data-testid={`context-file-${candidate.path}`}
                       >
-                        <span className="min-w-0 truncate text-[12px]">{candidate.label}</span>
-                        {candidate.selected ? <Check size={13} /> : null}
+                        <div className="min-w-0">
+                          <div className="truncate text-[12px]" style={{ color: 'var(--color-text-main)' }}>{candidate.label}</div>
+                          <div className="mt-1 text-[11px] opacity-65" style={{ color: 'var(--color-text-dim)' }}>
+                            Click to {candidate.selected ? 'remove from' : 'add to'} context
+                          </div>
+                        </div>
+                        {candidate.selected ? <Check size={14} style={{ color: '#4ade80' }} /> : null}
                       </button>
                     )) : (
                       <div className="rounded-2xl px-3 py-2 text-[12px] opacity-55" style={{ color: 'var(--color-text-dim)' }}>
@@ -1739,31 +1882,53 @@ export function ChatPanel({
                   </div>
                 </div>
 
-                <div className="mb-4">
+                <div className="mb-5">
                   <div className="mb-2 flex items-center gap-2 text-[11px] font-medium" style={{ color: 'var(--color-text-dim)' }}>
                     <Layers3 size={11} />
-                    Saved summaries
+                    Summaries
                   </div>
-                  <div className="space-y-1">
-                    {contextResourceCandidates.length > 0 ? contextResourceCandidates.map((candidate) => (
-                      <button
-                        key={candidate.id}
-                        type="button"
-                        onClick={() => void handleToggleResourceContext(candidate)}
-                        disabled={contextBusy}
-                        className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left transition hover:bg-white/6 disabled:opacity-40"
-                        style={{ color: 'var(--color-text-main)' }}
-                        data-testid={`context-resource-${candidate.id}`}
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate text-[12px]">{candidate.title}</span>
-                          <span className="block truncate text-[11px] opacity-55">
-                            {candidate.kind === 'repo_map' ? 'Repo map' : 'Summary'}
-                          </span>
-                        </span>
-                        {candidate.selected ? <Check size={13} /> : null}
-                      </button>
-                    )) : (
+                  <div className="space-y-2">
+                    {contextResourceCandidates.length > 0 ? contextResourceCandidates.map((candidate) => {
+                      const expanded = expandedResourceIds.includes(candidate.id);
+                      return (
+                        <div key={candidate.id} className="py-1">
+                          <div className="flex items-start justify-between gap-3 px-1 py-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleResourceContext(candidate)}
+                              disabled={contextBusy}
+                              className="min-w-0 flex-1 text-left transition hover:opacity-100 disabled:opacity-40"
+                              data-testid={`context-resource-${candidate.id}`}
+                            >
+                              <div className="truncate text-[12px]" style={{ color: 'var(--color-text-main)' }}>{candidate.title}</div>
+                              <div className="mt-1 text-[11px] opacity-65" style={{ color: 'var(--color-text-dim)' }}>
+                                {candidate.kind === 'repo_map'
+                                  ? 'Repository map'
+                                  : `${candidate.source_conversation_title ?? 'Saved summary'}${candidate.message_count ? ` • ${candidate.message_count} messages` : ''}`}
+                              </div>
+                            </button>
+                            <div className="flex shrink-0 items-center gap-3">
+                              {candidate.preview ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandedResource(candidate.id)}
+                                  className="text-[11px] transition-opacity hover:opacity-100"
+                                  style={{ color: 'var(--color-text-dim)', opacity: 0.75 }}
+                                >
+                                  {expanded ? 'Hide' : 'Preview'}
+                                </button>
+                              ) : null}
+                              {candidate.selected ? <Check size={14} style={{ color: '#4ade80' }} /> : null}
+                            </div>
+                          </div>
+                          {expanded && candidate.preview ? (
+                            <div className="px-1 pb-2 text-[11px] leading-5 opacity-80" style={{ color: 'var(--color-text-dim)' }}>
+                              {candidate.preview}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    }) : (
                       <div className="rounded-2xl px-3 py-2 text-[12px] opacity-55" style={{ color: 'var(--color-text-dim)' }}>
                         Generate a repo map or summary to reuse it later.
                       </div>
@@ -1774,30 +1939,29 @@ export function ChatPanel({
                 <div>
                   <div className="mb-2 flex items-center gap-2 text-[11px] font-medium" style={{ color: 'var(--color-text-dim)' }}>
                     <MessageSquare size={11} />
-                    Prior chat snapshots
+                    Prior chats
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     {priorConversationCandidates.length > 0 ? priorConversationCandidates.map((candidate) => (
                       <button
                         key={candidate.id}
                         type="button"
-                        onClick={() => void handleTogglePriorConversation(candidate)}
+                        onClick={() => handleOpenConversation(candidate.id)}
                         disabled={contextBusy}
-                        className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left transition hover:bg-white/6 disabled:opacity-40"
-                        style={{ color: 'var(--color-text-main)' }}
+                        className="flex w-full items-center justify-between px-1 py-2 text-left transition hover:opacity-100 disabled:opacity-40"
                         data-testid={`context-prior-conversation-${candidate.id}`}
                       >
-                        <span className="min-w-0">
-                          <span className="block truncate text-[12px]">{candidate.title}</span>
-                          <span className="block truncate text-[11px] opacity-55">
-                            {formatConversationTimestamp(candidate.updated_at)}
-                          </span>
-                        </span>
-                        {candidate.selected ? <Check size={13} /> : null}
+                        <div className="min-w-0">
+                          <div className="truncate text-[12px]" style={{ color: 'var(--color-text-main)' }}>{candidate.title}</div>
+                          <div className="mt-1 text-[11px] opacity-65" style={{ color: 'var(--color-text-dim)' }}>
+                            {candidate.descriptor ?? formatConversationTimestamp(candidate.updated_at)} • {formatConversationTimestamp(candidate.updated_at)}
+                          </div>
+                        </div>
+                        {candidate.active ? <Check size={14} style={{ color: '#4ade80' }} /> : null}
                       </button>
                     )) : (
                       <div className="rounded-2xl px-3 py-2 text-[12px] opacity-55" style={{ color: 'var(--color-text-dim)' }}>
-                        Earlier chats in this branch will show up here.
+                        No earlier chats yet.
                       </div>
                     )}
                   </div>

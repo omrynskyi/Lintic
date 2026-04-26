@@ -154,7 +154,7 @@ function TreeNode({
         onDrop={(e) => onDrop(e, node.path, true)}
       >
         <div
-          className="flex items-center gap-2 py-1.5 cursor-pointer hover:bg-white/5 transition-colors group"
+          className="flex items-center gap-2 py-1.5 cursor-pointer hover:bg-[var(--color-surface-subtle)] transition-colors group"
           style={{ paddingLeft: `${indent}px`, paddingRight: '12px' }}
           role="button"
           aria-label={node.path}
@@ -175,7 +175,7 @@ function TreeNode({
           {isRenaming ? (
             <input
               autoFocus
-              className="flex-1 bg-white/10 text-[13px] outline-none text-white px-1 rounded"
+              className="flex-1 rounded bg-[var(--color-surface-muted)] px-1 text-[13px] outline-none text-[var(--color-text-main)]"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
@@ -222,7 +222,7 @@ function TreeNode({
   return (
     <div
       className={`flex items-center gap-2 py-1.5 cursor-pointer group transition-colors ${
-        isActive ? 'bg-[var(--color-bg-active-node)]' : 'hover:bg-white/5'
+        isActive ? 'bg-[var(--color-bg-active-node)]' : 'hover:bg-[var(--color-surface-subtle)]'
       }`}
       role="option"
       aria-label={node.path}
@@ -243,7 +243,7 @@ function TreeNode({
       {isRenaming ? (
         <input
           autoFocus
-          className="flex-1 bg-white/10 text-[13px] outline-none text-white px-1 rounded"
+          className="flex-1 rounded bg-[var(--color-surface-muted)] px-1 text-[13px] outline-none text-[var(--color-text-main)]"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => {
@@ -266,7 +266,7 @@ function TreeNode({
             e.stopPropagation();
             onFileDelete(node.path);
           }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-white/10 rounded"
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-[var(--color-surface-muted)] rounded"
         >
           <X size={12} className="text-[var(--color-text-dim)]" />
         </button>
@@ -362,19 +362,19 @@ export function FileTree({
     if (targetPath && targetPath.startsWith(dragPath.current + '/')) return;
 
     e.dataTransfer.dropEffect = 'move';
-    (e.currentTarget as HTMLElement).classList.add('bg-white/10');
+    (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-muted)';
   }
 
   function handleDragLeave(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    (e.currentTarget as HTMLElement).classList.remove('bg-white/10');
+    (e.currentTarget as HTMLElement).style.backgroundColor = '';
   }
 
   function handleDrop(e: React.DragEvent, targetPath: string, isDir: boolean) {
     e.preventDefault();
     e.stopPropagation();
-    (e.currentTarget as HTMLElement).classList.remove('bg-white/10');
+    (e.currentTarget as HTMLElement).style.backgroundColor = '';
     
     if (!dragPath.current || dragPath.current === targetPath) return;
     
@@ -441,7 +441,7 @@ export function FileTree({
                 type="button"
                 aria-label="New file"
                 onClick={(e) => { e.stopPropagation(); setCreateType('file'); }} 
-                className="p-1 hover:bg-white/5 rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
+                className="p-1 hover:bg-[var(--color-surface-subtle)] rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-main)]"
               >
                 <FilePlus size={16} />
               </button>
@@ -449,7 +449,7 @@ export function FileTree({
                 type="button"
                 aria-label="New folder"
                 onClick={(e) => { e.stopPropagation(); setCreateType('folder'); }}
-                className="p-1 hover:bg-white/5 rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
+                className="p-1 hover:bg-[var(--color-surface-subtle)] rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-main)]"
               >
                 <FolderPlus size={16} />
               </button>
@@ -459,7 +459,7 @@ export function FileTree({
             type="button"
             aria-label={isCollapsed ? 'Expand file tree' : 'Collapse file tree'}
             onClick={(e) => { e.stopPropagation(); setIsCollapsed(!isCollapsed); }}
-            className="p-1 hover:bg-white/5 rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
+            className="p-1 hover:bg-[var(--color-surface-subtle)] rounded text-[var(--color-text-dim)] hover:text-[var(--color-text-main)]"
           >
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
@@ -477,7 +477,7 @@ export function FileTree({
           >
             {createType && (
               <div 
-                className="flex items-center gap-2 py-1.5 bg-white/5"
+                className="flex items-center gap-2 py-1.5 bg-[var(--color-surface-subtle)]"
                 style={{ paddingLeft: focusedFolder ? `${(focusedFolder.split('/').length + 1) * 12 + 16}px` : '16px' }}
                 onClick={(e) => e.stopPropagation()}
               >

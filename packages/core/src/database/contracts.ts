@@ -208,6 +208,12 @@ export interface DatabaseAdapter {
     conversationId: string,
     afterTurnSequence: number,
   ): Promise<void>;
+  pruneMessagesBeforeTurnSequence(
+    sessionId: string,
+    branchId: string,
+    conversationId: string,
+    turnSequence: number,
+  ): Promise<void>;
   addBranchReplayEvent(
     sessionId: string,
     branchId: string,

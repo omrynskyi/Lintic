@@ -33,9 +33,9 @@ function formatDuration(seconds: number): string {
 
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between items-center py-2.5 border-b border-white/[0.03] last:border-0">
-      <span className="text-[13px] text-zinc-500 font-medium">{label}</span>
-      <span className="text-[14px] text-zinc-200 font-semibold">{value}</span>
+    <div className="flex justify-between items-center py-2.5 last:border-0" style={{ borderBottom: '1px solid var(--color-border-muted)' }}>
+      <span className="text-[13px] font-medium" style={{ color: 'var(--color-text-dim)' }}>{label}</span>
+      <span className="text-[14px] font-semibold" style={{ color: 'var(--color-text-main)' }}>{value}</span>
     </div>
   );
 }
@@ -56,16 +56,16 @@ export function AssessmentSubmittedModal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-6 py-8"
       style={{
-        background: 'rgba(9, 9, 11, 0.85)',
+        background: 'rgba(9, 9, 11, 0.60)',
         backdropFilter: 'blur(12px)',
       }}
     >
       <div
         className="w-full max-w-sm overflow-hidden rounded-[28px] border shadow-2xl transition-all"
         style={{
-          background: '#18181b', // Charcoal (Zinc-900)
-          borderColor: 'rgba(255,255,255,0.06)',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          background: 'var(--color-bg-panel)',
+          borderColor: 'var(--color-border-main)',
+          boxShadow: 'var(--assessment-shadow-soft)',
         }}
         role="dialog"
         aria-modal="true"
@@ -75,12 +75,13 @@ export function AssessmentSubmittedModal({
           <div className="mb-8 text-center">
             <h2
               id="assessment-modal-title"
-              className="text-[26px] font-bold tracking-tight text-white"
+              className="text-[26px] font-bold tracking-tight"
+              style={{ color: 'var(--color-text-bold)' }}
             >
               {isConfirm ? 'Ready to wrap up?' : isExpired ? 'Time ran out' : 'High five! 🙌'}
             </h2>
 
-            <p className="mt-3 text-[14px] leading-relaxed text-zinc-400 px-2">
+            <p className="mt-3 px-2 text-[14px] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
               {isConfirm
                 ? `We’ll save your progress${promptTitle ? ` for ${promptTitle}` : ''} and lock it in. No more edits after this!`
                 : isExpired
@@ -90,7 +91,7 @@ export function AssessmentSubmittedModal({
           </div>
 
           {!isConfirm && stats && (
-            <div className="mb-8 bg-black/20 rounded-2xl px-5 py-2">
+            <div className="mb-8 rounded-2xl px-5 py-2" style={{ background: 'var(--color-surface-subtle)' }}>
               <StatRow label={isExpired ? 'Submitted automatically' : 'Submitted'} value={formatTimestamp(stats.submittedAt)} />
               <StatRow label="Time spent" value={formatDuration(stats.timeSpentSeconds)} />
               <StatRow label="Turns used" value={`${stats.interactionsUsed} / ${stats.maxInteractions}`} />
@@ -106,7 +107,8 @@ export function AssessmentSubmittedModal({
                   data-testid="assessment-confirm-submit"
                   onClick={onConfirm}
                   disabled={submitting}
-                  className="w-full rounded-2xl bg-emerald-500 px-4 py-3.5 text-[15px] font-bold text-white transition-all hover:bg-emerald-400 active:scale-[0.98] disabled:opacity-50"
+                  className="w-full rounded-2xl px-4 py-3.5 text-[15px] font-bold text-white transition-all hover:brightness-105 active:scale-[0.98] disabled:opacity-50"
+                  style={{ background: 'var(--color-brand-green)' }}
                 >
                   {submitting ? 'Submitting...' : 'Yes, I\'m done!'}
                 </button>
@@ -115,17 +117,18 @@ export function AssessmentSubmittedModal({
                   data-testid="assessment-confirm-cancel"
                   onClick={onCancel}
                   disabled={submitting}
-                  className="w-full rounded-2xl px-4 py-2 text-[14px] font-medium text-zinc-500 transition-all hover:text-zinc-300"
+                  className="w-full rounded-2xl px-4 py-2 text-[14px] font-medium transition-all"
+                  style={{ color: 'var(--color-text-dim)' }}
                 >
                   Wait, let me check one thing
                 </button>
               </>
             ) : (
               <div className="text-center py-4 px-2">
-                <p className="text-[15px] font-medium text-zinc-300">
+                <p className="text-[15px] font-medium" style={{ color: 'var(--color-text-main)' }}>
                   Please wait for the company to reach out to you.
                 </p>
-                <p className="mt-1 text-[13px] text-zinc-500">
+                <p className="mt-1 text-[13px]" style={{ color: 'var(--color-text-dim)' }}>
                   You can now safely close this window.
                 </p>
               </div>
@@ -133,8 +136,8 @@ export function AssessmentSubmittedModal({
           </div>
 
           <div className="mt-10 flex flex-col items-center gap-3 opacity-40">
-            <img src="/logo-dark.png" alt="Lintic" className="h-4 w-auto grayscale brightness-200" />
-            <span className="text-[10px] font-bold tracking-wider text-zinc-500">
+            <img src="/logo-dark.png" alt="Lintic" className="h-4 w-auto grayscale brightness-200 dark:brightness-200" />
+            <span className="text-[10px] font-bold tracking-wider" style={{ color: 'var(--color-text-dim)' }}>
               Powered by Lintic
             </span>
           </div>
