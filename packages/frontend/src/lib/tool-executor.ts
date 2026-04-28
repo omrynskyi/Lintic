@@ -58,6 +58,15 @@ export class ToolExecutor {
     switch (name) {
       case 'read_file':
         return this.handleReadFile(input as { path: string });
+      case 'edit_file':
+        return this.handleEditFile(input as { path: string; old_text: string; new_text: string });
+      case 'insert_in_file':
+        return this.handleInsertInFile(input as {
+          path: string;
+          anchor_text: string;
+          new_text: string;
+          before_or_after: 'before' | 'after';
+        });
       case 'write_file':
         return this.handleWriteFile(input as { path: string; content: string });
       case 'run_command':
@@ -122,6 +131,59 @@ export class ToolExecutor {
 
   private handleReadFile({ path }: { path: string }): Promise<string> {
     return withTimeout(this.wc.fs.readFile(path, 'utf-8'), FILE_TIMEOUT_MS, 'read_file');
+  }
+
+  private findUniqueSection(content: string, needle: string, toolName: string, fieldName: string): number {
+    if (!needle) {
+      throw new Error(`${toolName} requires a non-empty ${fieldName} section copied from read_file.`);
+    }
+
+    const firstIndex = content.indexOf(needle);
+    if (firstIndex === -1) {
+      throw new Error(`${toolName} could not find the exact ${fieldName} in the current file. Re-read the file and try again.`);
+    }
+
+    const secondIndex = content.indexOf(needle, firstIndex + needle.length);
+    if (secondIndex !== -1) {
+      throw new Error(`${toolName} found multiple matches for ${fieldName}. Provide a larger unique section from read_file.`);
+    }
+
+    return firstIndex;
+  }
+
+  private async handleEditFile(
+    { path, old_text, new_text }: { path: string; old_text: string; new_text: string },
+  ): Promise<string> {
+    const current = await withTimeout(this.wc.fs.readFile(path, 'utf-8'), FILE_TIMEOUT_MS, 'edit_file_read');
+    const firstIndex = this.findUniqueSection(current, old_text, 'edit_file', 'old_text');
+    const updated = `${current.slice(0, firstIndex)}${new_text}${current.slice(firstIndex + old_text.length)}`;
+    await withTimeout(this.wc.fs.writeFile(path, updated), FILE_TIMEOUT_MS, 'edit_file_write');
+    return 'ok';
+  }
+
+  private async handleInsertInFile(
+    {
+      path,
+      anchor_text,
+      new_text,
+      before_or_after,
+    }: {
+      path: string;
+      anchor_text: string;
+      new_text: string;
+      before_or_after: 'before' | 'after';
+    },
+  ): Promise<string> {
+    if (before_or_after !== 'before' && before_or_after !== 'after') {
+      throw new Error('insert_in_file requires before_or_after to be either "before" or "after".');
+    }
+
+    const current = await withTimeout(this.wc.fs.readFile(path, 'utf-8'), FILE_TIMEOUT_MS, 'insert_in_file_read');
+    const anchorIndex = this.findUniqueSection(current, anchor_text, 'insert_in_file', 'anchor_text');
+    const insertIndex = before_or_after === 'before' ? anchorIndex : anchorIndex + anchor_text.length;
+    const updated = `${current.slice(0, insertIndex)}${new_text}${current.slice(insertIndex)}`;
+    await withTimeout(this.wc.fs.writeFile(path, updated), FILE_TIMEOUT_MS, 'insert_in_file_write');
+    return 'ok';
   }
 
   private async handleWriteFile({ path, content }: { path: string; content: string }): Promise<string> {

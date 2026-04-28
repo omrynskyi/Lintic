@@ -48,6 +48,14 @@ export interface SessionSummaryStats {
   timeSpentSeconds: number;
 }
 
+function findUniqueSection(content: string, needle: string): number | null {
+  if (!needle) return null;
+  const firstIndex = content.indexOf(needle);
+  if (firstIndex === -1) return null;
+  if (content.indexOf(needle, firstIndex + needle.length) !== -1) return null;
+  return firstIndex;
+}
+
 export type SessionValidationResult =
   | {
       status: 'active';
@@ -262,13 +270,42 @@ export async function restoreFiles(
         };
         if (parsed.__type !== 'tool_use' || !Array.isArray(parsed.tool_calls)) continue;
         for (const tc of parsed.tool_calls) {
-          if (tc.name !== 'write_file') continue;
-          const { path, content } = tc.input as { path: string; content: string };
-          const lastSlash = path.lastIndexOf('/');
-          if (lastSlash > 0) {
-            try { await wc.fs.mkdir(path.slice(0, lastSlash), { recursive: true }); } catch { /* ignore */ }
+          if (tc.name === 'write_file') {
+            const { path, content } = tc.input as { path: string; content: string };
+            const lastSlash = path.lastIndexOf('/');
+            if (lastSlash > 0) {
+              try { await wc.fs.mkdir(path.slice(0, lastSlash), { recursive: true }); } catch { /* ignore */ }
+            }
+            await wc.fs.writeFile(path, content);
+            continue;
           }
-          await wc.fs.writeFile(path, content);
+
+          if (tc.name === 'edit_file') {
+            const { path, old_text, new_text } = tc.input as {
+              path: string;
+              old_text: string;
+              new_text: string;
+            };
+            const current = await wc.fs.readFile(path, 'utf-8');
+            const start = findUniqueSection(current, old_text);
+            if (start === null) continue;
+            await wc.fs.writeFile(path, `${current.slice(0, start)}${new_text}${current.slice(start + old_text.length)}`);
+            continue;
+          }
+
+          if (tc.name === 'insert_in_file') {
+            const { path, anchor_text, new_text, before_or_after } = tc.input as {
+              path: string;
+              anchor_text: string;
+              new_text: string;
+              before_or_after: 'before' | 'after';
+            };
+            const current = await wc.fs.readFile(path, 'utf-8');
+            const start = findUniqueSection(current, anchor_text);
+            if (start === null) continue;
+            const insertAt = before_or_after === 'before' ? start : start + anchor_text.length;
+            await wc.fs.writeFile(path, `${current.slice(0, insertAt)}${new_text}${current.slice(insertAt)}`);
+          }
         }
       } catch { /* ignore non-JSON or malformed messages */ }
     }

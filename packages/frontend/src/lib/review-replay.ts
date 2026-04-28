@@ -356,6 +356,14 @@ export function buildCodeStateSnapshot(
   let activePath: string | null = null;
   let diff: string | null = null;
 
+  const findUniqueSection = (content: string, needle: string): number | null => {
+    if (!needle) return null;
+    const firstIndex = content.indexOf(needle);
+    if (firstIndex === -1) return null;
+    if (content.indexOf(needle, firstIndex + needle.length) !== -1) return null;
+    return firstIndex;
+  };
+
   for (const [index, event] of events.entries()) {
     if (index > selectedEventIndex) {
       break;
@@ -363,18 +371,62 @@ export function buildCodeStateSnapshot(
 
     if (event.type === 'tool_call' && isRecord(event.payload) && Array.isArray(event.payload['tool_calls'])) {
       for (const toolCall of event.payload['tool_calls']) {
-        if (!isRecord(toolCall) || toolCall['name'] !== 'write_file' || !isRecord(toolCall['input'])) {
+        if (!isRecord(toolCall) || !isRecord(toolCall['input'])) {
           continue;
         }
+        const name = typeof toolCall['name'] === 'string' ? toolCall['name'] : null;
         const path = typeof toolCall['input']['path'] === 'string' ? toolCall['input']['path'] : null;
-        const content = typeof toolCall['input']['content'] === 'string' ? toolCall['input']['content'] : null;
-        if (path && content !== null) {
-          files[path] = content;
-          activePath = path;
-          diff = content
-            .split('\n')
-            .map((line) => `+ ${line}`)
-            .join('\n');
+        if (!path) {
+          continue;
+        }
+
+        if (name === 'write_file') {
+          const content = typeof toolCall['input']['content'] === 'string' ? toolCall['input']['content'] : null;
+          if (content !== null) {
+            files[path] = content;
+            activePath = path;
+            diff = content
+              .split('\n')
+              .map((line) => `+ ${line}`)
+              .join('\n');
+          }
+          continue;
+        }
+
+        const previous = files[path];
+        if (typeof previous !== 'string') {
+          continue;
+        }
+
+        if (name === 'edit_file') {
+          const oldText = typeof toolCall['input']['old_text'] === 'string' ? toolCall['input']['old_text'] : null;
+          const newText = typeof toolCall['input']['new_text'] === 'string' ? toolCall['input']['new_text'] : null;
+          const start = oldText ? findUniqueSection(previous, oldText) : null;
+          if (start !== null && newText !== null && oldText !== null) {
+            files[path] = `${previous.slice(0, start)}${newText}${previous.slice(start + oldText.length)}`;
+            activePath = path;
+            diff = newText
+              .split('\n')
+              .map((line) => `+ ${line}`)
+              .join('\n');
+          }
+          continue;
+        }
+
+        if (name === 'insert_in_file') {
+          const anchorText = typeof toolCall['input']['anchor_text'] === 'string' ? toolCall['input']['anchor_text'] : null;
+          const newText = typeof toolCall['input']['new_text'] === 'string' ? toolCall['input']['new_text'] : null;
+          const placement = toolCall['input']['before_or_after'];
+          const start = anchorText ? findUniqueSection(previous, anchorText) : null;
+          if (start !== null && newText !== null && anchorText !== null && (placement === 'before' || placement === 'after')) {
+            const insertAt = placement === 'before' ? start : start + anchorText.length;
+            files[path] = `${previous.slice(0, insertAt)}${newText}${previous.slice(insertAt)}`;
+            activePath = path;
+            diff = newText
+              .split('\n')
+              .map((line) => `+ ${line}`)
+              .join('\n');
+          }
         }
       }
     }

@@ -63,7 +63,7 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
   const isError = result?.is_error ?? false;
 
   let mainParam = '';
-  if (call.name === 'write_file' || call.name === 'read_file') {
+  if (call.name === 'write_file' || call.name === 'read_file' || call.name === 'edit_file' || call.name === 'insert_in_file') {
     mainParam = (call.input['path'] as string) || '';
   } else if (call.name === 'run_command' || call.name === 'run_shell_command' || call.name === 'run_command_background') {
     mainParam = (call.input['command'] as string) || '';
@@ -159,8 +159,11 @@ function SingleToolCard({ call, result }: { call: LocalToolCall; result: LocalTo
                     Output
                   </span>
                   <div className="px-1">
-                    {(call.name === 'write_file' || call.name === 'replace') && !isError ? (
-                      <DiffPreview content={(result.output === 'ok' || result.output.startsWith('Successfully')) ? ((call.input['content'] as string) || (call.input['new_string'] as string) || '') : result.output} />
+                    {(call.name === 'write_file' || call.name === 'edit_file' || call.name === 'insert_in_file' || call.name === 'replace') && !isError ? (
+                      <DiffPreview content={(result.output === 'ok' || result.output.startsWith('Successfully'))
+                        ? ((call.input['content'] as string) || (call.input['new_text'] as string) || (call.input['new_string'] as string) || '')
+                        : result.output}
+                      />
                     ) : (
                       <CommandOutput output={result.output} />
                     )}

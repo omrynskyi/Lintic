@@ -167,6 +167,9 @@
   --color-surface-hover-strong: rgba(56, 135, 206, 0.12);
   --color-surface-subtle: rgba(17, 24, 39, 0.03);
   --color-surface-muted: rgba(17, 24, 39, 0.06);
+  --color-timeline-idle: rgba(17, 24, 39, 0.16);
+  --color-timeline-hover: rgba(56, 135, 206, 0.42);
+  --color-timeline-marker: #3887ce;
   --assessment-shadow-soft: 0 18px 50px rgba(15, 23, 42, 0.10);
   --assessment-shadow-panel: 0 10px 30px rgba(15, 23, 42, 0.08);
 }
@@ -245,6 +248,9 @@ html.dark {
   --color-surface-hover-strong: rgba(56, 135, 206, 0.10);
   --color-surface-subtle: rgba(255, 255, 255, 0.03);
   --color-surface-muted: rgba(255, 255, 255, 0.08);
+  --color-timeline-idle: rgba(255, 255, 255, 0.12);
+  --color-timeline-hover: rgba(255, 255, 255, 0.4);
+  --color-timeline-marker: #3887ce;
   --assessment-shadow-soft: 0 18px 50px rgba(0, 0, 0, 0.32);
   --assessment-shadow-panel: 0 10px 30px rgba(0, 0, 0, 0.16);
 }

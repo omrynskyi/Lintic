@@ -354,12 +354,14 @@ describe('AnthropicAdapter', () => {
   // ── getTools ──────────────────────────────────────────────────────────────
 
   describe('getTools', () => {
-    test('returns all 8 tool definitions', async () => {
+    test('returns all 10 tool definitions', async () => {
       await adapter.init(VALID_CONFIG);
       const tools = adapter.getTools();
-      expect(tools).toHaveLength(8);
+      expect(tools).toHaveLength(10);
       const names = tools.map(t => t.name);
       expect(names).toContain('read_file');
+      expect(names).toContain('edit_file');
+      expect(names).toContain('insert_in_file');
       expect(names).toContain('write_file');
       expect(names).toContain('run_command');
       expect(names).toContain('list_directory');

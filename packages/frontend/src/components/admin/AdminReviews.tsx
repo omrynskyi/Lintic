@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Archive,
   ArrowLeft,
@@ -149,6 +150,7 @@ function CollapsibleSection({
   defaultOpen = false,
   open: controlledOpen,
   onToggle,
+  headerClassName = '',
   children,
 }: {
   title: string;
@@ -156,6 +158,7 @@ function CollapsibleSection({
   defaultOpen?: boolean;
   open?: boolean;
   onToggle?: (nextOpen: boolean) => void;
+  headerClassName?: string;
   children: React.ReactNode;
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
@@ -176,7 +179,7 @@ function CollapsibleSection({
           }
           onToggle?.(nextOpen);
         }}
-        className="flex w-full items-center gap-3 px-4 py-2 text-left"
+        className={`flex w-full items-center gap-3 px-4 py-2 text-left ${headerClassName}`}
       >
         {open ? (
           <ChevronDown size={14} style={{ color: 'var(--color-text-dim)' }} />
@@ -806,6 +809,7 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
   const [comparisonScoreOpenByRow, setComparisonScoreOpenByRow] = useState<Record<string, boolean>>({});
   const [comparisonMetricOpenByRow, setComparisonMetricOpenByRow] = useState<Record<string, boolean>>({});
   const [showArchived, setShowArchived] = useState(false);
+  const [isComparisonExpanded, setIsComparisonExpanded] = useState(false);
 
   function updateReviewStatusLocally(sessionId: string, status: SessionReviewStatus) {
     setReviews((prev) => prev.map((review) => (
@@ -848,12 +852,11 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
   }, [stagedByPrompt]);
 
   useEffect(() => {
-    Object.entries(comparisonOpenByPrompt).forEach(([promptId, isOpen]) => {
-      if (isOpen) {
-        ensureComparisonDetails(stagedByPrompt[promptId] ?? []);
-      }
-    });
-  }, [comparisonOpenByPrompt, stagedByPrompt]);
+    const allStagedIds = Object.values(stagedByPrompt).flat();
+    if (allStagedIds.length > 0) {
+      ensureComparisonDetails(allStagedIds);
+    }
+  }, [stagedByPrompt]);
 
   async function markViewed(sessionId: string) {
     if (!adminKey) return;
@@ -1035,14 +1038,6 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
     [reviewId, reviews],
   );
 
-  useEffect(() => {
-    if (!initialSessionId || !reviews.length || reviewId || handledInitialSessionId) return;
-    const match = reviews.find((review) => review.session_id === initialSessionId);
-    if (!match) return;
-    setHandledInitialSessionId(true);
-    void openReview(match);
-  }, [handledInitialSessionId, initialSessionId, reviews, reviewId]);
-
   const groups = useMemo<ReviewGroup[]>(() => {
     const grouped = new Map<string, ReviewGroup>();
     for (const review of reviews) {
@@ -1079,6 +1074,24 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
       });
   }, [reviews]);
 
+  const stagedSessions = useMemo(() => {
+    return Object.entries(stagedByPrompt).flatMap(([promptId, sessionIds]) => {
+      const group = groups.find((g) => g.prompt_id === promptId);
+      if (!group) return [];
+      return sessionIds
+        .map((sid) => group.reviews.find((r) => r.session_id === sid))
+        .filter((r): r is AdminReviewRow => !!r);
+    });
+  }, [stagedByPrompt, groups]);
+
+  useEffect(() => {
+    if (!initialSessionId || !reviews.length || reviewId || handledInitialSessionId) return;
+    const match = reviews.find((review) => review.session_id === initialSessionId);
+    if (!match) return;
+    setHandledInitialSessionId(true);
+    void openReview(match);
+  }, [handledInitialSessionId, initialSessionId, reviews, reviewId]);
+
   if (reviewId) {
     return (
       <div className="flex h-full flex-col">
@@ -1112,7 +1125,7 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
   }
 
   return (
-    <div className="flex flex-col gap-4 p-5">
+    <div className="relative flex min-h-full flex-col gap-4 px-5 pt-5 pb-0">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-[13px] font-semibold" style={{ color: 'var(--color-text-bold)' }}>
@@ -1221,16 +1234,11 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
 
                 <div className="flex flex-col pb-2">
                   {unviewedRows.length > 0 ? (
-                    <CollapsibleSection
-                      title="Unviewed"
-                      count={unviewedRows.length}
-                      onToggle={(nextOpen) => {
-                        if (nextOpen) {
-                          setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: true }));
-                        }
-                      }}
-                    >
-                      <div className="flex flex-col gap-1 px-4 pb-2">
+                    <div className="flex flex-col gap-1 px-0 pb-3">
+                      <div className="mb-1 px-8 text-[11px] font-bold opacity-40" style={{ color: 'var(--color-text-dim)' }}>
+                        Unviewed ({unviewedRows.length})
+                      </div>
+                      <div className="px-4">
                         {unviewedRows.map((review) => (
                           <ReviewRowCard
                             key={review.session_id}
@@ -1245,239 +1253,401 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
                           />
                         ))}
                       </div>
-                    </CollapsibleSection>
+                    </div>
                   ) : null}
 
-                  <CollapsibleSection
-                    title="Viewed"
-                    count={viewedRows.length}
-                    onToggle={(nextOpen) => {
-                      if (nextOpen) {
-                        setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: true }));
-                      }
-                    }}
-                  >
-                    <div className="flex flex-col gap-1 px-4 pb-2">
-                      {viewedRows.map((review) => (
-                        <ReviewRowCard
-                          key={review.session_id}
-                          review={review}
-                          isStaged={stagedIds.includes(review.session_id)}
-                          archivedView={showArchived}
-                          mutating={mutatingSessionId === review.session_id}
-                          onOpenReview={(row) => { void openReview(row); }}
-                          onToggleStage={toggleStage}
-                          onArchive={(row) => { void archiveReviewSession(row); }}
-                          onDelete={(row) => { void deleteArchivedReview(row); }}
-                        />
-                      ))}
-                    </div>
-                  </CollapsibleSection>
-
-                  <CollapsibleSection
-                    title="Reviewed"
-                    count={reviewedRows.length}
-                    onToggle={(nextOpen) => {
-                      if (nextOpen) {
-                        setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: true }));
-                      }
-                    }}
-                  >
-                    <div className="flex flex-col gap-1 px-4 pb-2">
-                      {reviewedRows.map((review) => (
-                        <ReviewRowCard
-                          key={review.session_id}
-                          review={review}
-                          isStaged={stagedIds.includes(review.session_id)}
-                          archivedView={showArchived}
-                          mutating={mutatingSessionId === review.session_id}
-                          onOpenReview={(row) => { void openReview(row); }}
-                          onToggleStage={toggleStage}
-                          onArchive={(row) => { void archiveReviewSession(row); }}
-                          onDelete={(row) => { void deleteArchivedReview(row); }}
-                        />
-                      ))}
-                    </div>
-                  </CollapsibleSection>
-
-                  {!showArchived && stagedCount > 0 ? (
+                  <div className="px-4 pb-2 space-y-3">
                     <CollapsibleSection
-                      title="Comparison"
-                      count={stagedCount}
-                      open={comparisonOpenByPrompt[group.prompt_id] ?? false}
+                      title="Viewed"
+                      count={viewedRows.length}
+                      headerClassName="rounded-xl border border-[var(--color-border-main)] hover:bg-[var(--color-surface-subtle)] transition-colors"
                       onToggle={(nextOpen) => {
-                        setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: nextOpen }));
                         if (nextOpen) {
-                          ensureComparisonDetails(stagedIds);
+                          setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: true }));
                         }
                       }}
                     >
-                      <div className="px-4 pb-4 pt-2">
-                        <div className="mb-3 flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={anyEvaluating}
-                            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[11px] font-medium disabled:opacity-40"
-                            style={{ background: 'rgba(56,135,206,0.1)', color: 'var(--color-brand)' }}
-                            onClick={() => { void analyzeStagedSessions(group.prompt_id, stagedIds); }}
-                          >
-                            {anyEvaluating ? (
-                              <Loader size={11} className="animate-spin" />
-                            ) : (
-                              <FlaskConical size={11} />
-                            )}
-                            Analyze staged candidates
-                          </button>
-                        </div>
-
-                        <div className="overflow-x-auto">
-                          <div className="flex min-w-max flex-col gap-3">
-                            <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-                              {stagedRows.map((review) => (
-                                <CompareCandidateHeader
-                                  key={review.session_id}
-                                  review={review}
-                                  onOpenReview={(row) => { void openReview(row); }}
-                                  onToggleStage={toggleStage}
-                                />
-                              ))}
-                            </div>
-                            {llmDimensions.length === 0 ? (
-                              <div className="px-1 py-2 text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
-                                No LLM evaluation yet. Click Analyze staged candidates to generate score comparisons.
-                              </div>
-                            ) : (
-                              <div className="flex min-w-max flex-col gap-3">
-                                {llmDimensions.map((dimension) => {
-                                  const label = stagedRows
-                                    .map((review) => comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.scores.find((item) => item.dimension === dimension)?.label)
-                                    .find(Boolean) ?? dimension;
-                                  const rowKey = comparisonScoreRowKey(group.prompt_id, dimension);
-
-                                  return (
-                                    <Fragment key={dimension}>
-                                      <div className="px-1 pt-1 text-[12px] font-semibold leading-5" style={{ color: 'var(--color-text-main)' }}>
-                                        {label}
-                                      </div>
-                                      <div
-                                        className="grid gap-3"
-                                        style={{ gridTemplateColumns: comparisonGridTemplate }}
-                                      >
-                                        {stagedRows.map((review) => {
-                                          const detail = comparisonDetailsBySession[review.session_id];
-                                          const score = detail?.data?.evaluation?.result.llm_evaluation.scores.find((item) => item.dimension === dimension) ?? null;
-                                          return (
-                                            <ComparisonScoreCell
-                                              key={`${review.session_id}:${dimension}`}
-                                              review={review}
-                                              score={score}
-                                              open={comparisonScoreOpenByRow[rowKey] ?? false}
-                                              onToggle={() => {
-                                                setComparisonScoreOpenByRow((prev) => ({
-                                                  ...prev,
-                                                  [rowKey]: !prev[rowKey],
-                                                }));
-                                              }}
-                                            />
-                                          );
-                                        })}
-                                      </div>
-                                    </Fragment>
-                                  );
-                                })}
-                              </div>
-                            )}
-
-                            {hasSummary || hasAcceptanceCriteria || hasRubric || hasInfrastructure ? (
-                              <div className="flex min-w-max flex-col gap-5 pt-3">
-                                {hasSummary ? (
-                                  <SynchronizedCriterionRow title="Summary" defaultOpen={false}>
-                                    <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-                                      {stagedRows.map((review) => (
-                                        <ComparisonSummaryCard
-                                          key={`${review.session_id}:summary`}
-                                          detail={comparisonDetailsBySession[review.session_id]}
-                                        />
-                                      ))}
-                                    </div>
-                                  </SynchronizedCriterionRow>
-                                ) : null}
-
-                                {hasAcceptanceCriteria ? (
-                                  <div className="flex flex-col gap-4">
-                                    {acceptanceCriteriaLabels.map((criterion) => {
-                                      const rowKey = comparisonMetricRowKey(group.prompt_id, 'acceptance', criterion);
-                                      return (
-                                        <div key={criterion} className="space-y-2">
-                                          <div className="px-1 text-[12px] font-semibold leading-5" style={{ color: 'var(--color-text-main)' }}>
-                                            {criterion}
-                                          </div>
-                                          <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-                                            {stagedRows.map((review) => {
-                                              const detail = comparisonDetailsBySession[review.session_id];
-                                              const item = detail?.data?.evaluation?.result.llm_evaluation.acceptance_criteria_results?.find((entry) => entry.criterion === criterion) ?? null;
-                                              return (
-                                                <ComparisonPercentCell
-                                                  key={`${review.session_id}:acceptance:${criterion}`}
-                                                  review={review}
-                                                  metricLabel={criterion}
-                                                  score={item?.score ?? null}
-                                                  open={comparisonMetricOpenByRow[rowKey] ?? false}
-                                                  onToggle={() => {
-                                                    setComparisonMetricOpenByRow((prev) => ({
-                                                      ...prev,
-                                                      [rowKey]: !prev[rowKey],
-                                                    }));
-                                                  }}
-                                                  detailText={item?.rationale ?? null}
-                                                />
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : null}
-
-                                {hasRubric ? (
-                                  <SynchronizedCriterionRow title="Rubric" defaultOpen={false}>
-                                    <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-                                      {stagedRows.map((review) => (
-                                        <ComparisonRubricCard
-                                          key={`${review.session_id}:rubric`}
-                                          detail={comparisonDetailsBySession[review.session_id]}
-                                        />
-                                      ))}
-                                    </div>
-                                  </SynchronizedCriterionRow>
-                                ) : null}
-
-                                {hasInfrastructure ? (
-                                  <SynchronizedCriterionRow title="Infrastructure" defaultOpen={false}>
-                                    <div className="grid gap-3" style={{ gridTemplateColumns: comparisonGridTemplate }}>
-                                      {stagedRows.map((review) => (
-                                        <ComparisonInfrastructureCard
-                                          key={`${review.session_id}:infra`}
-                                          detail={comparisonDetailsBySession[review.session_id]}
-                                        />
-                                      ))}
-                                    </div>
-                                  </SynchronizedCriterionRow>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
+                      <div className="flex flex-col gap-1 px-0 pb-2">
+                        {viewedRows.map((review) => (
+                          <ReviewRowCard
+                            key={review.session_id}
+                            review={review}
+                            isStaged={stagedIds.includes(review.session_id)}
+                            archivedView={showArchived}
+                            mutating={mutatingSessionId === review.session_id}
+                            onOpenReview={(row) => { void openReview(row); }}
+                            onToggleStage={toggleStage}
+                            onArchive={(row) => { void archiveReviewSession(row); }}
+                            onDelete={(row) => { void deleteArchivedReview(row); }}
+                          />
+                        ))}
                       </div>
                     </CollapsibleSection>
-                  ) : null}
+
+                    <CollapsibleSection
+                      title="Reviewed"
+                      count={reviewedRows.length}
+                      headerClassName="rounded-xl border border-[var(--color-border-main)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                      onToggle={(nextOpen) => {
+                        if (nextOpen) {
+                          setComparisonOpenByPrompt((prev) => ({ ...prev, [group.prompt_id]: true }));
+                        }
+                      }}
+                    >
+                      <div className="flex flex-col gap-1 px-0 pb-2">
+                        {reviewedRows.map((review) => (
+                          <ReviewRowCard
+                            key={review.session_id}
+                            review={review}
+                            isStaged={stagedIds.includes(review.session_id)}
+                            archivedView={showArchived}
+                            mutating={mutatingSessionId === review.session_id}
+                            onOpenReview={(row) => { void openReview(row); }}
+                            onToggleStage={toggleStage}
+                            onArchive={(row) => { void archiveReviewSession(row); }}
+                            onDelete={(row) => { void deleteArchivedReview(row); }}
+                          />
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  </div>
                 </div>
               </section>
             );
           })}
         </div>
       )}
+
+      {/* Comparison Popup Overlay */}
+      <AnimatePresence>
+        {stagedSessions.length > 0 && (
+          <motion.div
+            layout
+            initial={{ y: 200, opacity: 0 }}
+            animate={{
+              y: 0,
+              opacity: 1,
+              height: isComparisonExpanded ? 'calc(100vh - 40px)' : '108px',
+            }}
+            exit={{ y: 200, opacity: 0 }}
+            transition={{
+              height: { duration: 0.4, ease: [0.23, 1, 0.32, 1] },
+              y: { duration: 0.3, ease: 'easeOut' },
+            }}
+            className="sticky bottom-0 z-[100] mt-auto flex w-full flex-col overflow-hidden rounded-t-2xl"
+            style={{
+              background: 'var(--color-bg-panel)',
+              boxShadow: isComparisonExpanded ? '0 -8px 30px rgba(0, 0, 0, 0.12)' : 'none',
+              borderTop: '1px solid var(--color-border-main)',
+              borderLeft: '1px solid var(--color-border-main)',
+              borderRight: '1px solid var(--color-border-main)',
+            }}
+          >
+            <div 
+              className={`flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4 ${!isComparisonExpanded ? 'cursor-pointer' : ''}`}
+              onClick={!isComparisonExpanded ? () => setIsComparisonExpanded(true) : undefined}
+            >
+              {!isComparisonExpanded ? (
+                /* Minimized Bottom Bar */
+                <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
+                  {stagedSessions.map((session) => (
+                    <div
+                      key={session.session_id}
+                      className="flex h-[74px] min-w-[220px] shrink-0 flex-col justify-center gap-1 rounded-xl border border-[var(--color-border-main)] bg-[var(--color-bg-panel)] px-4 transition-colors hover:bg-[var(--color-surface-subtle)]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-[13px] font-bold" style={{ color: 'var(--color-text-main)' }}>
+                          {session.candidate_email.split('@')[0]}
+                        </div>
+                        <ScoreMarker score={session.session_score} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-[10px] font-medium" style={{ color: reviewStatusColor(session.review_status) }}>
+                          {reviewStatusLabel(session.review_status)}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void openReview(session);
+                            }}
+                            className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--color-surface-subtle)] text-[var(--color-brand)] transition-colors hover:bg-[var(--color-surface-muted)]"
+                          >
+                            <ExternalLink size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleStage(session);
+                            }}
+                            className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--color-surface-subtle)] text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-surface-muted)]"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Expanded Full Screen View */
+                <div className="flex flex-1 flex-col overflow-hidden">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div 
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-[var(--color-surface-subtle)] text-[var(--color-text-dim)] transition-colors hover:bg-[var(--color-surface-muted)]"
+                      onClick={() => setIsComparisonExpanded(false)}
+                    >
+                      <ChevronDown size={18} />
+                    </div>
+                    <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-bold)' }}>
+                      Candidate Comparison
+                    </h3>
+                  </div>
+                  <div className="flex-1 overflow-y-auto pr-2 no-scrollbar">
+                    {groups
+                      .filter((g) => (stagedByPrompt[g.prompt_id] ?? []).length > 0)
+                      .map((group) => {
+                      const stagedIds = stagedByPrompt[group.prompt_id] ?? [];
+                      const stagedRows = stagedIds
+                        .map((sid) => group.reviews.find((r) => r.session_id === sid))
+                        .filter((r): r is AdminReviewRow => !!r);
+                      const stagedCount = stagedRows.length;
+                      const anyEvaluating = stagedRows.some((row) => comparisonDetailsBySession[row.session_id]?.evaluating);
+                      const comparisonGridTemplate = `repeat(${stagedCount}, minmax(360px, 360px))`;
+                      const llmDimensions = Array.from(
+                        new Set(
+                          stagedRows.flatMap(
+                            (review) =>
+                              comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.scores.map(
+                                (item) => item.dimension,
+                              ) ?? [],
+                          ),
+                        ),
+                      );
+                      const acceptanceCriteriaLabels = Array.from(
+                        new Set(
+                          stagedRows.flatMap(
+                            (review) =>
+                              comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation
+                                .acceptance_criteria_results?.map((item) => item.criterion) ?? [],
+                          ),
+                        ),
+                      );
+                      const hasSummary = stagedRows.some((review) =>
+                        Boolean(comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.overall_summary),
+                      );
+                      const hasAcceptanceCriteria = acceptanceCriteriaLabels.length > 0;
+                      const hasRubric = stagedRows.some((review) =>
+                        Boolean(comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.rubric_scores?.length),
+                      );
+                      const hasInfrastructure = stagedRows.some((review) =>
+                        Boolean(comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.infrastructure),
+                      );
+
+                      const isAnyLoading = stagedRows.some((row) => comparisonDetailsBySession[row.session_id]?.loading);
+
+                      return (
+                        <div key={group.prompt_id} className="flex flex-col gap-6">
+                          <div className="sticky top-0 z-10 py-2" style={{ background: 'var(--color-bg-panel)' }}>
+                            <h3 className="text-[16px] font-bold" style={{ color: 'var(--color-text-bold)' }}>
+                              {group.prompt_title}
+                            </h3>
+                            <div className="mt-1 flex items-center gap-4">
+                              <span className="text-[12px]" style={{ color: 'var(--color-text-dim)' }}>
+                                {stagedCount} candidates compared
+                              </span>
+                              <button
+                                type="button"
+                                disabled={anyEvaluating || isAnyLoading}
+                                className="inline-flex items-center gap-2 rounded-xl px-4 py-1.5 text-[11px] font-medium transition-opacity disabled:opacity-40"
+                                style={{ background: 'rgba(56,135,206,0.1)', color: 'var(--color-brand)' }}
+                                onClick={() => {
+                                  void analyzeStagedSessions(group.prompt_id, stagedIds);
+                                }}
+                              >
+                                {anyEvaluating || isAnyLoading ? <Loader size={11} className="animate-spin" /> : <FlaskConical size={11} />}
+                                {isAnyLoading ? 'Loading analysis...' : 'Analyze staged candidates'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="overflow-x-auto pb-4 no-scrollbar">
+                            <div className="flex min-w-max flex-col gap-4">
+                              <div className="grid gap-4" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                {stagedRows.map((review) => (
+                                  <CompareCandidateHeader
+                                    key={review.session_id}
+                                    review={review}
+                                    onOpenReview={(row) => {
+                                      void openReview(row);
+                                    }}
+                                    onToggleStage={toggleStage}
+                                  />
+                                ))}
+                              </div>
+
+                              {isAnyLoading ? (
+                                <div className="rounded-xl border border-dashed border-[var(--color-border-main)] py-12 text-center text-[13px]" style={{ color: 'var(--color-text-dim)' }}>
+                                  <div className="flex items-center justify-center gap-2">
+                                    <Loader size={14} className="animate-spin" />
+                                    Loading candidate data...
+                                  </div>
+                                </div>
+                              ) : llmDimensions.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-[var(--color-border-main)] py-12 text-center text-[13px]" style={{ color: 'var(--color-text-dim)' }}>
+                                  No LLM evaluation yet. Click "Analyze staged candidates" to generate score comparisons.
+                                </div>
+                              ) : (
+
+                                <div className="flex flex-col gap-6">
+                                  {llmDimensions.map((dimension) => {
+                                    const label =
+                                      stagedRows
+                                        .map(
+                                          (review) =>
+                                            comparisonDetailsBySession[review.session_id]?.data?.evaluation?.result.llm_evaluation.scores.find(
+                                              (item) => item.dimension === dimension,
+                                            )?.label,
+                                        )
+                                        .find(Boolean) ?? dimension;
+                                    const rowKey = comparisonScoreRowKey(group.prompt_id, dimension);
+
+                                    return (
+                                      <div key={dimension} className="space-y-3">
+                                        <div className="flex items-center gap-2 px-1">
+                                          <div className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)]" />
+                                          <div className="text-[13px] font-bold" style={{ color: 'var(--color-text-main)' }}>
+                                            {label}
+                                          </div>
+                                        </div>
+                                        <div className="grid gap-4" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                          {stagedRows.map((review) => {
+                                            const detail = comparisonDetailsBySession[review.session_id];
+                                            const score =
+                                              detail?.data?.evaluation?.result.llm_evaluation.scores.find(
+                                                (item) => item.dimension === dimension,
+                                              ) ?? null;
+                                            return (
+                                              <ComparisonScoreCell
+                                                key={`${review.session_id}:${dimension}`}
+                                                review={review}
+                                                score={score}
+                                                open={comparisonScoreOpenByRow[rowKey] ?? false}
+                                                onToggle={() => {
+                                                  setComparisonScoreOpenByRow((prev) => ({
+                                                    ...prev,
+                                                    [rowKey]: !prev[rowKey],
+                                                  }));
+                                                }}
+                                              />
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {hasSummary || hasAcceptanceCriteria || hasRubric || hasInfrastructure ? (
+                                <div className="flex flex-col gap-8 pt-4">
+                                  {hasSummary && (
+                                    <SynchronizedCriterionRow title="Summary" defaultOpen={true}>
+                                      <div className="grid gap-4" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                        {stagedRows.map((review) => (
+                                          <ComparisonSummaryCard
+                                            key={`${review.session_id}:summary`}
+                                            detail={comparisonDetailsBySession[review.session_id]}
+                                          />
+                                        ))}
+                                      </div>
+                                    </SynchronizedCriterionRow>
+                                  )}
+
+                                  {hasAcceptanceCriteria && (
+                                    <div className="flex flex-col gap-6">
+                                      {acceptanceCriteriaLabels.map((criterion) => {
+                                        const rowKey = comparisonMetricRowKey(group.prompt_id, 'acceptance', criterion);
+                                        return (
+                                          <div key={criterion} className="space-y-3">
+                                            <div className="flex items-center gap-2 px-1">
+                                              <div className="h-1.5 w-1.5 rounded-full bg-[var(--color-status-success)]" />
+                                              <div className="text-[13px] font-bold" style={{ color: 'var(--color-text-main)' }}>
+                                                {criterion}
+                                              </div>
+                                            </div>
+                                            <div className="grid gap-4" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                              {stagedRows.map((review) => {
+                                                const detail = comparisonDetailsBySession[review.session_id];
+                                                const item =
+                                                  detail?.data?.evaluation?.result.llm_evaluation.acceptance_criteria_results?.find(
+                                                    (entry) => entry.criterion === criterion,
+                                                  ) ?? null;
+                                                return (
+                                                  <ComparisonPercentCell
+                                                    key={`${review.session_id}:acceptance:${criterion}`}
+                                                    review={review}
+                                                    metricLabel={criterion}
+                                                    score={item?.score ?? null}
+                                                    open={comparisonMetricOpenByRow[rowKey] ?? false}
+                                                    onToggle={() => {
+                                                      setComparisonMetricOpenByRow((prev) => ({
+                                                        ...prev,
+                                                        [rowKey]: !prev[rowKey],
+                                                      }));
+                                                    }}
+                                                    detailText={item?.rationale ?? null}
+                                                  />
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {hasRubric && (
+                                    <SynchronizedCriterionRow title="Rubric" defaultOpen={false}>
+                                      <div className="grid gap-4" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                        {stagedRows.map((review) => (
+                                          <ComparisonRubricCard
+                                            key={`${review.session_id}:rubric`}
+                                            detail={comparisonDetailsBySession[review.session_id]}
+                                          />
+                                        ))}
+                                      </div>
+                                    </SynchronizedCriterionRow>
+                                  )}
+
+                                  {hasInfrastructure && (
+                                    <SynchronizedCriterionRow title="Infrastructure" defaultOpen={false}>
+                                      <div className="grid gap-4" style={{ gridTemplateColumns: comparisonGridTemplate }}>
+                                        {stagedRows.map((review) => (
+                                          <ComparisonInfrastructureCard
+                                            key={`${review.session_id}:infra`}
+                                            detail={comparisonDetailsBySession[review.session_id]}
+                                          />
+                                        ))}
+                                      </div>
+                                    </SynchronizedCriterionRow>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

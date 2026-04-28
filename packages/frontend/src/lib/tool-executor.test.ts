@@ -82,6 +82,86 @@ describe('ToolExecutor', () => {
 
   // ── write_file ─────────────────────────────────────────────────────────────
 
+  describe('edit_file', () => {
+    test('replaces one exact section in an existing file', async () => {
+      mockFs.readFile.mockResolvedValue('before\nconst x = 1;\nafter\n');
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const result = await executor.execute(toolCall({
+        name: 'edit_file',
+        input: { path: '/app/out.ts', old_text: 'const x = 1;', new_text: 'const x = 2;' },
+      }));
+
+      expect(result).toEqual({ tool_call_id: 'tc-1', name: 'edit_file', output: 'ok', is_error: false });
+      expect(mockFs.readFile).toHaveBeenCalledWith('/app/out.ts', 'utf-8');
+      expect(mockFs.writeFile).toHaveBeenCalledWith('/app/out.ts', 'before\nconst x = 2;\nafter\n');
+    });
+
+    test('returns an error when old_text is missing', async () => {
+      mockFs.readFile.mockResolvedValue('const x = 1;');
+
+      const result = await executor.execute(toolCall({
+        name: 'edit_file',
+        input: { path: '/app/out.ts', old_text: 'const y = 1;', new_text: 'const y = 2;' },
+      }));
+
+      expect(result.is_error).toBe(true);
+      expect(result.output).toContain('could not find the exact old_text');
+    });
+
+    test('returns an error when old_text matches multiple sections', async () => {
+      mockFs.readFile.mockResolvedValue('foo\nrepeat\nbar\nrepeat\nbaz');
+
+      const result = await executor.execute(toolCall({
+        name: 'edit_file',
+        input: { path: '/app/out.ts', old_text: 'repeat', new_text: 'updated' },
+      }));
+
+      expect(result.is_error).toBe(true);
+      expect(result.output).toContain('multiple matches');
+    });
+  });
+
+  describe('insert_in_file', () => {
+    test('inserts content after an exact anchor section', async () => {
+      mockFs.readFile.mockResolvedValue('before\nanchor\nafter\n');
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const result = await executor.execute(toolCall({
+        name: 'insert_in_file',
+        input: { path: '/app/out.ts', anchor_text: 'anchor', new_text: '\ninserted', before_or_after: 'after' },
+      }));
+
+      expect(result).toEqual({ tool_call_id: 'tc-1', name: 'insert_in_file', output: 'ok', is_error: false });
+      expect(mockFs.writeFile).toHaveBeenCalledWith('/app/out.ts', 'before\nanchor\ninserted\nafter\n');
+    });
+
+    test('inserts content before an exact anchor section', async () => {
+      mockFs.readFile.mockResolvedValue('before\nanchor\nafter\n');
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const result = await executor.execute(toolCall({
+        name: 'insert_in_file',
+        input: { path: '/app/out.ts', anchor_text: 'anchor', new_text: 'inserted\n', before_or_after: 'before' },
+      }));
+
+      expect(result).toEqual({ tool_call_id: 'tc-1', name: 'insert_in_file', output: 'ok', is_error: false });
+      expect(mockFs.writeFile).toHaveBeenCalledWith('/app/out.ts', 'before\ninserted\nanchor\nafter\n');
+    });
+
+    test('returns an error when anchor_text matches multiple sections', async () => {
+      mockFs.readFile.mockResolvedValue('foo\nanchor\nbar\nanchor\nbaz');
+
+      const result = await executor.execute(toolCall({
+        name: 'insert_in_file',
+        input: { path: '/app/out.ts', anchor_text: 'anchor', new_text: '\ninserted', before_or_after: 'after' },
+      }));
+
+      expect(result.is_error).toBe(true);
+      expect(result.output).toContain('multiple matches');
+    });
+  });
+
   describe('write_file', () => {
     test('returns "ok" on success', async () => {
       mockFs.mkdir.mockResolvedValue(undefined);

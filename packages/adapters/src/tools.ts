@@ -41,8 +41,29 @@ export const TOOLS: ToolDefinition[] = [
     required: ['path'],
   },
   {
+    name: 'edit_file',
+    description: 'Edit an existing file by replacing one exact section with new content. Read the file first, then pass the exact old section you want to replace.',
+    parameters: {
+      path: { type: 'string', description: 'Path to the file to edit.' },
+      old_text: { type: 'string', description: 'Exact existing file content to replace. Copy this from a prior read_file result.' },
+      new_text: { type: 'string', description: 'Replacement content for the selected section.' },
+    },
+    required: ['path', 'old_text', 'new_text'],
+  },
+  {
+    name: 'insert_in_file',
+    description: 'Insert new content before or after one exact anchor section in an existing file. Read the file first, then pass the exact anchor section you want to insert next to.',
+    parameters: {
+      path: { type: 'string', description: 'Path to the file to edit.' },
+      anchor_text: { type: 'string', description: 'Exact existing file content to insert next to. Copy this from a prior read_file result.' },
+      new_text: { type: 'string', description: 'Content to insert before or after the selected anchor section.' },
+      before_or_after: { type: 'string', description: 'Whether to insert before or after the anchor_text.', enum: ['before', 'after'] },
+    },
+    required: ['path', 'anchor_text', 'new_text', 'before_or_after'],
+  },
+  {
     name: 'write_file',
-    description: 'Write content to a file, creating it if it does not exist.',
+    description: 'Write full content to a file, creating it if it does not exist. Prefer edit_file or insert_in_file for targeted edits to an existing file.',
     parameters: {
       path: { type: 'string', description: 'Path to the file to write.' },
       content: { type: 'string', description: 'Content to write to the file.' },

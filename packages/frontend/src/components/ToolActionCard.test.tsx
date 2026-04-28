@@ -94,6 +94,30 @@ describe('ToolActionCard', () => {
     expect(diff.textContent).toContain('+ line2');
   });
 
+  test('shows diff preview for edit_file using new_text', () => {
+    const action: LocalToolAction = {
+      tool_calls: [{ id: 'tc-2', name: 'edit_file', input: { path: '/app/out.ts', old_text: 'line1', new_text: 'line1 updated' } }],
+      tool_results: [{ tool_call_id: 'tc-2', name: 'edit_file', output: 'ok', is_error: false }],
+    };
+    render(<ToolActionCard action={action} />);
+    fireEvent.click(screen.getByTestId('tool-action-toggle'));
+    const diff = screen.getByTestId('tool-action-diff');
+    expect(diff).toBeInTheDocument();
+    expect(diff.textContent).toContain('+ line1 updated');
+  });
+
+  test('shows diff preview for insert_in_file using new_text', () => {
+    const action: LocalToolAction = {
+      tool_calls: [{ id: 'tc-2', name: 'insert_in_file', input: { path: '/app/out.ts', anchor_text: 'line1', new_text: 'inserted line\n', before_or_after: 'before' } }],
+      tool_results: [{ tool_call_id: 'tc-2', name: 'insert_in_file', output: 'ok', is_error: false }],
+    };
+    render(<ToolActionCard action={action} />);
+    fireEvent.click(screen.getByTestId('tool-action-toggle'));
+    const diff = screen.getByTestId('tool-action-diff');
+    expect(diff).toBeInTheDocument();
+    expect(diff.textContent).toContain('+ inserted line');
+  });
+
   test('keeps wide diff previews scrollable within the tool card', () => {
     const action: LocalToolAction = {
       tool_calls: [{ id: 'tc-2', name: 'write_file', input: { path: '/app/out.ts', content: 'x'.repeat(400) } }],

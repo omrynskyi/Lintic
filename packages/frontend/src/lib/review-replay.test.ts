@@ -71,6 +71,49 @@ describe('review-replay helpers', () => {
     expect(snapshot.diff).toContain('const z = 3');
   });
 
+  test('reconstructs code state from edit_file and insert_in_file tool calls', () => {
+    const snapshot = buildCodeStateSnapshot([
+      {
+        type: 'tool_call',
+        timestamp: 1,
+        payload: {
+          tool_calls: [{
+            id: '1',
+            name: 'write_file',
+            input: { path: 'src/index.ts', content: 'const x = 1;\nconst y = 2;' },
+          }],
+        },
+      },
+      {
+        type: 'tool_call',
+        timestamp: 2,
+        payload: {
+          tool_calls: [{
+            id: '2',
+            name: 'edit_file',
+            input: { path: 'src/index.ts', old_text: 'const y = 2;', new_text: 'const y = 3;' },
+          }],
+        },
+      },
+      {
+        type: 'tool_call',
+        timestamp: 3,
+        payload: {
+          tool_calls: [{
+            id: '3',
+            name: 'insert_in_file',
+            input: { path: 'src/index.ts', anchor_text: 'const x = 1;', new_text: '\nconst z = 4;', before_or_after: 'after' },
+          }],
+        },
+      },
+    ], 2);
+
+    expect(snapshot.files['src/index.ts']).toContain('const x = 1;');
+    expect(snapshot.files['src/index.ts']).toContain('const y = 3;');
+    expect(snapshot.files['src/index.ts']).toContain('const z = 4;');
+    expect(snapshot.diff).toContain('const z = 4;');
+  });
+
   test('synthesizes replay events from stored messages', () => {
     const events = synthesizeReplayEventsFromMessages([
       { role: 'system', content: 'ignore me' },

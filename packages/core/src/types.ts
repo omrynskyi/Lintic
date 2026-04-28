@@ -33,6 +33,8 @@ export type AgentRequestMode = 'build' | 'plan';
 
 export type ToolName =
   | 'read_file'
+  | 'edit_file'
+  | 'insert_in_file'
   | 'write_file'
   | 'run_command'
   | 'read_terminal_output'

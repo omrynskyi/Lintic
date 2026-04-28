@@ -2,13 +2,15 @@ import { describe, test, expect } from 'vitest';
 import { TOOLS, toOpenAITools, toAnthropicTools } from './tools.js';
 
 describe('TOOLS', () => {
-  test('contains exactly 8 tool definitions', () => {
-    expect(TOOLS).toHaveLength(8);
+  test('contains exactly 10 tool definitions', () => {
+    expect(TOOLS).toHaveLength(10);
   });
 
   test('includes all expected tool names', () => {
     const names = TOOLS.map(t => t.name);
     expect(names).toContain('read_file');
+    expect(names).toContain('edit_file');
+    expect(names).toContain('insert_in_file');
     expect(names).toContain('write_file');
     expect(names).toContain('run_command');
     expect(names).toContain('read_terminal_output');
@@ -39,6 +41,16 @@ describe('toOpenAITools', () => {
     expect(first!.function.parameters.required).toContain('path');
   });
 
+  test('edit_file requires path, old_text, and new_text', () => {
+    const tool = toOpenAITools(TOOLS).find((entry) => entry.function.name === 'edit_file');
+    expect(tool?.function.parameters.required).toEqual(['path', 'old_text', 'new_text']);
+  });
+
+  test('insert_in_file requires path, anchor_text, new_text, and before_or_after', () => {
+    const tool = toOpenAITools(TOOLS).find((entry) => entry.function.name === 'insert_in_file');
+    expect(tool?.function.parameters.required).toEqual(['path', 'anchor_text', 'new_text', 'before_or_after']);
+  });
+
   test('list_directory does not require path so models can default to cwd', () => {
     const tool = toOpenAITools(TOOLS).find((entry) => entry.function.name === 'list_directory');
     expect(tool?.function.parameters.required).not.toContain('path');
@@ -62,6 +74,16 @@ describe('toAnthropicTools', () => {
     expect(first!.input_schema.type).toBe('object');
     expect(first!.input_schema.properties).toHaveProperty('path');
     expect(first!.input_schema.required).toContain('path');
+  });
+
+  test('edit_file schema is exposed to Anthropic too', () => {
+    const tool = toAnthropicTools(TOOLS).find((entry) => entry.name === 'edit_file');
+    expect(tool?.input_schema.required).toEqual(['path', 'old_text', 'new_text']);
+  });
+
+  test('insert_in_file schema is exposed to Anthropic too', () => {
+    const tool = toAnthropicTools(TOOLS).find((entry) => entry.name === 'insert_in_file');
+    expect(tool?.input_schema.required).toEqual(['path', 'anchor_text', 'new_text', 'before_or_after']);
   });
 
   test('list_directory does not require path in Anthropic schema either', () => {

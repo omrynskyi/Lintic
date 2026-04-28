@@ -35,13 +35,13 @@ export function Timeline({ events, selectedEventIndex, onSelectEvent, markerIndi
           barBg = accentColor ?? 'var(--color-brand)';
         } else if (isHovered) {
           barHeight = '75%';
-          barBg = accentColor ? accentColor : 'rgba(255,255,255,0.4)';
+          barBg = accentColor ?? 'var(--color-timeline-hover)';
         } else if (isMarker) {
           barHeight = '40%';
-          barBg = 'var(--color-brand)';
+          barBg = 'var(--color-timeline-marker)';
         } else {
           barHeight = '20%';
-          barBg = 'rgba(255,255,255,0.12)';
+          barBg = 'var(--color-timeline-idle)';
         }
 
         return (
@@ -56,8 +56,8 @@ export function Timeline({ events, selectedEventIndex, onSelectEvent, markerIndi
           >
             {isMarker && !isSelected && !isHovered && (
               <div 
-                className="absolute top-0 left-1/2 w-1 h-1 -translate-x-1/2 rounded-full"
-                style={{ background: 'var(--color-brand)' }}
+                className="absolute top-0 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full"
+                style={{ background: 'var(--color-timeline-marker)', boxShadow: '0 0 0 2px var(--color-bg-app)' }}
               />
             )}
             {/* Tooltip */}

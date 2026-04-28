@@ -360,16 +360,18 @@ describe('getCapabilities', () => {
 });
 
 describe('getTools', () => {
-  test('returns all 8 tool definitions', async () => {
+  test('returns all 10 tool definitions', async () => {
     const adapter = new OpenAIAdapter();
     await adapter.init({ provider: 'openai-compatible', api_key: 'sk-test', model: 'gpt-4o' });
     const tools = adapter.getTools();
     const names = tools.map(t => t.name);
     expect(names).toContain('read_file');
+    expect(names).toContain('edit_file');
+    expect(names).toContain('insert_in_file');
     expect(names).toContain('write_file');
     expect(names).toContain('run_command');
     expect(names).toContain('list_directory');
     expect(names).toContain('search_files');
-    expect(tools).toHaveLength(8);
+    expect(tools).toHaveLength(10);
   });
 });
