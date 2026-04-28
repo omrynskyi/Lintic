@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import request from 'supertest';
+import request from './test-request.js';
 import type {
   AssessmentLinkRecord,
   DatabaseAdapter,

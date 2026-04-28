@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { describe, test, expect } from 'vitest';
-import request from 'supertest';
+import request from './test-request.js';
 import type {
   AdminReviewRow,
   AdminReviewsResponse,

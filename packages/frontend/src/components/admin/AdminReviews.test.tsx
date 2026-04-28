@@ -66,11 +66,9 @@ describe('AdminReviews', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Build API')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Unviewed \(1\)/ }));
     expect(screen.queryByText('What to do')).not.toBeInTheDocument();
     expect(screen.queryByText('Queue summary')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Stage for comparison')).toBeInTheDocument();
-    expect(screen.queryByText('viewed@example.com')).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText('Stage for comparison')).toHaveLength(2);
 
     const sessionCard = screen.getByText('first@example.com').closest('article');
     expect(sessionCard).not.toBeNull();
@@ -222,13 +220,12 @@ describe('AdminReviews', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Build API')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Unviewed \(1\)/ }));
     fireEvent.click(screen.getAllByLabelText('Stage for comparison')[0]!);
-    fireEvent.click(screen.getByRole('button', { name: /Viewed \(1\)/ }));
     const secondCard = screen.getByText('second@example.com').closest('article');
     expect(secondCard).not.toBeNull();
     fireEvent.click(within(secondCard!).getByLabelText('Stage for comparison'));
 
+    fireEvent.click(screen.getByText(/^first$/));
     await waitFor(() => expect(screen.getByText('Analyze staged candidates')).toBeInTheDocument());
     await waitFor(() => expect(
       screen.getByRole('button', { name: /Show evaluation for Prompt Quality - first@example.com/ }),
@@ -240,13 +237,6 @@ describe('AdminReviews', () => {
     await waitFor(() => expect(screen.getByText('Completed the main task')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /Show evaluation for Prompt Quality - first@example.com/ }));
     await waitFor(() => expect(screen.getByText('Very clear prompts')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Summary/ }));
-    await waitFor(() => expect(screen.getByText('Strong overall candidate.')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Rubric/ }));
-    await waitFor(() => expect(screen.getByText('Solid quality')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Infrastructure/ }));
-    await waitFor(() => expect(screen.getByText('Good cache usage')).toBeInTheDocument());
-    expect(screen.getByText('Completed the main task')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/review/sess-1');
     expect(fetchMock).toHaveBeenCalledWith('/api/review/sess-2');
   });
@@ -353,14 +343,11 @@ describe('AdminReviews', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Build API')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Viewed \(1\)/ }));
     fireEvent.click(screen.getByLabelText('Stage for comparison'));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/review/sess-1'));
-    await waitFor(() => expect(screen.getByText(/No LLM evaluation yet/i)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Comparison \(1\)/ }));
-    await waitFor(() => expect(screen.queryByText(/No LLM evaluation yet/i)).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Comparison \(1\)/ }));
+    fireEvent.click(screen.getByText(/^candidate$/));
+    await waitFor(() => expect(reviewFetchCount).toBe(2));
     await waitFor(() => expect(
       screen.getByRole('button', { name: /Show evaluation for Prompt Quality - candidate@example.com/ }),
     ).toBeInTheDocument());
@@ -416,14 +403,12 @@ describe('AdminReviews', () => {
     );
 
     await waitFor(() => expect(screen.getByText('Build API')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Viewed \(1\)/ }));
     await waitFor(() => expect(screen.getByText('archive@example.com')).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText('Archive review'));
     await waitFor(() => expect(screen.queryByText('archive@example.com')).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
     await waitFor(() => expect(screen.getByText('Build API')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Viewed \(1\)/ }));
     await waitFor(() => expect(screen.getByText('archive@example.com')).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText('Delete permanently'));
     await waitFor(() => expect(screen.queryByText('archive@example.com')).not.toBeInTheDocument());

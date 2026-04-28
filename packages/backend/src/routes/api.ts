@@ -1008,19 +1008,68 @@ async function maybeRetitleConversationFromMessage(
   })) ?? conversation;
 }
 
-function buildDefaultConversationAttachments(
-  _db: DatabaseAdapter,
-  _sessionId: string,
-  _branchId: string,
-  _sourceConversationId?: string,
-  _activePath?: string,
-): Array<{
+async function buildDefaultConversationAttachments(
+  db: DatabaseAdapter,
+  sessionId: string,
+  branchId: string,
+  sourceConversationId?: string,
+  activePath?: string,
+): Promise<Array<{
   kind: 'file' | 'repo_map';
   label: string;
   path?: string;
   resource_id?: string;
-}> {
-  return [];
+}>> {
+  const [resources, snapshot, sourceAttachments] = await Promise.all([
+    db.listContextResources(sessionId, branchId),
+    db.getWorkspaceSnapshot(sessionId, branchId, { kind: 'draft' }),
+    sourceConversationId
+      ? db.listConversationContextAttachments(sourceConversationId)
+      : Promise.resolve([]),
+  ]);
+
+  const nextAttachments: Array<{
+    kind: 'file' | 'repo_map';
+    label: string;
+    path?: string;
+    resource_id?: string;
+  }> = [];
+  const seenFilePaths = new Set<string>();
+  const repoMap = resources
+    .filter((resource) => resource.kind === 'repo_map')
+    .sort((a, b) => b.updated_at - a.updated_at)[0];
+
+  if (repoMap) {
+    nextAttachments.push({
+      kind: 'repo_map',
+      label: repoMap.title,
+      resource_id: repoMap.id,
+    });
+  }
+
+  const resolvedActivePath = activePath ?? snapshot?.active_path;
+  if (resolvedActivePath) {
+    seenFilePaths.add(resolvedActivePath);
+    nextAttachments.push({
+      kind: 'file',
+      label: resolvedActivePath,
+      path: resolvedActivePath,
+    });
+  }
+
+  for (const attachment of sourceAttachments) {
+    if (attachment.kind !== 'file' || !attachment.path || seenFilePaths.has(attachment.path)) {
+      continue;
+    }
+    seenFilePaths.add(attachment.path);
+    nextAttachments.push({
+      kind: 'file',
+      label: attachment.label,
+      path: attachment.path,
+    });
+  }
+
+  return nextAttachments;
 }
 
 // ─── Router ───────────────────────────────────────────────────────────────────
@@ -1743,7 +1792,7 @@ export function createApiRouter(db: DatabaseAdapter, adapter: AgentAdapter, conf
       title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'New chat',
     });
 
-  const defaultAttachments = buildDefaultConversationAttachments(
+    const defaultAttachments = await buildDefaultConversationAttachments(
       db,
       sessionId,
       branch.id,

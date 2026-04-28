@@ -1365,7 +1365,10 @@ export function AdminReviews({ initialSessionId, isDark, onToggleTheme }: AdminR
           >
             <div 
               className={`flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4 ${!isComparisonExpanded ? 'cursor-pointer' : ''}`}
-              onClick={!isComparisonExpanded ? () => setIsComparisonExpanded(true) : undefined}
+              onClick={!isComparisonExpanded ? () => {
+                ensureComparisonDetails(stagedSessions.map((session) => session.session_id));
+                setIsComparisonExpanded(true);
+              } : undefined}
             >
               {!isComparisonExpanded ? (
                 /* Minimized Bottom Bar */
